@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# Binarios de referencia: no deben sufrir conversión de fin de línea.
+*.dll binary
+*.exe binary
+*.fxb binary
+*.FXB binary
+
+# Fixtures comparados byte a byte por los tests.
+webapp/test/fixtures/** -text

@@ -1,0 +1,225 @@
+==============================
+fxbLoader Readme:
+==============================
+
+The fxbLoader allows to load vst preset banks within the  
+V-Machine and the VFX host software that do not offer this 
+functionality.
+The latest release of the program can be downloaded from 
+http://soundbytes.de/?fxbLoader
+
+This readme has become a bit lengthy. 
+Please make sure you read at least 
+chapters 2. Installation and 4. How to use
+before you dive in.
+
+If you find this software usful feel free to throw a few 
+coins into my hat. In case you can't get near enough to 
+my place you can always donate to my paypal account
+paypal@soundbytes.de. Thanks!
+
+If have any questions or problems using the software 
+please contact me via email to info@soundbytes.de
+
+----------
+ 0. Index:
+----------
+
+1. Package contents
+2. Installation
+3. Deinstallation
+4. How to use
+5. Known issues and limitations
+6. Software License Agreement
+
+---------------------
+ 1. Package contents:
+---------------------
+
+This package inludes the following files and directories:
+
+- fxbLoader  (directory)
+  - fxbLoaderConfig.exe  (executable) 
+  - fxbLoader.readme.txt (this file)
+  - vst (directory)
+    - fxbLoader.dll (dynamic link library)
+
+-----------------
+ 2. Installation:
+-----------------
+
+    Copy the folder fxbLoader from the supplied zip archive 
+    anywhere onto your computers hard disk drive.
+    Make sure to keep the directory structure intact.
+	
+	System requirements:
+	OS: windows XP, Vista, windows 7
+	VFX: version 2
+
+	Note:
+	If you use the program on a Vista or winXP system 
+	You might need to install the Microsoft Visual 
+	C++ 2010 Redistributable Package (x86)
+	which is available from :
+	http://www.microsoft.com/en-us/download/details.aspx?id=5555
+    
+-------------------
+ 3. Deinstallation:
+-------------------
+   
+    Delete the 'fxbLoader' folder from your computers storage media.
+    Make sure to remove any unwanted instances of the fxbLoader from 
+    your vfxLibraries before removing the configuration tool.
+
+---------------
+ 4. How to use:
+---------------
+
+The Software consists of two different modules:
+
+1) fxbLoaderConfig.exe
+This configuration utility is used to add or remove the fxbLoader to 
+or from any plugin in a chosen VFX-Library.
+2) fxbLoader.dll
+Once the fxbLoader has been added to a plugin it will load a preselected 
+fxb preset bank into the plugin as soon as the plugin is opened in the
+V-Machine or the VFX VST host software.
+A dialog is available that allows to import fxb preset banks and to select 
+the fxb bank to be loaded on startup 
+
+fxbLoader configuration:
+
+ 1. Start fxbLoaderConfig.exe 
+ 2. Hit the button 'open vfxLibrary' and select the folder you want to 
+    modify. 
+    Note: The library needs to contain at least one vst plugin. 
+    Make sure that all the plugins are properly configured to run on the
+    V-Machine.
+ 3. All vst plugins in the library will appear in one of the two 
+    list boxes. The left box shows all plugins that do not yet have 
+    the fxbLoader installed while the right box shows those plugins
+    where the fxbLoader has already been added.
+ 4. Add the fxbLoader by selecting one or more entries from the 
+    listbox to the left. Then hit the '>>' button. The selected 
+    plugin directories are modified accordingly and will then be  
+    shown in the 'enabled' listbox to the right. 
+    NOTE: the fxbLoader configuration tool saves the original
+    vfxinfo.txt as vfxinfo.tx_. Do _not_ delete this file. 
+    Otherwise you will have to manually edit the modified 
+    vfxinfo.txt in order to restore the original state of the plugin 
+	if you should decide to remove the fxbLoader from the plugin.
+ 5. To remove the fxbLoader select one or more entries from the 
+    listbox to the right then hit the '<<' button. The selected 
+    plugins will now be restored to their original state.
+ 6. Always close and restart the VFX host after any changes have been 
+    made to the fxbLoader configuration of the hosted plugins.  
+ 
+fxbLoader:
+
+ 1. The fxbLoader dialog appears whenever the VST plugin panel is 
+	opened. Mouse click the VFX icon in the top left corner 
+	of the VFX program window and select 'Show VST Editor'.
+	If the Plugin Panel is already visible you will have to close the 
+	panel first before you can open it. 
+ 2. Initially there are no fxb bank files available. 
+    Click the 'import new fxb bank file' Button and select one or more 
+    appropriate banks using the file open dialog that appears. The fxb 
+    bank file will be copied to the plugin directory and is from 
+    then on readily available from the listbox.
+    NOTE: 
+	A previosly imported fxb bank will be overwritten without 
+    warning when a new bank with the same file name is imported.
+	The utility checks the fxb-Bank for compatability and will not 
+	add any banks that were created with another plugin.
+ 3. Any banks that have been imported previously are shown in the 
+    listbox and can be selected from there.
+ 4. If no bank is to be loaded check the 'load none' radio button. 
+    This will also disable the listbox.
+ 5. When all settings are completed hit the ok button. 
+    The configured fxb bank will now be loaded into the VST plugin.
+
+---------------------------------
+ 5. Known issues and limitations:
+---------------------------------
+
+fxbLoaderConfig.exe:
+The VFX host might crash when a plugin is reloaded that has been 
+equipped with the fxbLoader during the same VFX host session. 
+This is no bug but instead an interoperability problem that can not 
+be fixed currently.
+Workaround: 
+Always close and restart the VFX host application after 
+fxbLoaderConfig.exe was used to modify the vfxLibrary currently
+loaded in the VFX host.
+
+fxbLoader:
+Once a fxb preset bank has been loaded into the plugin the 
+fxbLoader can not be used to restore the factory default bank.
+Workaround:
+To restore the factory default bank:
+Open the fxbLoader dialog and chack the 'load none' radio button.
+Hit the ok button.
+Unload the plugin and reload it into the VFX application. 
+
+The fxbLoader can only be used to load fxb preset banks. Saving of fxb 
+preset banks is not possible with the software.
+Workaround:
+Use any other VST host to edit and save fxb preset banks.
+
+fxbLoader removal:
+Any imported fxb bank file will be kept in place together with 
+the fxbLoader.dll. A backup of the modified vfxinfo.txt is kept under 
+the name vfxinfo.loader. These files need to be removed manually. 
+
+If you find any problems or incompatible plugins please send your 
+comments to ansum@soundbytes.de.
+
+-------------------------------
+ 6. Software License Agreement:
+-------------------------------
+
+This software is property of Andreas Sumerauer.
+You may use the software for any personal or commercial purpose. 
+Any publication or redistribution of the software is explicitly 
+forbidden except for the following cases:
+
+You may pass the software on to your friends and relatives.
+
+Magazine publishers are allowed to distribute the software on the 
+magazine cover disk provided a hardcopy of any magazine issue that 
+includes the software is sent to our postal mail address within 15 
+days of publication. 
+Our postal address can be found at 
+http://www.soundbytes.de/?contact-en
+
+DISCLAIMER OF WARRANTY
+
+The Software is provided "AS IS" and "WITH ALL FAULTS," without 
+warranty of any kind, including without limitation the warranties 
+of merchantability, fitness for a particular purpose and 
+non-infringement. 
+The Licensor makes no warranty that the Software is free of defects 
+or is suitable for any particular purpose. In no event shall the 
+Licensor be responsible for loss or damages arising from the 
+installation or use of the Software, including but not limited 
+to any indirect, punitive, special, incidental or consequential 
+damages of any character including, without limitation, damages 
+for loss of goodwill, work stoppage, computer failure or malfunction, 
+or any and all other commercial damages or losses. The entire risk 
+as to the quality and performance of the Software is borne by you. 
+Should the Software prove defective, you and not the Licensor 
+assume the entire cost of any service and repair.
+
+Trademarks:
+
+V-Machine and Powered by VFX are trademarks of VFX Systems 
+Pty Ltd, Australia.
+VST is a trademark of Steinberg Soft- und Hardware GmbH.
+Windows is a registered trademark of Microsoft Corporation 
+in the United States and other countries.
+
+Any trade marks used in this document are the property of their 
+respective owners and use of them does not imply any affiliation 
+with or endorsement by them.
+
+

@@ -1,0 +1,4 @@
+name: Grand Piano
+dll_name: GrandPiano/GrandPiano.dll
+version: 1.0
+vendor: SoundBytes

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fxbLoader · Librería VFX</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1>fxbLoader</h1>
+        <p class="sub">Librería VFX</p>
+      </div>
+      <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
+    </header>
+
+    <main>
+      <form id="scan-form" class="card">
+        <label for="library-root">Carpeta de la librería</label>
+        <div class="row">
+          <input
+            id="library-root"
+            name="libraryRoot"
+            placeholder="C:\VFX\Library"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <button id="scan-button" class="primary" type="submit">Escanear</button>
+        </div>
+        <details>
+          <summary>Opciones avanzadas</summary>
+          <label for="dll-source">DLL del cargador (vacío = la del servidor)</label>
+          <input
+            id="dll-source"
+            placeholder="C:\fxbLoader\vst\fxbLoader.dll"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </details>
+      </form>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <section id="results" class="card" hidden>
+        <div class="summary">
+          <span id="summary-text"></span>
+          <code id="plugs-path"></code>
+        </div>
+
+        <p id="loader-status" class="loader-status" role="status" aria-live="polite"></p>
+
+        <div class="batch">
+          <div class="batch-actions">
+            <button id="install-all" class="primary" type="button" disabled>
+              Instalar todos
+            </button>
+            <button id="uninstall-all" class="danger" type="button" disabled>
+              Desinstalar todos
+            </button>
+          </div>
+          <p id="batch-status" class="status" role="status" aria-live="polite"></p>
+          <details id="batch-errors" class="batch-errors" hidden>
+            <summary id="batch-errors-summary"></summary>
+            <ul id="batch-error-list" class="batch-error-list"></ul>
+          </details>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Plugin</th>
+                <th>Estado</th>
+                <th>Compatibilidad</th>
+                <th>pluginName</th>
+                <th>vfxinfo.txt</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="plugins"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="banks" class="card" hidden aria-labelledby="banks-title">
+        <div class="summary">
+          <h2 id="banks-title">Bancos de <span id="banks-plugin"></span></h2>
+          <button id="banks-close" type="button">Cerrar</button>
+        </div>
+
+        <p class="banks-path">
+          <code id="banks-presets"></code>
+          <span id="banks-exists" class="note"></span>
+        </p>
+
+        <div class="default-row">
+          <div class="field">
+            <label for="default-bank">Banco por defecto</label>
+            <select id="default-bank"></select>
+          </div>
+          <label class="check">
+            <input id="load-fxb" type="checkbox" />
+            Cargar el banco al abrir el plugin
+          </label>
+          <button id="default-save" class="primary" type="button">Guardar</button>
+        </div>
+
+        <p id="banks-status" class="status" role="status" aria-live="polite"></p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Banco</th>
+                <th>Tipo</th>
+                <th>Programas</th>
+                <th>uniqueID</th>
+                <th>fxVersion</th>
+                <th>Tamaño</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="banks-rows"></tbody>
+          </table>
+        </div>
+
+        <details class="import">
+          <summary>Importar bancos .fxb</summary>
+          <label for="import-paths">Rutas absolutas, una por línea</label>
+          <textarea
+            id="import-paths"
+            rows="3"
+            spellcheck="false"
+            placeholder="C:\Bancos\Rhodes.fxb"
+          ></textarea>
+          <div class="import-row">
+            <label class="check">
+              <input id="import-overwrite" type="checkbox" checked />
+              Sobrescribir un banco con el mismo nombre
+            </label>
+            <button id="import-button" class="primary" type="button">Importar</button>
+          </div>
+          <ul id="import-results" class="import-results"></ul>
+        </details>
+      </section>
+
+      <p class="hint">
+        La carpeta debe contener <code>plugs\</code>. Instalar modifica
+        <code>vfxinfo.txt</code> y crea <code>fxbLoader.config</code>; desinstalar restaura
+        el respaldo <code>vfxinfo.tx_</code>.
+      </p>
+    </main>
+
+    <template id="row-template">
+      <tr>
+        <td data-field="name"></td>
+        <td><span class="badge" data-field="status"></span></td>
+        <td><span class="badge" data-field="compatibility"></span></td>
+        <td data-field="pluginName"></td>
+        <td data-field="vfxinfo"></td>
+        <td class="actions">
+          <button type="button" data-action="banks">Bancos</button>
+          <button type="button" data-action="toggle"></button>
+        </td>
+      </tr>
+    </template>
+
+    <noscript>
+      <p class="status error">Esta página necesita JavaScript.</p>
+    </noscript>
+    <script src="/batch.js" defer></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

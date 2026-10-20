@@ -1,0 +1,34 @@
+{
+  "name": "fxb-loader-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Configurador web local para librerías VFX con fxbLoader",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "openapi": "npm run build && node dist/openapi.js",
+    "client": "npm run openapi && openapi-typescript openapi.json -o src/client/api-types.ts",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\""
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.2.0",
+    "@nestjs/core": "^12.2.0",
+    "@nestjs/platform-express": "^12.2.0",
+    "@nestjs/swagger": "^12.0.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.2.0",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "openapi-typescript": "^7.13.0",
+    "supertest": "^7.3.1",
+    "typescript": "5.9.3"
+  }
+}

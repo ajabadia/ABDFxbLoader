@@ -1,0 +1,2404 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/fxb-config/read": {
+      "post": {
+        "description": "Si el archivo no existe devuelve los valores por defecto con `exists: false` y `mtimeMs: null`, sin crear nada.",
+        "operationId": "FxbConfigController_read",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FxbConfigReadRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot del archivo y del `mtimeMs` para el control optimista.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxbConfigSnapshotDto"
+                },
+                "example": {
+                  "configPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.config",
+                  "exists": true,
+                  "mtimeMs": 1760000000000.123,
+                  "size": 96,
+                  "config": {
+                    "pluginName": "MySynth.dll",
+                    "defaultFxbName": "Rhodes.fxb",
+                    "programDirName": "presets",
+                    "loadFxbBank": true
+                  },
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`pluginDir` ausente, relativo, inexistente o que no es un directorio.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxbConfigPathErrorDto"
+                },
+                "example": {
+                  "message": "pluginDir debe ser una ruta absoluta: \"plugs/MySynth\""
+                }
+              }
+            }
+          }
+        },
+        "summary": "Lee fxbLoader.config de un plugin",
+        "tags": [
+          "fxb-config"
+        ]
+      }
+    },
+    "/fxb-config": {
+      "put": {
+        "description": "Fusiona `config` con lo que haya en disco, valida los límites del binario y exige que `expectedMtimeMs` siga siendo el vigente.",
+        "operationId": "FxbConfigController_write",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FxbConfigWriteRequestDto"
+              },
+              "examples": {
+                "cambioParcial": {
+                  "summary": "Cambiar banco y desactivar la carga",
+                  "value": {
+                    "pluginDir": "C:\\VFX\\plugs\\MySynth",
+                    "expectedMtimeMs": 1760000000000.123,
+                    "config": {
+                      "defaultFxbName": "Rhodes.fxb",
+                      "loadFxbBank": false
+                    }
+                  }
+                },
+                "archivoNuevo": {
+                  "summary": "Crear el archivo desde cero",
+                  "value": {
+                    "pluginDir": "C:\\VFX\\plugs\\MySynth",
+                    "expectedMtimeMs": null,
+                    "config": {
+                      "pluginName": "MySynth.dll"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuración escrita y snapshot resultante.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxbConfigSnapshotDto"
+                },
+                "example": {
+                  "configPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.config",
+                  "exists": true,
+                  "mtimeMs": 1760000000000.123,
+                  "size": 96,
+                  "config": {
+                    "pluginName": "MySynth.dll",
+                    "defaultFxbName": "Rhodes.fxb",
+                    "programDirName": "presets",
+                    "loadFxbBank": true
+                  },
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta inválida o valores fuera de los límites del binario (63 caracteres, sin `/`, sin controles, `programDirName` no vacío).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FxbConfigPathErrorDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FxbConfigValidationErrorDto"
+                    }
+                  ]
+                },
+                "examples": {
+                  "rutaInvalida": {
+                    "summary": "Ruta relativa",
+                    "value": {
+                      "message": "pluginDir debe ser una ruta absoluta: \"plugs/MySynth\""
+                    }
+                  },
+                  "validacion": {
+                    "summary": "Valor no representable o fuera de límite",
+                    "value": {
+                      "message": "Configuración no válida",
+                      "issues": [
+                        "programDirName: no puede estar vacío"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El `mtimeMs` enviado ya no es el vigente (por ejemplo, porque la DLL guardó desde su diálogo). No se escribe nada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxbConfigConflictErrorDto"
+                },
+                "example": {
+                  "message": "El archivo cambió en disco desde la última lectura",
+                  "current": {
+                    "configPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.config",
+                    "exists": true,
+                    "mtimeMs": 1760000000000.123,
+                    "size": 96,
+                    "config": {
+                      "pluginName": "MySynth.dll",
+                      "defaultFxbName": "Rhodes.fxb",
+                      "programDirName": "presets",
+                      "loadFxbBank": true
+                    },
+                    "warnings": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Escribe fxbLoader.config de forma atómica",
+        "tags": [
+          "fxb-config"
+        ]
+      }
+    },
+    "/library/scan": {
+      "post": {
+        "description": "Lista los directorios de `plugs\\` y marca los que tienen `fxbLoader.config`.",
+        "operationId": "LibraryController_scan",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryScanRequestDto"
+              },
+              "examples": {
+                "libreria": {
+                  "summary": "Escanear una librería VFX",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library"
+                  }
+                },
+                "conDll": {
+                  "summary": "Validar además otro fxbLoader.dll",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "dllSourcePath": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plugins encontrados, ordenados por nombre, con su estado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryScanResponseDto"
+                },
+                "example": {
+                  "libraryRoot": "C:\\VFX\\Library",
+                  "plugsPath": "C:\\VFX\\Library\\plugs",
+                  "loader": {
+                    "path": "C:\\fxbLoader\\vst\\fxbLoader.dll",
+                    "valid": true,
+                    "bitness": 32,
+                    "machine": "i386",
+                    "issues": []
+                  },
+                  "plugins": [
+                    {
+                      "name": "MySynth",
+                      "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                      "installed": true,
+                      "hasVfxinfo": true,
+                      "pluginName": "MySynth.dll",
+                      "warnings": [],
+                      "compatible": true,
+                      "compatibilityIssues": []
+                    },
+                    {
+                      "name": "GrandPiano",
+                      "path": "C:\\VFX\\Library\\plugs\\GrandPiano",
+                      "installed": false,
+                      "hasVfxinfo": true,
+                      "pluginName": null,
+                      "warnings": [],
+                      "compatible": true,
+                      "compatibilityIssues": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`libraryRoot` ausente, relativo, inexistente o sin carpeta `plugs\\`, o `dllSourcePath` no absoluta o inexistente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "rutaRelativa": {
+                    "summary": "Ruta relativa",
+                    "value": {
+                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                    }
+                  },
+                  "sinPlugs": {
+                    "summary": "La carpeta existe pero no tiene plugs\\",
+                    "value": {
+                      "message": "la librería no contiene una carpeta \"plugs\": C:\\VFX\\Library"
+                    }
+                  },
+                  "dll": {
+                    "summary": "DLL del cargador ausente o relativa",
+                    "value": {
+                      "message": "dllSourcePath debe ser una ruta absoluta: \"vst/fxbLoader.dll\""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enumera los plugins de la librería",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/install": {
+      "post": {
+        "description": "Respalda `vfxinfo.txt` como `vfxinfo.tx_`, copia el DLL, reescribe `dll_name` y crea `fxbLoader.config` + `presets\\`.",
+        "operationId": "LibraryController_install",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryInstallRequestDto"
+              },
+              "examples": {
+                "instalacion": {
+                  "summary": "Instalar con el DLL del repositorio",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth"
+                  }
+                },
+                "simulacion": {
+                  "summary": "Ver el plan sin escribir (dryRun)",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "GrandPiano",
+                    "dryRun": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación aplicada y estado resultante del plugin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOperationResponseDto"
+                },
+                "examples": {
+                  "instalado": {
+                    "summary": "Instalación aplicada",
+                    "value": {
+                      "plugin": {
+                        "name": "MySynth",
+                        "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                        "installed": true,
+                        "hasVfxinfo": true,
+                        "pluginName": "MySynth.dll",
+                        "warnings": [],
+                        "compatible": true,
+                        "compatibilityIssues": []
+                      },
+                      "actions": [
+                        {
+                          "kind": "backup",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_",
+                          "detail": "copia del vfxinfo.txt original"
+                        },
+                        {
+                          "kind": "copy",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.dll",
+                          "detail": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+                        },
+                        {
+                          "kind": "patch",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt",
+                          "detail": "dll_name: MySynth/fxbLoader.dll"
+                        },
+                        {
+                          "kind": "write-config",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config",
+                          "detail": "pluginName = MySynth.dll"
+                        },
+                        {
+                          "kind": "create-dir",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+                        }
+                      ],
+                      "dryRun": false
+                    }
+                  },
+                  "dryRun": {
+                    "summary": "Solo el plan (`dryRun: true`)",
+                    "value": {
+                      "plugin": {
+                        "name": "GrandPiano",
+                        "path": "C:\\VFX\\Library\\plugs\\GrandPiano",
+                        "installed": false,
+                        "hasVfxinfo": true,
+                        "pluginName": null,
+                        "warnings": [],
+                        "compatible": true,
+                        "compatibilityIssues": []
+                      },
+                      "actions": [
+                        {
+                          "kind": "backup",
+                          "path": "C:\\VFX\\Library\\plugs\\GrandPiano\\vfxinfo.tx_",
+                          "detail": "copia del vfxinfo.txt original"
+                        },
+                        {
+                          "kind": "copy",
+                          "path": "C:\\VFX\\Library\\plugs\\GrandPiano\\fxbLoader.dll",
+                          "detail": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+                        },
+                        {
+                          "kind": "patch",
+                          "path": "C:\\VFX\\Library\\plugs\\GrandPiano\\vfxinfo.txt",
+                          "detail": "dll_name: GrandPiano/fxbLoader.dll"
+                        },
+                        {
+                          "kind": "write-config",
+                          "path": "C:\\VFX\\Library\\plugs\\GrandPiano\\fxbLoader.config",
+                          "detail": "pluginName = GrandPiano.dll"
+                        },
+                        {
+                          "kind": "create-dir",
+                          "path": "C:\\VFX\\Library\\plugs\\GrandPiano\\presets"
+                        }
+                      ],
+                      "dryRun": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta o nombre inválido, o DLL de origen ausente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "dllRelativa": {
+                    "summary": "dllSourcePath no absoluta o inexistente",
+                    "value": {
+                      "message": "dllSourcePath debe ser una ruta absoluta: \"vst/fxbLoader.dll\""
+                    }
+                  },
+                  "pluginInvalido": {
+                    "summary": "Nombre de plugin con separadores",
+                    "value": {
+                      "message": "nombre de plugin no válido: \"..\\Otro\""
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El plugin ya está instalado (usa `force`) o `fxbLoader.config` cambió entre la lectura y la escritura.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LibraryConflictErrorDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LibraryErrorDto"
+                    }
+                  ]
+                },
+                "examples": {
+                  "yaInstalado": {
+                    "summary": "Ya tiene el cargador",
+                    "value": {
+                      "message": "MySynth ya tiene fxbLoader instalado (usa force para reinstalar)"
+                    }
+                  },
+                  "configCambiada": {
+                    "summary": "Config modificada por la DLL durante la instalación",
+                    "value": {
+                      "message": "El archivo cambió en disco desde la última lectura",
+                      "current": {
+                        "configPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.config",
+                        "exists": true,
+                        "mtimeMs": 1760000000000.123,
+                        "size": 96,
+                        "config": {
+                          "pluginName": "MySynth.dll",
+                          "defaultFxbName": "Rhodes.fxb",
+                          "programDirName": "presets",
+                          "loadFxbBank": true
+                        },
+                        "warnings": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`vfxinfo.txt` ausente o sin `dll_name`, `fxbLoader.dll` que no es PE32 i386 o plugin de otra arquitectura; no se toca nada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "vfxinfo": {
+                    "summary": "vfxinfo.txt sin dll_name",
+                    "value": {
+                      "message": "vfxinfo.txt no contiene ninguna línea \"dll_name\"; el instalador original dejaría una configuración vacía, así que se rechaza la operación"
+                    }
+                  },
+                  "incompatible": {
+                    "summary": "Cargador o plugin de otra arquitectura",
+                    "value": {
+                      "message": "MySynth no es compatible con fxbLoader.dll de 32 bits: el binario del plugin es PE32+ AMD64 (64 bits); fxbLoader.dll requiere PE32 i386"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Instala fxbLoader en un plugin",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/banks/list": {
+      "post": {
+        "description": "Lee la cabecera de cada `.fxb` de `<plugin>\\<programDirName>\\` y devuelve el snapshot de `fxbLoader.config` (incluido `mtimeMs` para guardar el banco por defecto). **No crea ni copia nada**: con la carpeta ausente devuelve `banks: []`.",
+        "operationId": "LibraryController_listBanks",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryBanksListRequestDto"
+              },
+              "examples": {
+                "plugin": {
+                  "summary": "Bancos de un plugin instalado",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Carpeta de presets, bancos válidos y configuración vigente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBanksListResponseDto"
+                },
+                "example": {
+                  "plugin": {
+                    "name": "MySynth",
+                    "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                    "installed": true,
+                    "hasVfxinfo": true,
+                    "pluginName": "MySynth.dll",
+                    "warnings": [],
+                    "compatible": true,
+                    "compatibilityIssues": []
+                  },
+                  "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                  "presetsDirExists": true,
+                  "banks": [
+                    {
+                      "fileName": "Warm Rhodes.fxb",
+                      "size": 216,
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 208,
+                        "version": 1,
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "numPrograms": 1,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      }
+                    }
+                  ],
+                  "config": {
+                    "configPath": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config",
+                    "exists": true,
+                    "mtimeMs": 1760000000000.123,
+                    "size": 96,
+                    "config": {
+                      "pluginName": "MySynth.dll",
+                      "defaultFxbName": "Warm Rhodes.fxb",
+                      "programDirName": "presets",
+                      "loadFxbBank": true
+                    },
+                    "warnings": []
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`libraryRoot` ausente, relativo, inexistente o sin `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`programDirName` de `fxbLoader.config` no es un nombre de carpeta simple.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "programDirName \"..\\fuera\" no es un nombre de carpeta simple; revisa fxbLoader.config antes de listar los bancos"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Lista los bancos de un plugin y su configuración",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/banks/import": {
+      "post": {
+        "description": "Valida el formato VST2 de cada banco y su compatibilidad (uniqueID/versión) antes de copiarlo de forma atómica en `<plugin>\\<programDirName>\\`.",
+        "operationId": "LibraryController_importBanks",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryBanksImportRequestDto"
+              },
+              "examples": {
+                "lote": {
+                  "summary": "Dos bancos con uniqueID explícito",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "sourcePaths": [
+                      "C:\\Banks\\Rhodes.fxb",
+                      "C:\\Banks\\Strings.fxb"
+                    ],
+                    "expectedUniqueId": "MySy",
+                    "expectedFxVersion": 1000
+                  }
+                },
+                "sinReferencia": {
+                  "summary": "Sin referencia: se importa como unverified",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "sourcePaths": [
+                      "C:\\Banks\\Rhodes.fxb"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado por archivo; 200 basta con que uno se importe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBanksImportResponseDto"
+                },
+                "example": {
+                  "plugin": {
+                    "name": "MySynth",
+                    "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                    "installed": true,
+                    "hasVfxinfo": true,
+                    "pluginName": "MySynth.dll",
+                    "warnings": [],
+                    "compatible": true,
+                    "compatibilityIssues": []
+                  },
+                  "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                  "reference": {
+                    "source": "explicit",
+                    "uniqueId": "MySy",
+                    "uniqueIdValue": 1299796857,
+                    "fxVersion": 1000,
+                    "file": null
+                  },
+                  "results": [
+                    {
+                      "source": "C:\\Banks\\Rhodes.fxb",
+                      "fileName": "Rhodes.fxb",
+                      "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb",
+                      "status": "imported",
+                      "compatibility": "compatible",
+                      "warnings": [],
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 208,
+                        "version": 1,
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "numPrograms": 1,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      }
+                    },
+                    {
+                      "source": "C:\\Banks\\Strings.fxb",
+                      "fileName": "Strings.fxb",
+                      "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Strings.fxb",
+                      "status": "overwritten",
+                      "compatibility": "compatible",
+                      "warnings": [],
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 328,
+                        "version": 1,
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "numPrograms": 3,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Petición mal formada: rutas no absolutas, más de 50 bancos, `expectedUniqueId` inválido o `libraryRoot` inexistente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "rutaRelativa": {
+                    "summary": "Origen no absoluto",
+                    "value": {
+                      "message": "la ruta debe ser absoluta: \"Banks/Rhodes.fxb\""
+                    }
+                  },
+                  "demasiados": {
+                    "summary": "Lote demasiado grande",
+                    "value": {
+                      "message": "como máximo 50 bancos por petición"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Todos los bancos se rechazaron. El cuerpo es el resultado completo, para que el cliente muestre el motivo de cada archivo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBanksImportErrorDto"
+                },
+                "example": {
+                  "message": "Ningún banco se pudo importar",
+                  "plugin": {
+                    "name": "MySynth",
+                    "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                    "installed": true,
+                    "hasVfxinfo": true,
+                    "pluginName": "MySynth.dll",
+                    "warnings": [],
+                    "compatible": true,
+                    "compatibilityIssues": []
+                  },
+                  "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                  "reference": {
+                    "source": "explicit",
+                    "uniqueId": "MySy",
+                    "uniqueIdValue": 1299796857,
+                    "fxVersion": null,
+                    "file": null
+                  },
+                  "results": [
+                    {
+                      "source": "C:\\Banks\\Otro.fxb",
+                      "fileName": "Otro.fxb",
+                      "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Otro.fxb",
+                      "status": "rejected",
+                      "compatibility": "incompatible",
+                      "reason": "uniqueID OtSy (0x4f745379) distinto del esperado MySy",
+                      "warnings": [],
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 208,
+                        "version": 1,
+                        "uniqueId": "OtSy",
+                        "uniqueIdValue": 1333023609,
+                        "fxVersion": 1000,
+                        "numPrograms": 1,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Importa bancos .fxb en la carpeta de presets",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/banks/inspect": {
+      "post": {
+        "description": "Lee el archivo, valida su formato y calcula su SHA-256. Si se indican `libraryRoot` y `plugin`, lo compara con los bancos que ya están en su carpeta de presets y devuelve el destino y si lo sobrescribiría. **No copia ni modifica nada.**",
+        "operationId": "LibraryController_inspectBank",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryBankInspectRequestDto"
+              },
+              "examples": {
+                "conPlugin": {
+                  "summary": "Comparar con los bancos del plugin",
+                  "value": {
+                    "sourcePath": "C:\\Banks\\Rhodes.fxb",
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth"
+                  }
+                },
+                "soloArchivo": {
+                  "summary": "Solo validar el archivo",
+                  "value": {
+                    "sourcePath": "C:\\Banks\\Rhodes.fxb"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inspección correcta. `valid: false` describe un archivo que no es un banco usable, con el detalle en `issues`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBankInspectResponseDto"
+                },
+                "examples": {
+                  "compatible": {
+                    "summary": "Compatible con un banco del plugin",
+                    "value": {
+                      "source": "C:\\Banks\\Rhodes.fxb",
+                      "fileName": "Rhodes.fxb",
+                      "size": 216,
+                      "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                      "valid": true,
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 208,
+                        "version": 1,
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "numPrograms": 1,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      },
+                      "issues": [],
+                      "warnings": [],
+                      "reference": {
+                        "source": "existing-bank",
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "file": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb"
+                      },
+                      "compatibility": "compatible",
+                      "reason": null,
+                      "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb",
+                      "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                      "targetExists": false,
+                      "existingBanks": [
+                        {
+                          "fileName": "Warm Rhodes.fxb",
+                          "size": 216,
+                          "bank": {
+                            "kind": "FxBk",
+                            "endianness": "little",
+                            "byteSize": 208,
+                            "version": 1,
+                            "uniqueId": "MySy",
+                            "uniqueIdValue": 1299796857,
+                            "fxVersion": 1000,
+                            "numPrograms": 1,
+                            "currentProgram": null,
+                            "chunkSize": null
+                          },
+                          "sameUniqueId": true,
+                          "sameFxVersion": true
+                        }
+                      ]
+                    }
+                  },
+                  "soloArchivo": {
+                    "summary": "Sin plugin: solo validación",
+                    "value": {
+                      "source": "C:\\Banks\\Rhodes.fxb",
+                      "fileName": "Rhodes.fxb",
+                      "size": 216,
+                      "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                      "valid": true,
+                      "bank": {
+                        "kind": "FxBk",
+                        "endianness": "little",
+                        "byteSize": 208,
+                        "version": 1,
+                        "uniqueId": "MySy",
+                        "uniqueIdValue": 1299796857,
+                        "fxVersion": 1000,
+                        "numPrograms": 1,
+                        "currentProgram": null,
+                        "chunkSize": null
+                      },
+                      "issues": [],
+                      "warnings": [],
+                      "reference": {
+                        "source": "none",
+                        "uniqueId": null,
+                        "uniqueIdValue": null,
+                        "fxVersion": null,
+                        "file": null
+                      },
+                      "compatibility": "unverified",
+                      "reason": null,
+                      "target": null,
+                      "presetsDir": null,
+                      "targetExists": false,
+                      "existingBanks": []
+                    }
+                  },
+                  "invalido": {
+                    "summary": "El archivo no es un .fxb",
+                    "value": {
+                      "source": "C:\\Banks\\Roto.fxb",
+                      "fileName": "Roto.fxb",
+                      "size": 120,
+                      "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                      "valid": false,
+                      "bank": null,
+                      "issues": [
+                        "archivo de 120 bytes; un .fxb necesita al menos 156"
+                      ],
+                      "warnings": [],
+                      "reference": {
+                        "source": "none",
+                        "uniqueId": null,
+                        "uniqueIdValue": null,
+                        "fxVersion": null,
+                        "file": null
+                      },
+                      "compatibility": "unverified",
+                      "reason": null,
+                      "target": null,
+                      "presetsDir": null,
+                      "targetExists": false,
+                      "existingBanks": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta no absoluta, archivo ausente, extensión distinta de `.fxb` o tamaño fuera de rango.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "inexistente": {
+                    "summary": "No existe",
+                    "value": {
+                      "message": "no existe el archivo: C:\\Banks\\Rhodes.fxb"
+                    }
+                  },
+                  "extension": {
+                    "summary": "No es .fxb",
+                    "value": {
+                      "message": "la extensión debe ser .fxb"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`programDirName` de la configuración no es un nombre de carpeta simple.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "programDirName \"..\\fuera\" no es un nombre de carpeta simple; revisa fxbLoader.config antes de inspeccionar"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Inspecciona un .fxb y lo compara con los bancos del plugin",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/uninstall": {
+      "post": {
+        "description": "Restaura `vfxinfo.tx_`, conserva el modificado como `vfxinfo.loader` y borra `fxbLoader.config`.",
+        "operationId": "LibraryController_uninstall",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryUninstallRequestDto"
+              },
+              "examples": {
+                "desinstalacion": {
+                  "summary": "Desinstalar el cargador",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth"
+                  }
+                },
+                "simulacion": {
+                  "summary": "Ver el plan sin escribir (dryRun)",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "dryRun": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plugin restaurado; el DLL y los bancos se conservan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOperationResponseDto"
+                },
+                "examples": {
+                  "desinstalado": {
+                    "summary": "Desinstalación aplicada",
+                    "value": {
+                      "plugin": {
+                        "name": "MySynth",
+                        "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                        "installed": false,
+                        "hasVfxinfo": true,
+                        "pluginName": null,
+                        "warnings": [],
+                        "compatible": true,
+                        "compatibilityIssues": []
+                      },
+                      "actions": [
+                        {
+                          "kind": "restore",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.loader",
+                          "detail": "se conserva el vfxinfo.txt modificado"
+                        },
+                        {
+                          "kind": "restore",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt",
+                          "detail": "desde vfxinfo.tx_"
+                        },
+                        {
+                          "kind": "delete",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config"
+                        }
+                      ],
+                      "dryRun": false
+                    }
+                  },
+                  "dryRun": {
+                    "summary": "Solo el plan (`dryRun: true`)",
+                    "value": {
+                      "plugin": {
+                        "name": "MySynth",
+                        "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                        "installed": true,
+                        "hasVfxinfo": true,
+                        "pluginName": "MySynth.dll",
+                        "warnings": [],
+                        "compatible": true,
+                        "compatibilityIssues": []
+                      },
+                      "actions": [
+                        {
+                          "kind": "restore",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.loader",
+                          "detail": "se conserva el vfxinfo.txt modificado"
+                        },
+                        {
+                          "kind": "restore",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt",
+                          "detail": "desde vfxinfo.tx_"
+                        },
+                        {
+                          "kind": "delete",
+                          "path": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config"
+                        }
+                      ],
+                      "dryRun": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta o nombre de plugin inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No está instalado o falta `vfxinfo.tx_` para restaurar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "MySynth no tiene fxbLoader instalado"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Desinstala fxbLoader de un plugin",
+        "tags": [
+          "library"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "fxbLoader web",
+    "description": "API local para configurar `fxbLoader.config` y administrar una librería VFX. Todas las rutas escriben en el disco del usuario: el servidor solo escucha en loopback. La escritura de configuración es atómica y usa `mtimeMs` como control optimista.",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "fxb-config",
+      "description": "Lectura y escritura de fxbLoader.config"
+    },
+    {
+      "name": "library",
+      "description": "Escaneo de la librería, instalación y desinstalación del cargador e importación de bancos"
+    }
+  ],
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3210",
+      "description": "Instancia local"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "FxbConfigPathErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Explicación del problema de ruta.",
+            "example": "pluginDir debe ser una ruta absoluta: \"plugs/MySynth\""
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "FxbConfigValidationErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Configuración no válida"
+          },
+          "issues": {
+            "description": "Reglas de la especificación; cada valor admite como máximo 63 caracteres.",
+            "example": [
+              "programDirName: no puede estar vacío"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "message",
+          "issues"
+        ]
+      },
+      "FxbConfigReadRequestDto": {
+        "type": "object",
+        "properties": {
+          "pluginDir": {
+            "type": "string",
+            "description": "Directorio absoluto del plugin.",
+            "example": "C:\\VFX\\plugs\\MySynth"
+          }
+        },
+        "required": [
+          "pluginDir"
+        ]
+      },
+      "FxbConfigDto": {
+        "type": "object",
+        "properties": {
+          "pluginName": {
+            "type": "string",
+            "description": "Nombre del DLL original del plugin (no una ruta).",
+            "example": "MySynth.dll"
+          },
+          "defaultFxbName": {
+            "type": "string",
+            "description": "Banco .fxb preseleccionado, sin ruta. Vacío = no cargar ninguno.",
+            "example": "Rhodes.fxb"
+          },
+          "programDirName": {
+            "type": "string",
+            "description": "Subcarpeta de bancos relativa al directorio del plugin. No puede estar vacía.",
+            "example": "presets"
+          },
+          "loadFxbBank": {
+            "type": "boolean",
+            "description": "Activa la carga del banco al abrir el plugin.",
+            "example": true
+          }
+        },
+        "required": [
+          "pluginName",
+          "defaultFxbName",
+          "programDirName",
+          "loadFxbBank"
+        ]
+      },
+      "FxbConfigSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "configPath": {
+            "type": "string",
+            "description": "Ruta absoluta del archivo.",
+            "example": "C:\\VFX\\plugs\\MySynth\\fxbLoader.config"
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "`false` si el archivo no existe; entonces se devuelven los valores por defecto.",
+            "example": true
+          },
+          "mtimeMs": {
+            "type": "number",
+            "description": "`mtimeMs` vigente, o `null` si el archivo no existe. Es el testigo optimista.",
+            "nullable": true,
+            "example": 1760000000000.123
+          },
+          "size": {
+            "type": "number",
+            "description": "Tamaño en bytes.",
+            "example": 96
+          },
+          "config": {
+            "$ref": "#/components/schemas/FxbConfigDto"
+          },
+          "warnings": {
+            "description": "Avisos del parser; no impiden la lectura.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "configPath",
+          "exists",
+          "mtimeMs",
+          "size",
+          "config",
+          "warnings"
+        ]
+      },
+      "FxbConfigPatchDto": {
+        "type": "object",
+        "properties": {
+          "pluginName": {
+            "type": "string",
+            "description": "Nombre del DLL original. Vacío se acepta para no rechazar configuraciones rotas.",
+            "example": "MySynth.dll"
+          },
+          "defaultFxbName": {
+            "type": "string",
+            "example": "Rhodes.fxb"
+          },
+          "programDirName": {
+            "type": "string",
+            "example": "presets"
+          },
+          "loadFxbBank": {
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
+      "FxbConfigWriteRequestDto": {
+        "type": "object",
+        "properties": {
+          "pluginDir": {
+            "type": "string",
+            "description": "Directorio absoluto del plugin.",
+            "example": "C:\\VFX\\plugs\\MySynth"
+          },
+          "expectedMtimeMs": {
+            "type": "number",
+            "description": "`mtimeMs` leído por el cliente, o `null` si el archivo no existía. Si ya no coincide con el disco, la escritura se rechaza con 409.",
+            "nullable": true,
+            "example": 1760000000000.123
+          },
+          "config": {
+            "description": "Solo las claves a cambiar; el resto se conserva de disco.",
+            "example": {
+              "defaultFxbName": "Rhodes.fxb",
+              "loadFxbBank": false
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FxbConfigPatchDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pluginDir",
+          "expectedMtimeMs",
+          "config"
+        ]
+      },
+      "FxbConfigConflictErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "El archivo cambió en disco desde la última lectura"
+          },
+          "current": {
+            "description": "Estado vigente en disco, para reintentar con el `mtimeMs` correcto.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FxbConfigSnapshotDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "current"
+        ]
+      },
+      "LibraryErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Explicación del error.",
+            "example": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "LibraryConflictErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Estado que impide la operación.",
+            "example": "MySynth ya tiene fxbLoader instalado (usa force para reinstalar)"
+          },
+          "current": {
+            "description": "Solo si `fxbLoader.config` cambió entre la lectura y la escritura: snapshot vigente.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FxbConfigSnapshotDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "PluginEntryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la carpeta dentro de `plugs\\`; es el identificador que aceptan los demás endpoints.",
+            "example": "MySynth"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta del directorio del plugin.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth"
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "El escaneo del binario marca instalado si existe `fxbLoader.config`.",
+            "example": true
+          },
+          "hasVfxinfo": {
+            "type": "boolean",
+            "description": "Existe `vfxinfo.txt`; sin él, instalar responde 422.",
+            "example": true
+          },
+          "pluginName": {
+            "type": "string",
+            "description": "`pluginName` de `fxbLoader.config`, o `null` si no está instalado.",
+            "nullable": true,
+            "example": "MySynth.dll"
+          },
+          "warnings": {
+            "description": "Avisos al describir el plugin; no abortan el escaneo.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatible": {
+            "type": "boolean",
+            "description": "`true` si el binario del plugin y el `fxbLoader.dll` instalado son PE32 i386; `false` si es incompatible de forma comprobable; `null` si no se pudo verificar.",
+            "nullable": true,
+            "example": true
+          },
+          "compatibilityIssues": {
+            "description": "Motivos de incompatibilidad o de la falta de verificación.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "installed",
+          "hasVfxinfo",
+          "pluginName",
+          "warnings",
+          "compatible",
+          "compatibilityIssues"
+        ]
+      },
+      "BankReferenceDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "De dónde salió la identidad del plugin: petición, un banco ya presente (solo al añadir), el primer banco del lote, o ninguna.",
+            "enum": [
+              "explicit",
+              "existing-bank",
+              "batch",
+              "none"
+            ],
+            "example": "explicit"
+          },
+          "uniqueId": {
+            "type": "string",
+            "description": "uniqueID de referencia.",
+            "nullable": true,
+            "example": "MySy"
+          },
+          "uniqueIdValue": {
+            "type": "number",
+            "nullable": true,
+            "example": 1299796857
+          },
+          "fxVersion": {
+            "type": "number",
+            "description": "`fxVersion` de referencia.",
+            "nullable": true,
+            "example": 1000
+          },
+          "file": {
+            "type": "string",
+            "description": "Banco del que se tomó la referencia, si aplica.",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "source",
+          "uniqueId",
+          "uniqueIdValue",
+          "fxVersion",
+          "file"
+        ]
+      },
+      "BankInfoDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Tipo de banco.",
+            "enum": [
+              "FxBk",
+              "FBCh"
+            ],
+            "example": "FxBk"
+          },
+          "endianness": {
+            "type": "string",
+            "description": "Orden de bytes detectado por el `chunkMagic`.",
+            "enum": [
+              "little",
+              "big"
+            ],
+            "example": "little"
+          },
+          "byteSize": {
+            "type": "number",
+            "description": "`byteSize` de la cabecera (sin los 8 primeros bytes).",
+            "example": 208
+          },
+          "version": {
+            "type": "number",
+            "description": "Versión del formato de banco (1 o 2).",
+            "example": 1
+          },
+          "uniqueId": {
+            "type": "string",
+            "description": "uniqueID legible, o `0x…` si no es imprimible.",
+            "example": "MySy"
+          },
+          "uniqueIdValue": {
+            "type": "number",
+            "description": "Valor canónico `CCONST(a,b,c,d)`.",
+            "example": 1299796857
+          },
+          "fxVersion": {
+            "type": "number",
+            "description": "`fxVersion` grabada en el banco.",
+            "example": 1000
+          },
+          "numPrograms": {
+            "type": "number",
+            "description": "Programas del banco; en `FBCh` solo es informativo.",
+            "example": 1
+          },
+          "currentProgram": {
+            "type": "number",
+            "description": "Solo en la versión 2 del formato de banco.",
+            "nullable": true,
+            "example": null
+          },
+          "chunkSize": {
+            "type": "number",
+            "description": "Tamaño del chunk opaco, solo en `FBCh`.",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "kind",
+          "endianness",
+          "byteSize",
+          "version",
+          "uniqueId",
+          "uniqueIdValue",
+          "fxVersion",
+          "numPrograms",
+          "currentProgram",
+          "chunkSize"
+        ]
+      },
+      "BankImportResultDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Ruta de origen tal como se envió.",
+            "example": "C:\\Banks\\Rhodes.fxb"
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Nombre del archivo.",
+            "example": "Rhodes.fxb"
+          },
+          "target": {
+            "type": "string",
+            "description": "Destino dentro de `<plugin>\\<programDirName>\\`.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb"
+          },
+          "status": {
+            "type": "string",
+            "description": "Resultado por archivo.",
+            "enum": [
+              "imported",
+              "overwritten",
+              "rejected"
+            ],
+            "example": "imported"
+          },
+          "compatibility": {
+            "type": "string",
+            "description": "`compatible` si el uniqueID coincide (y la versión, si se pidió), `incompatible` si no, `unverified` si no hay referencia.",
+            "enum": [
+              "compatible",
+              "incompatible",
+              "unverified"
+            ],
+            "example": "compatible"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo del rechazo. Solo con `rejected`.",
+            "example": "la extensión debe ser .fxb"
+          },
+          "issues": {
+            "description": "Defectos de formato que impiden usar el banco.",
+            "example": [
+              "byteSize 200 no coincide con el tamaño del archivo (196 sin cabecera de chunk)"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Rarezas que no impiden la importación.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bank": {
+            "description": "Cabecera interpretada, o `null` si ni siquiera se pudo leer.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankInfoDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "fileName",
+          "target",
+          "status",
+          "compatibility",
+          "bank"
+        ]
+      },
+      "LibraryBanksImportErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Ningún banco se pudo importar"
+          },
+          "plugin": {
+            "$ref": "#/components/schemas/PluginEntryDto"
+          },
+          "presetsDir": {
+            "type": "string",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/BankReferenceDto"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BankImportResultDto"
+            }
+          }
+        },
+        "required": [
+          "message",
+          "plugin",
+          "presetsDir",
+          "reference",
+          "results"
+        ]
+      },
+      "LibraryScanRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Carpeta que contiene `plugs\\` (la que el binario abre con «open vfxLibrary»). Debe ser absoluta.",
+            "example": "C:\\VFX\\Library"
+          },
+          "dllSourcePath": {
+            "type": "string",
+            "description": "DLL a validar como cargador. Si se omite se usa `FXB_LOADER_DLL` y, en último término, `vst\\fxbLoader.dll` del repositorio.",
+            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+          }
+        },
+        "required": [
+          "libraryRoot"
+        ]
+      },
+      "LoaderDllDto": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Ruta del `fxbLoader.dll` validado.",
+            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "El archivo es un PE32 i386 válido y puede hospedar un plugin VST2 de 32 bits.",
+            "example": true
+          },
+          "bitness": {
+            "type": "number",
+            "description": "32 o 64 según el optional header; `null` si no se pudo leer.",
+            "nullable": true,
+            "enum": [
+              32,
+              64
+            ],
+            "example": 32
+          },
+          "machine": {
+            "type": "string",
+            "description": "Arquitectura del `IMAGE_FILE_HEADER` (`i386`, `AMD64`, `ARM64`…).",
+            "nullable": true,
+            "example": "i386"
+          },
+          "issues": {
+            "description": "Motivos por los que el DLL no es un cargador PE32 i386 utilizable.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "valid",
+          "bitness",
+          "machine",
+          "issues"
+        ]
+      },
+      "LibraryScanResponseDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz resuelta.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugsPath": {
+            "type": "string",
+            "description": "Carpeta `plugs\\` que se ha enumerado.",
+            "example": "C:\\VFX\\Library\\plugs"
+          },
+          "loader": {
+            "description": "Validación del cargador que se instalaría; si no es PE32 i386, los plugins quedan incompatibles.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoaderDllDto"
+              }
+            ]
+          },
+          "plugins": {
+            "description": "Solo directorios, ordenados por nombre.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginEntryDto"
+            }
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugsPath",
+          "loader",
+          "plugins"
+        ]
+      },
+      "LibraryInstallRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          },
+          "dllSourcePath": {
+            "type": "string",
+            "description": "DLL a copiar. Si se omite se usa `FXB_LOADER_DLL` y, en último término, `vst\\fxbLoader.dll` del repositorio.",
+            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Reinstalar aunque `fxbLoader.config` ya exista (409 sin esto).",
+            "example": false
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Devuelve el plan de `actions` sin tocar el disco.",
+            "example": false
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin"
+        ]
+      },
+      "LibraryActionDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Tipo de efecto sobre el disco.",
+            "enum": [
+              "backup",
+              "copy",
+              "patch",
+              "write-config",
+              "create-dir",
+              "delete",
+              "restore"
+            ],
+            "example": "copy"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta afectada.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.dll"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detalle del paso: origen de la copia, línea escrita, etc.",
+            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+          }
+        },
+        "required": [
+          "kind",
+          "path"
+        ]
+      },
+      "LibraryOperationResponseDto": {
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "description": "Estado del plugin después de la operación (`dryRun` no lo cambia).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginEntryDto"
+              }
+            ]
+          },
+          "actions": {
+            "description": "Pasos ejecutados, en orden. Con `dryRun` son el plan, sin ejecutar.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryActionDto"
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "`true` si solo se calculó el plan.",
+            "example": false
+          }
+        },
+        "required": [
+          "plugin",
+          "actions",
+          "dryRun"
+        ]
+      },
+      "LibraryBanksListRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin"
+        ]
+      },
+      "PluginBankEntryDto": {
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "example": "Warm Rhodes.fxb"
+          },
+          "size": {
+            "type": "number",
+            "example": 216
+          },
+          "bank": {
+            "$ref": "#/components/schemas/BankInfoDto"
+          }
+        },
+        "required": [
+          "fileName",
+          "size",
+          "bank"
+        ]
+      },
+      "LibraryBanksListResponseDto": {
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "$ref": "#/components/schemas/PluginEntryDto"
+          },
+          "presetsDir": {
+            "type": "string",
+            "description": "Carpeta de bancos del plugin (`programDirName`).",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+          },
+          "presetsDirExists": {
+            "type": "boolean",
+            "description": "`false` si la carpeta aún no existe; se crea al importar.",
+            "example": true
+          },
+          "banks": {
+            "description": "Bancos válidos, ordenados por nombre. Solo se lee su cabecera.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginBankEntryDto"
+            }
+          },
+          "config": {
+            "description": "Snapshot de `fxbLoader.config` (con `mtimeMs` para el control optimista). Con el archivo ausente devuelve los valores por defecto y `exists: false`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FxbConfigSnapshotDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "plugin",
+          "presetsDir",
+          "presetsDirExists",
+          "banks",
+          "config"
+        ]
+      },
+      "LibraryBanksImportRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          },
+          "sourcePaths": {
+            "description": "Rutas absolutas de los `.fxb` a copiar; como máximo 50 por petición. Se validan una a una: un archivo rechazado no cancela el resto.",
+            "example": [
+              "C:\\Banks\\Rhodes.fxb",
+              "C:\\Banks\\Strings.fxb"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedUniqueId": {
+            "description": "uniqueID esperado del plugin: 4 caracteres (`MySy`) o el entero `CCONST`. Es la única referencia que exige compatibilidad estricta.",
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 4,
+                "maxLength": 4
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "example": "MySy"
+          },
+          "expectedFxVersion": {
+            "type": "number",
+            "description": "`fxVersion` esperada; solo se exige si el cliente la envía (la DLL no la compara).",
+            "example": 1000
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Sobrescribir un banco con el mismo nombre. Por defecto `true`, como el original.",
+            "example": true
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin",
+          "sourcePaths"
+        ]
+      },
+      "LibraryBanksImportResponseDto": {
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "description": "Estado del plugin tras la importación.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginEntryDto"
+              }
+            ]
+          },
+          "presetsDir": {
+            "type": "string",
+            "description": "Carpeta de destino: `<plugin>\\<programDirName>\\`.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+          },
+          "reference": {
+            "description": "Referencia usada para decidir la compatibilidad.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankReferenceDto"
+              }
+            ]
+          },
+          "results": {
+            "description": "Un elemento por archivo enviado, en el mismo orden.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BankImportResultDto"
+            }
+          }
+        },
+        "required": [
+          "plugin",
+          "presetsDir",
+          "reference",
+          "results"
+        ]
+      },
+      "LibraryBankInspectRequestDto": {
+        "type": "object",
+        "properties": {
+          "sourcePath": {
+            "type": "string",
+            "description": "Ruta absoluta del `.fxb` a inspeccionar. Solo se lee: no se copia ni se modifica.",
+            "example": "C:\\Banks\\Rhodes.fxb"
+          },
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz de la librería. Sin `libraryRoot` y `plugin` el endpoint solo valida el archivo.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Plugin con cuyos bancos comparar el archivo (exige `libraryRoot`).",
+            "example": "MySynth"
+          },
+          "expectedUniqueId": {
+            "description": "uniqueID esperado: 4 caracteres (`MySy`) o el entero `CCONST`.",
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 4,
+                "maxLength": 4
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "example": "MySy"
+          },
+          "expectedFxVersion": {
+            "type": "number",
+            "description": "`fxVersion` esperada; solo se compara si se envía.",
+            "example": 1000
+          }
+        },
+        "required": [
+          "sourcePath"
+        ]
+      },
+      "PluginBankDto": {
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "example": "Warm Rhodes.fxb"
+          },
+          "size": {
+            "type": "number",
+            "example": 216
+          },
+          "bank": {
+            "$ref": "#/components/schemas/BankInfoDto"
+          },
+          "sameUniqueId": {
+            "type": "boolean",
+            "description": "Coincide el uniqueID con el del banco inspeccionado.",
+            "example": true
+          },
+          "sameFxVersion": {
+            "type": "boolean",
+            "description": "Coincide la `fxVersion` con la del banco inspeccionado.",
+            "example": true
+          }
+        },
+        "required": [
+          "fileName",
+          "size",
+          "bank",
+          "sameUniqueId",
+          "sameFxVersion"
+        ]
+      },
+      "LibraryBankInspectResponseDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "example": "C:\\Banks\\Rhodes.fxb"
+          },
+          "fileName": {
+            "type": "string",
+            "example": "Rhodes.fxb"
+          },
+          "size": {
+            "type": "number",
+            "example": 216
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 del archivo inspeccionado.",
+            "example": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "`false` si el archivo no es un banco VST2 usable; el detalle va en `issues`.",
+            "example": true
+          },
+          "bank": {
+            "description": "Cabecera interpretada, o `null` si ni siquiera se pudo leer.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankInfoDto"
+              }
+            ]
+          },
+          "issues": {
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reference": {
+            "description": "Referencia con la que se comparó: la explícita, el primer banco del plugin o ninguna.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankReferenceDto"
+              }
+            ]
+          },
+          "compatibility": {
+            "type": "string",
+            "enum": [
+              "compatible",
+              "incompatible",
+              "unverified"
+            ],
+            "example": "compatible"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo de la incompatibilidad, si la hay.",
+            "nullable": true,
+            "example": null
+          },
+          "target": {
+            "type": "string",
+            "description": "Dónde acabaría al importarlo; `null` si no se indicó plugin.",
+            "nullable": true,
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb"
+          },
+          "presetsDir": {
+            "type": "string",
+            "description": "Carpeta de presets del plugin; `null` sin plugin.",
+            "nullable": true,
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+          },
+          "targetExists": {
+            "type": "boolean",
+            "description": "Ya existe un archivo con ese nombre en el destino (no se ha tocado).",
+            "example": false
+          },
+          "existingBanks": {
+            "description": "Bancos válidos del plugin, en orden de nombre. Solo se lee su cabecera.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginBankDto"
+            }
+          }
+        },
+        "required": [
+          "source",
+          "fileName",
+          "size",
+          "sha256",
+          "valid",
+          "bank",
+          "issues",
+          "warnings",
+          "reference",
+          "compatibility",
+          "reason",
+          "target",
+          "presetsDir",
+          "targetExists",
+          "existingBanks"
+        ]
+      },
+      "LibraryUninstallRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Devuelve el plan de `actions` sin tocar el disco.",
+            "example": false
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin"
+        ]
+      }
+    }
+  }
+}

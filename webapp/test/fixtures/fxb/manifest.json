@@ -1,0 +1,173 @@
+{
+  "description": "Bancos .fxb reales de plugins y sintetizadores que no son nuestros, usados como fixtures del parser. Cada entrada lleva el SHA-256, el origen exacto y el resultado esperado de parseFxbBank.",
+  "fixtures": [
+    {
+      "file": "massive-test-bank.FXB",
+      "size": 2886,
+      "sha256": "52b67bab4d0361591888c33d75a16da91100249eefd88ed981eb67166d98a3a9",
+      "source": {
+        "repo": "https://github.com/CharlesHolbrow/vst2-preset-parser",
+        "commit": "d6c4e0e985e6e47026b5f60a44458908967449d1",
+        "path": "test/massive-test-bank.FXB",
+        "license": "ISC",
+        "plugin": "Native Instruments Massive (banco de prueba de 128 programas)"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FBCh",
+          "endianness": "big",
+          "byteSize": 2878,
+          "version": 1,
+          "uniqueId": "NiMa",
+          "uniqueIdValue": 1315523937,
+          "fxVersion": 1,
+          "numPrograms": 128,
+          "currentProgram": null,
+          "chunkSize": 2726
+        },
+        "issues": [],
+        "warnings": []
+      }
+    },
+    {
+      "file": "rea-comp.FXB",
+      "size": 288,
+      "sha256": "1334524b6547ebd36467f68514e6fa08d50b3099a4a86f37cf6cacb991fbbc00",
+      "source": {
+        "repo": "https://github.com/CharlesHolbrow/vst2-preset-parser",
+        "commit": "d6c4e0e985e6e47026b5f60a44458908967449d1",
+        "path": "test/rea-comp.FXB",
+        "license": "ISC",
+        "plugin": "Cockos ReaComp"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FxBk",
+          "endianness": "big",
+          "byteSize": 280,
+          "version": 1,
+          "uniqueId": "recm",
+          "uniqueIdValue": 1919247213,
+          "fxVersion": 1100,
+          "numPrograms": 1,
+          "currentProgram": null,
+          "chunkSize": null
+        },
+        "issues": [],
+        "warnings": []
+      }
+    },
+    {
+      "file": "nanohost-reeq-opaque-5100.fxb",
+      "size": 320,
+      "sha256": "f56f3107c19e2ce452a00c760cb9e22fc4c724d807521c9342097d6068f87393",
+      "source": {
+        "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
+        "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
+        "path": "VSTAudioProcessor.Test/Resources/nanohost-reeq-opaque-5100.fxb",
+        "license": "LGPL-3.0",
+        "plugin": "Cockos ReaEQ, banco opaco exportado por Nanohost"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FBCh",
+          "endianness": "big",
+          "byteSize": 312,
+          "version": 2,
+          "uniqueId": "reeq",
+          "uniqueIdValue": 1919247729,
+          "fxVersion": 1100,
+          "numPrograms": 1,
+          "currentProgram": 0,
+          "chunkSize": 160
+        },
+        "issues": [],
+        "warnings": []
+      }
+    },
+    {
+      "file": "wavosaur-reeq-3set.fxb",
+      "size": 248,
+      "sha256": "cf7c8442afac4af13d5cef8a19437d51f644129a6d567265ddd754f993c7e490",
+      "source": {
+        "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
+        "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
+        "path": "VSTAudioProcessor.Test/Resources/wavosaur-reeq-3set.fxb",
+        "license": "LGPL-3.0",
+        "plugin": "Cockos ReaEQ, banco de parámetros exportado por Wavosaur"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FxBk",
+          "endianness": "big",
+          "byteSize": 240,
+          "version": 1,
+          "uniqueId": "reeq",
+          "uniqueIdValue": 1919247729,
+          "fxVersion": 0,
+          "numPrograms": 1,
+          "currentProgram": null,
+          "chunkSize": null
+        },
+        "issues": [],
+        "warnings": []
+      }
+    },
+    {
+      "file": "wavosaur-reeq-4500.fxb",
+      "size": 260,
+      "sha256": "48f9ce04ced42db933a3c498e35670ddffc20bb142f88af362e981c4c483d785",
+      "source": {
+        "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
+        "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
+        "path": "VSTAudioProcessor.Test/Resources/wavosaur-reeq-4500.fxb",
+        "license": "LGPL-3.0",
+        "plugin": "Cockos ReaEQ, otra versión del export de Wavosaur"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FxBk",
+          "endianness": "big",
+          "byteSize": 252,
+          "version": 1,
+          "uniqueId": "reeq",
+          "uniqueIdValue": 1919247729,
+          "fxVersion": 0,
+          "numPrograms": 1,
+          "currentProgram": null,
+          "chunkSize": null
+        },
+        "issues": [],
+        "warnings": []
+      }
+    },
+    {
+      "file": "wam-obxd-factory.fxb",
+      "size": 86357,
+      "sha256": "8e7da0df667fec72020de7c55efc13ed87b3339141b970f4f49556fee7924408",
+      "source": {
+        "repo": "https://github.com/webaudiomodules/wam-examples",
+        "commit": "2179e50cf7bbc1f038a6e423651d9915505621f8",
+        "path": "packages/obxd/presets/factory.fxb",
+        "license": "MIT (repositorio); banco de fábrica de OB-Xd (GPL-3.0 hasta 2.11)",
+        "plugin": "OB-Xd (sintetizador virtual-analógico de discoDSP), banco de fábrica de 128 programas"
+      },
+      "expected": {
+        "bank": {
+          "kind": "FBCh",
+          "endianness": "big",
+          "byteSize": 86349,
+          "version": 2,
+          "uniqueId": "Obxd",
+          "uniqueIdValue": 1331853412,
+          "fxVersion": 100,
+          "numPrograms": 128,
+          "currentProgram": 6,
+          "chunkSize": 86197
+        },
+        "issues": [],
+        "warnings": []
+      }
+    }
+  ]
+}

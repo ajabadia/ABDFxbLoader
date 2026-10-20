@@ -1,0 +1,27 @@
+# Dependencias
+node_modules/
+
+# Salidas de compilación
+dist/
+dist-test/
+*.tsbuildinfo
+
+# Logs y temporales
+*.log
+npm-debug.log*
+.tmp/
+.tmp-*/
+tmp/
+
+# Entorno
+.env
+.env.*
+!.env.example
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Estado local de Freebuff
+.freebuff/

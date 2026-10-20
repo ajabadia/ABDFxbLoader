@@ -1,0 +1,4 @@
+name: OB-Xd
+dll_name: OB-Xd/OB-Xd.dll
+version: 2.11
+vendor: discoDSP

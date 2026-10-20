@@ -1,0 +1,4 @@
+name: Analog Synth
+dll_name: AnalogSynth/AnalogSynth.dll
+version: 1.0
+vendor: SoundBytes
