@@ -113,6 +113,16 @@ async function exists(target: string): Promise<boolean> {
 }
 
 /**
+ * Un nombre de banco nunca puede traer separadores de ruta. En Windows `\` ya
+ * lo delata `path.basename`, pero en POSIX no: el servidor también corre en
+ * Linux, y `..\\Legacy.fxb` se buscaría como un nombre literal en vez de
+ * rechazarse como intento de salir de la carpeta de presets.
+ */
+function hasPathSeparator(fileName: string): boolean {
+  return fileName.includes('/') || fileName.includes('\\') || path.basename(fileName) !== fileName;
+}
+
+/**
  * Aviso de los pasos de una operación: emite `actions[index]` con su posición,
  * o no hace nada si no hay oyente. Cada paso se avisa justo antes de ejecutarlo.
  */
@@ -707,7 +717,7 @@ export class LibraryService {
     if (fileName === '') {
       throw new LibraryPathError('fileName es obligatorio y debe ser una cadena');
     }
-    if (path.basename(fileName) !== fileName) {
+    if (hasPathSeparator(fileName)) {
       throw new LibraryPathError(`fileName no puede contener separadores de ruta: "${fileName}"`);
     }
     if (!/\.fxb$/i.test(fileName)) {
@@ -995,7 +1005,7 @@ export class LibraryService {
         'el plugin no tiene un banco por defecto configurado en fxbLoader.config',
       );
     }
-    if (path.basename(fileName) !== fileName) {
+    if (hasPathSeparator(fileName)) {
       throw new LibraryPathError(
         `defaultFxbName no puede contener separadores de ruta: "${fileName}"`,
       );
@@ -1016,7 +1026,7 @@ export class LibraryService {
     presetsDir: string,
     fileName: string,
   ): Promise<BankBackupSummary | null> {
-    if (fileName === '' || path.basename(fileName) !== fileName) return null;
+    if (fileName === '' || hasPathSeparator(fileName)) return null;
 
     const backupPath = path.join(presetsDir, `${fileName}${BANK_BACKUP_SUFFIX}`);
     const stats = await statOrNull(backupPath);
