@@ -93,10 +93,16 @@ test('inspectPeFile lee solo la cabecera y reporta archivos ilegibles', async (t
   const info = await inspectPeFile(file);
   assert.equal(info.bitness, 64);
   assert.equal(info.machine, MACHINE_AMD64);
+  // Leído bien: la arquitectura no queda en duda.
+  assert.equal(info.readError, null);
 
   const missing = await inspectPeFile(path.join(root, 'nope.dll'));
   assert.equal(missing.valid, false);
   assert.match(missing.issues[0]!, /no existe/);
+  // Ausente es distinto de ilegible: solo lo segundo es «sin verificar».
+  assert.equal(missing.readError, 'missing');
+
+  assert.equal(inspectPeBuffer(Buffer.alloc(20)).readError, null);
 
   await writeFile(path.join(root, 'arm64.dll'), peStub({ bitness: 64, machine: MACHINE_ARM64 }));
   const arm64 = await inspectPeFile(path.join(root, 'arm64.dll'));

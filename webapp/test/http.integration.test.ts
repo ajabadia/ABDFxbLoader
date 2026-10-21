@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { after, before, test, type TestContext } from 'node:test';
@@ -106,6 +107,33 @@ test('POST /library/scan valida el cargador y marca plugins de 64 bits', async (
   assert.match(rejected.body.message, /no es compatible/);
 });
 
+test('POST /library/install responde 422 si el DLL declarado no existe', async (t) => {
+  const lib = await makeLibrary(t);
+  await rm(path.join(lib.pluginDir, 'Synth', 'Synth.dll'));
+
+  const response = await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
+    .expect(422);
+
+  assert.match(response.body.message, /Synth no es compatible con fxbLoader\.dll de 32 bits/);
+  assert.match(
+    response.body.message,
+    /no existe el binario declarado en dll_name: Synth\/Synth\.dll/,
+  );
+
+  // El escaneo lo marca como incompatible, así que la UI deshabilita Instalar.
+  const scan = await http()
+    .post('/library/scan')
+    .send({ libraryRoot: lib.root, dllSourcePath: lib.dllSource })
+    .expect(200);
+  assert.equal(scan.body.plugins[0].compatible, false);
+  // Nada escrito: ni respaldo, ni cargador, ni configuración.
+  await assert.rejects(readFile(path.join(lib.pluginDir, 'fxbLoader.config')));
+  await assert.rejects(readFile(path.join(lib.pluginDir, 'fxbLoader.dll')));
+  await assert.rejects(readFile(path.join(lib.pluginDir, 'vfxinfo.tx_')));
+});
+
 test('POST /library/scan responde 400 sin libraryRoot o con ruta relativa', async (t) => {
   const lib = await makeLibrary(t);
 
@@ -194,6 +222,134 @@ test('POST /library/uninstall responde 200 y después 409', async (t) => {
     .post('/library/uninstall')
     .send({ libraryRoot: lib.root, plugin: 'Synth' })
     .expect(409);
+});
+
+test('POST /library/uninstall restaura el original tras dos instalaciones con force', async (t) => {
+  const lib = await makeLibrary(t);
+  const vfxinfoPath = path.join(lib.pluginDir, 'vfxinfo.txt');
+  const backupPath = path.join(lib.pluginDir, 'vfxinfo.tx_');
+  const loaderPath = path.join(lib.pluginDir, 'vfxinfo.loader');
+  const configPath = path.join(lib.pluginDir, 'fxbLoader.config');
+
+  const original = Buffer.from(
+    'name: Synth\r\ndll_name: Synth/Synth.dll\r\nversion: 1.0\r\n',
+    'latin1',
+  );
+  assert.deepEqual(await readFile(vfxinfoPath), original);
+
+  // Primera instalación; force sobre un plugin sin instalar se ignora.
+  await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
+    .expect(200);
+  const patched = await readFile(vfxinfoPath);
+  assert.deepEqual(await readFile(backupPath), original, 'el respaldo es el original');
+  assert.equal(
+    patched.toString('latin1'),
+    'name: Synth\r\ndll_name: Synth/fxbLoader.dll\r\nversion: 1.0\r\n',
+  );
+
+  // Sin force no se reinstala.
+  await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
+    .expect(409);
+
+  const forced = await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
+    .expect(200);
+  assert.equal(forced.body.plugin.installed, true);
+  assert.equal(
+    forced.body.plugin.pluginName,
+    'Synth.dll',
+    'la reinstalación sigue viendo el plugin original, no el cargador',
+  );
+  const backupAction = (forced.body.actions as { kind: string; detail?: string }[]).find(
+    (action) => action.kind === 'backup',
+  );
+  assert.match(backupAction?.detail ?? '', /ya existe; se conserva/);
+
+  // El respaldo no se pisa con el ya parcheado y la config conserva el nombre.
+  assert.deepEqual(await readFile(backupPath), original, 'force no pisa el respaldo');
+  assert.deepEqual(await readFile(vfxinfoPath), patched, 'vfxinfo.txt sigue parcheado');
+  assert.match(
+    (await readFile(configPath)).toString('latin1'),
+    /^pluginName = Synth\.dll\r?$/m,
+  );
+
+  const uninstalled = await http()
+    .post('/library/uninstall')
+    .send({ libraryRoot: lib.root, plugin: 'Synth' })
+    .expect(200);
+  assert.equal(uninstalled.body.plugin.installed, false);
+
+  assert.deepEqual(await readFile(vfxinfoPath), original, 'vfxinfo.txt vuelve al original');
+  assert.deepEqual(
+    await readFile(loaderPath),
+    patched,
+    'el parcheado se conserva como vfxinfo.loader',
+  );
+  assert.equal(existsSync(backupPath), false, 'el respaldo se consume al restaurar');
+  assert.equal(existsSync(configPath), false);
+  assert.equal(existsSync(path.join(lib.pluginDir, 'fxbLoader.dll')), true, 'el DLL queda');
+  assert.deepEqual(
+    (await readdir(lib.pluginDir)).filter((name) => name.endsWith('.tmp')),
+    [],
+    'no deben quedar temporales de la escritura atómica',
+  );
+});
+
+test('POST /library/uninstall responde 409 sin tocar vfxinfo.txt si falta el respaldo', async (t) => {
+  const lib = await makeLibrary(t);
+  const vfxinfoPath = path.join(lib.pluginDir, 'vfxinfo.txt');
+  const backupPath = path.join(lib.pluginDir, 'vfxinfo.tx_');
+  const configPath = path.join(lib.pluginDir, 'fxbLoader.config');
+  const loaderCopyPath = path.join(lib.pluginDir, 'vfxinfo.loader');
+
+  // Instalación y reinstalación con force: el respaldo sigue siendo el original.
+  await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
+    .expect(200);
+  const patched = await readFile(vfxinfoPath);
+  await http()
+    .post('/library/install')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
+    .expect(200);
+  assert.deepEqual(await readFile(vfxinfoPath), patched, 'la reinstalación deja el mismo parche');
+
+  // Tras reinstalar, el respaldo desaparece (antivirus, limpieza manual...).
+  await rm(backupPath);
+  const before = (await readdir(lib.pluginDir)).sort();
+
+  // `dryRun` valida igual: tampoco puede prometer un plan que no se puede cumplir.
+  await http()
+    .post('/library/uninstall')
+    .send({ libraryRoot: lib.root, plugin: 'Synth', dryRun: true })
+    .expect(409);
+
+  const conflict = await http()
+    .post('/library/uninstall')
+    .send({ libraryRoot: lib.root, plugin: 'Synth' })
+    .expect(409);
+  assert.match(conflict.body.message, /falta vfxinfo\.tx_ en/);
+  assert.match(conflict.body.message, /restaurar el vfxinfo\.txt original/);
+
+  // Nada se movió: ni el vfxinfo parcheado, ni la config, ni el DLL del cargador.
+  assert.deepEqual(await readFile(vfxinfoPath), patched, 'vfxinfo.txt sigue parcheado');
+  assert.equal(
+    (await readFile(configPath)).toString('latin1'),
+    'pluginName = Synth.dll\r\ndefaultFxbName = \r\nprogramDirName = presets\r\nloadFxbBank = yes\r\n',
+  );
+  assert.equal(existsSync(loaderCopyPath), false, 'no se crea vfxinfo.loader');
+  assert.equal(existsSync(backupPath), false);
+  assert.deepEqual((await readdir(lib.pluginDir)).sort(), before, 'la carpeta del plugin queda igual');
+  assert.deepEqual(
+    (await readdir(lib.pluginDir)).filter((name) => name.endsWith('.tmp')),
+    [],
+    'no deben quedar temporales',
+  );
 });
 
 test('PUT /fxb-config responde 200, 409 con mtime obsoleto y 400 con config inválida', async (t) => {

@@ -8,6 +8,7 @@ import {
   HttpStatus,
   NotFoundException,
   Post,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -22,11 +23,24 @@ import {
   ApiUnprocessableEntityResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { FXB_CONFIG_SNAPSHOT_EXAMPLE } from '../fxb-config/fxb-config.dto';
 import { FxbConfigConflictError } from '../fxb-config/fxb-config.types';
 import {
   LIBRARY_BANKS_LIST_EXAMPLE,
+  LIBRARY_BATCH_ACTION_ERROR_EXAMPLE,
+  LIBRARY_BATCH_DRY_RUN_EXAMPLE,
+  LIBRARY_BATCH_EXAMPLE,
+  LIBRARY_BATCH_LOADER_ERROR_EXAMPLE,
+  LIBRARY_BATCH_PLUGINS_ERROR_EXAMPLE,
+  LIBRARY_BATCH_STREAM_EXAMPLE,
+  LIBRARY_BATCH_TOO_MANY_ERROR_EXAMPLE,
+  LIBRARY_CONVERT_EXAMPLE,
+  LIBRARY_CONVERT_MISSING_BANK_EXAMPLE,
+  LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
   LIBRARY_DLL_ERROR_EXAMPLE,
+  LIBRARY_EXPORT_EXAMPLE,
+  LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
   LIBRARY_IMPORT_EXAMPLE,
   LIBRARY_IMPORT_REJECTED_EXAMPLE,
   LIBRARY_INCOMPATIBLE_ERROR_EXAMPLE,
@@ -39,13 +53,22 @@ import {
   LIBRARY_INSTALL_CONFLICT_EXAMPLE,
   LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
   LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
   LIBRARY_LIBRARY_MISSING_ERROR_EXAMPLE,
   LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  LIBRARY_RESTORE_EXAMPLE,
+  LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE,
+  LIBRARY_RESTORE_NO_BACKUP_EXAMPLE,
+  LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
   LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
   LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
   LIBRARY_UNINSTALL_EXAMPLE,
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
+  LibraryBankConvertRequestDto,
+  LibraryBankConvertResponseDto,
+  LibraryBankExportRequestDto,
+  LibraryBankExportResponseDto,
   LibraryBankInspectRequestDto,
   LibraryBankInspectResponseDto,
   LibraryBanksImportErrorDto,
@@ -53,6 +76,10 @@ import {
   LibraryBanksImportResponseDto,
   LibraryBanksListRequestDto,
   LibraryBanksListResponseDto,
+  LibraryBankRestoreRequestDto,
+  LibraryBankRestoreResponseDto,
+  LibraryBatchRequestDto,
+  LibraryBatchResponseDto,
   LibraryConflictErrorDto,
   LibraryErrorDto,
   LibraryInstallRequestDto,
@@ -62,6 +89,7 @@ import {
   LibraryUninstallRequestDto,
 } from './library.dto';
 import { defaultLoaderDllPath } from './loader-dll';
+import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import { LibraryService } from './library.service';
 import {
   LibraryOperationError,
@@ -70,8 +98,14 @@ import {
   PluginStateError,
 } from './library.types';
 import type {
+  BankConvertInput,
+  BankExportInput,
   BankImportInput,
   BankInspectInput,
+  BankRestoreInput,
+  BatchAction,
+  BatchInput,
+  BatchStreamEvent,
   InstallInput,
   UninstallInput,
 } from './library.types';
@@ -142,6 +176,38 @@ function readBankReference(body: Record<string, unknown>): {
     ...(expectedFxVersion === undefined
       ? {}
       : { expectedFxVersion: expectedFxVersion as number }),
+  };
+}
+
+function readBatchAction(body: Record<string, unknown>): BatchAction {
+  const value = body['action'];
+  if (value === 'install' || value === 'uninstall') return value;
+  throw new BadRequestException('action debe ser "install" o "uninstall"');
+}
+
+function readBatchPlugins(body: Record<string, unknown>): string[] {
+  const value = body['plugins'];
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new BadRequestException('plugins debe ser un array con al menos un nombre');
+  }
+  if (!value.every((item) => typeof item === 'string' && item.trim() !== '')) {
+    throw new BadRequestException('plugins debe contener cadenas no vacías');
+  }
+  return value as string[];
+}
+
+/** Cuerpo de `POST /library/batch` y `POST /library/batch/stream`; son el mismo lote. */
+function readBatchInput(body: Record<string, unknown>): BatchInput {
+  return {
+    libraryRoot: requireString(body, 'libraryRoot'),
+    action: readBatchAction(body),
+    plugins: readBatchPlugins(body),
+    dllSourcePath:
+      typeof body['dllSourcePath'] === 'string' && body['dllSourcePath'].trim() !== ''
+        ? body['dllSourcePath']
+        : defaultLoaderDllPath(),
+    force: optionalBoolean(body, 'force'),
+    dryRun: optionalBoolean(body, 'dryRun'),
   };
 }
 
@@ -290,8 +356,10 @@ export class LibraryController {
     description:
       'El plugin ya está instalado (usa `force`) o `fxbLoader.config` cambió entre la ' +
       'lectura y la escritura.',
+    // `anyOf`: ambos errores comparten `message` y no son mutuamente
+    // excluyentes, así que `oneOf` rechazaría ejemplos válidos.
     schema: {
-      oneOf: [
+      anyOf: [
         { $ref: getSchemaPath(LibraryConflictErrorDto) },
         { $ref: getSchemaPath(LibraryErrorDto) },
       ],
@@ -312,13 +380,18 @@ export class LibraryController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      '`vfxinfo.txt` ausente o sin `dll_name`, `fxbLoader.dll` que no es PE32 i386 ' +
-      'o plugin de otra arquitectura; no se toca nada.',
+      '`vfxinfo.txt` ausente o sin `dll_name`, `dll_name` que apunta a un archivo ' +
+      'inexistente (se trata como incompatible), `fxbLoader.dll` que no es PE32 i386 o ' +
+      'plugin de otra arquitectura; no se toca nada.',
     type: LibraryErrorDto,
     examples: {
       vfxinfo: {
         summary: 'vfxinfo.txt sin dll_name',
         value: LIBRARY_VFXINFO_ERROR_EXAMPLE,
+      },
+      binarioAusente: {
+        summary: 'El DLL declarado no existe en el plugin',
+        value: LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
       },
       incompatible: {
         summary: 'Cargador o plugin de otra arquitectura',
@@ -497,6 +570,290 @@ export class LibraryController {
     }
   }
 
+  @Post('banks/export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Exporta un banco importado en big-endian o little-endian',
+    description:
+      'Reescribe un `.fxb` que ya está en `<plugin>\\<programDirName>\\` en el orden de ' +
+      'bytes pedido y lo guarda al lado como `<banco>-le.fxb` o `<banco>-be.fxb`, para ' +
+      'convertir los bancos legacy que un plugin de Windows guardó con su struct nativo. ' +
+      'Solo se invierten los campos numéricos (enteros y floats): los nombres de programa ' +
+      'y los chunks opacos quedan byte a byte iguales. El banco de origen no se toca.',
+  })
+  @ApiBody({
+    type: LibraryBankExportRequestDto,
+    examples: {
+      little: {
+        summary: 'Convertir un banco legacy a little-endian',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          fileName: 'Legacy.fxb',
+          endianness: 'little',
+        },
+      },
+      big: {
+        summary: 'Volver al estándar big-endian',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          fileName: 'Legacy-le.fxb',
+          endianness: 'big',
+          overwrite: true,
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Archivo exportado, con el hash y la cabecera de origen y destino. `changed: false` ' +
+      'indica que ya estaba en ese orden.',
+    type: LibraryBankExportResponseDto,
+    example: LIBRARY_EXPORT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`libraryRoot` inválido, `fileName` con separadores o sin `.fxb`, banco ausente de la ' +
+      'carpeta del plugin o `endianness` desconocida.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      nombre: {
+        summary: 'fileName con separadores',
+        value: { message: 'fileName no puede contener separadores de ruta: "..\\Legacy.fxb"' },
+      },
+      orden: {
+        summary: 'endianness desconocida',
+        value: { message: 'endianness debe ser "big" o "little"' },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\` o no tiene `fxbLoader.config`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description: 'Ya existe el archivo de salida y `overwrite` no es `true`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'El archivo no es un banco VST2 válido o su nombre ya declara un orden que no ' +
+      'coincide con su contenido.',
+    type: LibraryErrorDto,
+    example: {
+      message:
+        'el banco no es un .fxb válido: byteSize 999 no coincide con el tamaño del archivo ' +
+        '(208 sin cabecera de chunk)',
+    },
+  })
+  async exportBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const endianness = record['endianness'];
+    if (endianness !== 'big' && endianness !== 'little') {
+      throw new BadRequestException('endianness debe ser "big" o "little"');
+    }
+    const overwrite = optionalBoolean(record, 'overwrite');
+    const input: BankExportInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      fileName: requireString(record, 'fileName'),
+      endianness,
+      ...(overwrite === undefined ? {} : { overwrite }),
+    };
+    try {
+      return await this.service.exportBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/convert')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Convierte en el sitio el banco por defecto del plugin',
+    description:
+      'Reescribe el `.fxb` que `fxbLoader.config` marca como predeterminado ' +
+      '(`defaultFxbName`) en su misma ruta y en el orden pedido —por defecto, el contrario ' +
+      'al que tiene—, para que la DLL lo siga cargando sin renombrarlo. Antes de escribirlo ' +
+      'guarda una copia byte a byte del original como `<banco>.orig`; si el respaldo ya ' +
+      'existe no se pisa. Solo se invierten los campos numéricos (enteros y floats): los ' +
+      'nombres de programa y los chunks opacos quedan iguales, y el archivo convertido se ' +
+      'vuelve a parsear antes de sustituir al original.',
+  })
+  @ApiBody({
+    type: LibraryBankConvertRequestDto,
+    examples: {
+      alReves: {
+        summary: 'Invertir el orden del banco por defecto',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
+      },
+      explicito: {
+        summary: 'Forzar el big-endian estándar',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth', endianness: 'big' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Banco convertido con el hash de origen y destino, el respaldo `<banco>.orig` y si se ' +
+      'creó ahora. `changed: false` indica que ya estaba en ese orden y no se escribió nada.',
+    type: LibraryBankConvertResponseDto,
+    example: LIBRARY_CONVERT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`libraryRoot` o `plugin` inválidos, `endianness` desconocida o un `defaultFxbName` con ' +
+      'separadores de ruta o sin `.fxb`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      orden: {
+        summary: 'endianness desconocida',
+        value: { message: 'endianness debe ser "big" o "little"' },
+      },
+      nombre: {
+        summary: 'defaultFxbName con separadores',
+        value: {
+          message: 'defaultFxbName no puede contener separadores de ruta: "..\\Rhodes.fxb"',
+        },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description:
+      'El plugin no tiene `defaultFxbName` configurado, o el banco que declara no está en su ' +
+      'carpeta de presets.',
+    type: LibraryErrorDto,
+    examples: {
+      sinDefecto: {
+        summary: 'Sin banco por defecto',
+        value: LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
+      },
+      ausente: {
+        summary: 'El banco configurado no está en la carpeta',
+        value: LIBRARY_CONVERT_MISSING_BANK_EXAMPLE,
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'El archivo no es un banco VST2 válido, la conversión lo dejaría inválido o el nombre ' +
+      'declara el orden contrario al pedido.',
+    type: LibraryErrorDto,
+    example: {
+      message:
+        '"Legacy-le.fxb" declara little-endian en el nombre pero se pidió big-endian; ' +
+        'renómbralo antes de convertir',
+    },
+  })
+  async convertDefaultBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const endianness = record['endianness'];
+    if (endianness !== undefined && endianness !== 'big' && endianness !== 'little') {
+      throw new BadRequestException('endianness debe ser "big" o "little"');
+    }
+    const input: BankConvertInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      ...(endianness === undefined ? {} : { endianness }),
+    };
+    try {
+      return await this.service.convertDefaultBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restaura el banco por defecto desde su respaldo .orig',
+    description:
+      'Devuelve el `.fxb` que `fxbLoader.config` marca como predeterminado al contenido de ' +
+      '`<banco>.orig`, que dejó `banks/convert`, en su misma ruta y con su mismo nombre. ' +
+      'El respaldo **solo se lee**: no se renombra ni se reescribe, así que la restauración ' +
+      'se puede repetir y el original sigue disponible. Antes de escribir se reparsea el ' +
+      'respaldo, y si el banco ya es byte a byte el respaldo no se escribe nada ' +
+      '(`changed: false`).',
+  })
+  @ApiBody({
+    type: LibraryBankRestoreRequestDto,
+    examples: {
+      restaurar: {
+        summary: 'Volver al banco original',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Banco restaurado con el hash del respaldo usado. `changed: false` indica que ya era ' +
+      'el respaldo y no se escribió nada.',
+    type: LibraryBankRestoreResponseDto,
+    examples: {
+      restaurado: {
+        summary: 'Restauración con escritura',
+        value: LIBRARY_RESTORE_EXAMPLE,
+      },
+      yaRestaurado: {
+        summary: 'El banco ya era el respaldo',
+        value: LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`libraryRoot` o `plugin` inválidos, o un `defaultFxbName` con separadores de ruta o ' +
+      'sin `.fxb`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: { message: 'defaultFxbName debe terminar en .fxb: "Warm Rhodes.txt"' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description:
+      'El plugin no tiene `defaultFxbName` configurado, o no hay `<banco>.orig` que restaurar ' +
+      'porque el banco nunca se convirtió.',
+    type: LibraryErrorDto,
+    examples: {
+      sinDefecto: {
+        summary: 'Sin banco por defecto',
+        value: LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
+      },
+      sinRespaldo: {
+        summary: 'No hay respaldo .orig',
+        value: LIBRARY_RESTORE_NO_BACKUP_EXAMPLE,
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El respaldo está vacío, supera el tamaño máximo o no es un `.fxb` válido.',
+    type: LibraryErrorDto,
+    example: LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE,
+  })
+  async restoreDefaultBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankRestoreInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+    };
+    try {
+      return await this.service.restoreDefaultBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
   @Post('banks/inspect')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -645,5 +1002,193 @@ export class LibraryController {
     } catch (error) {
       mapDomainError(error);
     }
+  }
+
+  @Post('batch')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Instala o desinstala varios plugins de una vez',
+    description:
+      'El lote que antes hacía la UI con una petición por plugin pasa al servidor: se procesa ' +
+      'en serie y en el orden recibido, y cada plugin devuelve su propio resultado. Un fallo ' +
+      'individual no detiene al resto. Con `dryRun` solo se calcula el plan de cada uno. ' +
+      `Como máximo ${MAX_PLUGINS_PER_BATCH} plugins por petición.`,
+  })
+  @ApiBody({
+    type: LibraryBatchRequestDto,
+    examples: {
+      instalacion: {
+        summary: 'Instalar varios plugins',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          action: 'install',
+          plugins: ['MySynth', 'GrandPiano'],
+        },
+      },
+      reconexion: {
+        summary: 'Desinstalar varios plugins',
+        value: { libraryRoot: 'C:\\VFX\\Library', action: 'uninstall', plugins: ['MySynth'] },
+      },
+      simulacion: {
+        summary: 'Ver el plan de cada plugin sin escribir (dryRun)',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          action: 'install',
+          plugins: ['GrandPiano'],
+          dryRun: true,
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Resultado por plugin (`status`, `message` y `actions`); responde 200 aunque todos ' +
+      'fallen, porque el lote ya se ha recorrido entero.',
+    type: LibraryBatchResponseDto,
+    examples: {
+      aplicado: {
+        summary: 'Un plugin instalado y otro fallido',
+        value: LIBRARY_BATCH_EXAMPLE,
+      },
+      dryRun: {
+        summary: 'Solo el plan (`dryRun: true`)',
+        value: LIBRARY_BATCH_DRY_RUN_EXAMPLE,
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`action` desconocida, `plugins` vacío o por encima del tope, o rutas inválidas: se ' +
+      'rechaza el lote entero sin procesar ningún plugin.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      actionInvalida: {
+        summary: 'action que no es install ni uninstall',
+        value: LIBRARY_BATCH_ACTION_ERROR_EXAMPLE,
+      },
+      pluginsVacios: {
+        summary: 'Sin plugins que procesar',
+        value: LIBRARY_BATCH_PLUGINS_ERROR_EXAMPLE,
+      },
+      demasiadosPlugins: {
+        summary: 'Más plugins que el tope por petición',
+        value: LIBRARY_BATCH_TOO_MANY_ERROR_EXAMPLE,
+      },
+      dllRelativa: {
+        summary: 'dllSourcePath no absoluta o inexistente',
+        value: LIBRARY_DLL_ERROR_EXAMPLE,
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El cargador no es PE32 i386; se rechaza el lote antes de tocar ningún plugin.',
+    type: LibraryErrorDto,
+    example: LIBRARY_BATCH_LOADER_ERROR_EXAMPLE,
+  })
+  async batch(@Body() body: unknown) {
+    const input = readBatchInput(asRecord(body));
+    try {
+      return await this.service.runBatch(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('batch/stream')
+  @ApiOperation({
+    summary: 'Instala o desinstala varios plugins informando del progreso',
+    description:
+      'El mismo lote que `POST /library/batch`, pero la respuesta es NDJSON (una línea JSON por ' +
+      'evento) escrita según avanza el servidor: `start` con el total y el orden, dos `plugin` por ' +
+      'plugin (`running` y luego el estado final), un `step` por cada paso interno (respaldo, copia ' +
+      'del DLL, parcheo de `dll_name`, config y `presets`) y `end` con el resultado completo. Así la ' +
+      'vista sabe qué plugin y qué paso se están ejecutando sin esperar al final. La petición se ' +
+      'valida entera antes del primer byte: un 400/422 sigue siendo una respuesta JSON normal.',
+  })
+  @ApiBody({
+    type: LibraryBatchRequestDto,
+    examples: {
+      instalacion: {
+        summary: 'Instalar varios plugins',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          action: 'install',
+          plugins: ['MySynth', 'GrandPiano'],
+        },
+      },
+      simulacion: {
+        summary: 'Ver el progreso de un dryRun',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          action: 'uninstall',
+          plugins: ['MySynth'],
+          dryRun: true,
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Un evento JSON por línea: `start`, por cada plugin un `plugin` con `status: "running"`, sus ' +
+      '`step` internos y otro `plugin` con el estado final, y `end` con el mismo resultado que ' +
+      '`POST /library/batch`.',
+    content: {
+      'application/x-ndjson': { schema: { type: 'string' }, example: LIBRARY_BATCH_STREAM_EXAMPLE },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Lote inválido: se rechaza antes de escribir ningún evento (respuesta JSON).',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      pluginsVacios: {
+        summary: 'Sin plugins que procesar',
+        value: LIBRARY_BATCH_PLUGINS_ERROR_EXAMPLE,
+      },
+      demasiadosPlugins: {
+        summary: 'Más plugins que el tope por petición',
+        value: LIBRARY_BATCH_TOO_MANY_ERROR_EXAMPLE,
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El cargador no es PE32 i386; tampoco se escribe ningún evento.',
+    type: LibraryErrorDto,
+    example: LIBRARY_BATCH_LOADER_ERROR_EXAMPLE,
+  })
+  async batchStream(@Body() body: unknown, @Res() response: Response): Promise<void> {
+    const input = readBatchInput(asRecord(body));
+    let started = false;
+    let closed = false;
+    response.on('close', () => {
+      closed = true;
+    });
+
+    /** Primera escritura = cabeceras de la respuesta en streaming. */
+    const write = (event: BatchStreamEvent): void => {
+      if (closed) return;
+      if (!started) {
+        started = true;
+        response.status(HttpStatus.OK);
+        response.setHeader('content-type', 'application/x-ndjson; charset=utf-8');
+        response.setHeader('cache-control', 'no-store');
+        // Un proxy intermedio no debe acumular la respuesta entera.
+        response.setHeader('x-accel-buffering', 'no');
+      }
+      response.write(`${JSON.stringify(event)}\n`);
+    };
+
+    try {
+      // `start` sale después de validar: mientras no se escriba nada, un error
+      // de la petición sigue siendo un 400/422 JSON.
+      await this.service.runBatch(input, write);
+    } catch (error) {
+      if (!started) mapDomainError(error);
+      // Ya hay eventos enviados: no se puede cambiar el código de estado. Se
+      // corta el flujo sin `end`, que es lo que la vista interpreta como fallo.
+      response.destroy();
+      throw error;
+    }
+
+    if (!closed) response.end();
   }
 }

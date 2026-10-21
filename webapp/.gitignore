@@ -1,4 +1,9 @@
 node_modules/
 dist/
 dist-test/
+coverage/
+# Build de la UI (tsc -p tsconfig.ui.json)
+public/js/
+# Capturas de la prueba de navegador (npm run test:e2e) cuando falla
+test-results/
 *.log

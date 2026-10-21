@@ -58,3 +58,235 @@ jobs:
 
       - name: Ejecutar la suite
         run: npm test
+
+  # Flujo real en un navegador: arranca `dist/main.js` en un puerto libre y
+  # recorre escaneo, instalación y bancos sobre una copia temporal del fixture.
+  # Va aparte de la matriz porque descargar Chromium no debe encarecer cada OS.
+  browser-e2e:
+    name: Navegador · Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      # Sin la DLL el escaneo no encuentra un cargador válido y la prueba de
+      # navegador fallaría por un motivo que no es el suyo.
+      - name: Comprobar la DLL de referencia
+        shell: bash
+        run: |
+          dll=../vst/fxbLoader.dll
+          if [ ! -f "$dll" ]; then
+            echo "::error file=webapp/test/e2e/browser.test.ts::Falta $dll; la prueba de navegador la necesita."
+            exit 1
+          fi
+          echo "DLL presente: $(wc -c < "$dll") bytes"
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Chromium y las librerías de sistema que necesita en Linux.
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      # El script compila el servidor, la UI y el test, y arranca el servidor real.
+      - name: Ejecutar la prueba de navegador
+        run: npm run test:e2e
+
+      # Si falla, la captura y los logs del servidor son la única pista.
+      - name: Publicar la captura del fallo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-chromium
+          path: webapp/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # La decisión de compilación de `start.bat` es glue de cmd: `npm test` cubre el
+  # script que decide (`scripts/build-decision.mjs`) en toda la matriz, y este
+  # job recorre el .bat entero en Windows, que es donde se puede romper.
+  start-bat:
+    name: start.bat · Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      # Sin el .bat no se prueba nada: mejor un error claro que un job verde
+      # que no haya ejercitado la decisión de compilación.
+      - name: Comprobar que start.bat está versionado
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ../start.bat)) {
+            Write-Error "::error file=../start.bat::start.bat no está en el repo; este job no probaría nada."
+            exit 1
+          }
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Con el build recién hecho, start.bat no debe limpiar ni compilar.
+      - name: Compilar una vez y comprobar que no recompila
+        shell: pwsh
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:FXB_NO_BROWSER = '1'
+          $env:FXB_SKIP_SERVER = '1'
+          $bat = Join-Path (Get-Location) '..\start.bat'
+          $log = (& $bat 3411 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "start.bat terminó con $LASTEXITCODE`n$log"
+            exit 1
+          }
+          if ($log -match 'Limpiando|Compilando') {
+            Write-Error "start.bat recompiló con el build al día:`n$log"
+            exit 1
+          }
+          Write-Host $log
+
+      # Huérfanos solos, sin tocar ninguna fecha: el build está al día y aun
+      # así tiene que recompilar y decir cuáles sobran.
+      - name: Con huérfanos sin fuente nueva limpia y recompila
+        shell: pwsh
+        run: |
+          New-Item -ItemType File -Path dist/orphan.js -Force | Out-Null
+          New-Item -ItemType File -Path public/js/orphan.js -Force | Out-Null
+
+          $env:FXB_NO_BROWSER = '1'
+          $env:FXB_SKIP_SERVER = '1'
+          $bat = Join-Path (Get-Location) '..\start.bat'
+          $log = (& $bat 3412 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "start.bat terminó con $LASTEXITCODE`n$log"
+            exit 1
+          }
+          if ($log -notmatch 'Recompilar: 2 huérfano\(s\)') {
+            Write-Error "start.bat no detectó los huérfanos con el build al día:`n$log"
+            exit 1
+          }
+          if ($log -match 'más nuevo') {
+            Write-Error "start.bat atribuyó los huérfanos a una fecha:`n$log"
+            exit 1
+          }
+          if ($log -notmatch 'Limpiando') {
+            Write-Error "start.bat no limpió antes de compilar:`n$log"
+            exit 1
+          }
+          if ($log -notmatch 'Compilando servidor y UI') {
+            Write-Error "start.bat no compiló:`n$log"
+            exit 1
+          }
+          foreach ($file in 'dist/orphan.js', 'public/js/orphan.js') {
+            if (Test-Path $file) {
+              Write-Error "quedó el huérfano $file"
+              exit 1
+            }
+          }
+          foreach ($file in 'dist/main.js', 'public/js/ui/browser/main.js') {
+            if (-not (Test-Path $file)) {
+              Write-Error "el build no generó $file"
+              exit 1
+            }
+          }
+          Write-Host $log
+
+      # Build limpio y una fuente más nueva: recompila citando el archivo.
+      - name: Con una fuente más nueva limpia y recompila
+        shell: pwsh
+        run: |
+          (Get-Item tsconfig.json).LastWriteTime = Get-Date
+
+          $env:FXB_NO_BROWSER = '1'
+          $env:FXB_SKIP_SERVER = '1'
+          $bat = Join-Path (Get-Location) '..\start.bat'
+          $log = (& $bat 3413 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "start.bat terminó con $LASTEXITCODE`n$log"
+            exit 1
+          }
+          if ($log -notmatch 'Recompilar: tsconfig\.json es más nuevo') {
+            Write-Error "start.bat no explicó por qué recompila:`n$log"
+            exit 1
+          }
+          if ($log -notmatch 'Limpiando' -or $log -notmatch 'Compilando servidor y UI') {
+            Write-Error "start.bat no limpió y compiló:`n$log"
+            exit 1
+          }
+          Write-Host $log
+
+  coverage:
+    name: Cobertura HTML
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      # Misma precaución que en la matriz: sin la DLL el test de integración se
+      # omitiría y la cobertura saldría más baja sin que nada fallara.
+      - name: Comprobar la DLL de referencia
+        shell: bash
+        run: |
+          dll=../vst/fxbLoader.dll
+          if [ ! -f "$dll" ]; then
+            echo "::error file=webapp/test/vfx-library.integration.test.ts::Falta $dll; sin ella el test de integración no comprueba nada."
+            exit 1
+          fi
+          echo "DLL presente: $(wc -c < "$dll") bytes"
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # `node --test --experimental-test-coverage` escribe coverage/lcov.info y
+      # scripts/coverage.mjs lo convierte en coverage/html (sin dependencias).
+      # Los umbrales están justo por debajo del dato actual (94.39 / 80.70 /
+      # 79.00): una regresión de cobertura rompe el job aunque los tests pasen.
+      - name: Generar la cobertura y comprobar los umbrales
+        run: >-
+          npm run test:coverage --
+          --min-lines 94 --min-functions 80 --min-branches 78
+
+      # if-no-files-found: error evita publicar un artefacto vacío si el paso
+      # anterior dejara de escribir el informe.
+      - name: Publicar el informe HTML
+        # `always()`: si fallan los umbrales, el informe sigue disponible.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: webapp/coverage/html
+          if-no-files-found: error
+          retention-days: 14

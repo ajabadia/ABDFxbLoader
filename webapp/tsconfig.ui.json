@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Módulos ESM nativos, sin bundler: el navegador resuelve las rutas
+    // relativas con extensión `.js` que escribe el propio código fuente.
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "rootDir": "./src",
+    "outDir": "./public/js",
+    "sourceMap": false,
+    "noEmitOnError": true
+  },
+  "include": ["src/ui/**/*.ts", "src/client/fxb-client.ts", "src/client/api-types.ts"]
+}

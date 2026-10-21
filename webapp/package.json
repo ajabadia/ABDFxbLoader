@@ -7,11 +7,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.ui.json",
+    "build:ui": "tsc -p tsconfig.ui.json",
     "start": "node dist/main.js",
     "openapi": "npm run build && node dist/openapi.js",
     "client": "npm run openapi && openapi-typescript openapi.json -o src/client/api-types.ts",
-    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\""
+    "test": "tsc -p tsconfig.ui.json && tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "test:coverage": "tsc -p tsconfig.ui.json && tsc -p tsconfig.test.json && node scripts/coverage.mjs",
+    "test:perf": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 \"dist-test/test/*.performance.test.js\"",
+    "test:e2e": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/e2e/browser.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.2.0",
@@ -27,7 +31,9 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.2.1",
     "@types/swagger-ui-express": "^4.1.8",
+    "ajv": "^8.20.0",
     "openapi-typescript": "^7.13.0",
+    "playwright": "^1.64.1",
     "supertest": "^7.3.1",
     "typescript": "5.9.3"
   }

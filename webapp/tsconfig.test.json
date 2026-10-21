@@ -4,5 +4,9 @@
     "rootDir": ".",
     "outDir": "./dist-test"
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  // La UI de navegador se compila aparte (tsconfig.ui.json): usa DOM y no
+  // forma parte del servidor. `src/ui/batch.ts` sí se compila: lo prueban los
+  // tests sin tocar el DOM.
+  "exclude": ["src/ui/browser"]
 }

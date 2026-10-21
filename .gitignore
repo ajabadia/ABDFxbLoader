@@ -4,6 +4,7 @@ node_modules/
 # Salidas de compilación
 dist/
 dist-test/
+coverage/
 *.tsbuildinfo
 
 # Logs y temporales

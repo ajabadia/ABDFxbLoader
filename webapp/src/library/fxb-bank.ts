@@ -277,6 +277,139 @@ export function parseFxbBank(data: Buffer, totalSize: number = data.length): Fxb
   };
 }
 
+export interface FxbConversion {
+  /** Copia convertida; si el origen ya estaba en ese orden, idéntica al original. */
+  data: Buffer;
+  /** Campos de 32 bits cuyo orden de bytes se invirtió (enteros y floats). */
+  fields: number;
+  /** Programas recorridos de un `FxBk`; 0 en un `FBCh`. */
+  programs: number;
+  /** Tamaños de chunk reescritos: uno por programa `FPCh`, más el del `FBCh`. */
+  chunks: number;
+}
+
+/**
+ * Reescribe un banco en el orden de bytes pedido, como el host que guarda el
+ * struct nativo sin convertirlo. Solo invierte los campos numéricos: el nombre
+ * de cada programa y los chunks opacos quedan byte a byte iguales.
+ *
+ * No valida el archivo (para eso está `parseFxbBank`), pero sí rechaza lo que no
+ * puede convertir sin corromperlo: magic desconocido, programas truncados o
+ * parámetros que se salen de su programa. Si el banco ya está en el orden
+ * pedido devuelve una copia sin tocar y `fields: 0`.
+ */
+export function convertFxbEndianness(data: Buffer, target: FxbEndianness): FxbConversion {
+  if (target !== 'big' && target !== 'little') {
+    throw new RangeError('el orden de bytes de destino debe ser "big" o "little"');
+  }
+  if (data.length < FXB_HEADER_SIZE) {
+    throw new Error(`archivo de ${data.length} bytes; un .fxb necesita al menos ${FXB_HEADER_SIZE}`);
+  }
+
+  let source: FxbEndianness | null = null;
+  if (readU32(data, 0, 'little') === CHUNK_MAGIC) source = 'little';
+  else if (readU32(data, 0, 'big') === CHUNK_MAGIC) source = 'big';
+  if (source === null) {
+    throw new Error('chunkMagic distinto de "CcnK": no parece un banco VST2');
+  }
+
+  const fxMagic = readU32(data, 8, source);
+  if (fxMagic !== FX_BANK_MAGIC && fxMagic !== FX_CHUNK_BANK_MAGIC) {
+    throw new Error(`fxMagic 0x${fxMagic.toString(16)} no es "FxBk" ni "FBCh"`);
+  }
+
+  const converted = Buffer.from(data);
+  if (source === target) {
+    return {
+      data: converted,
+      fields: 0,
+      programs: fxMagic === FX_BANK_MAGIC ? readU32(data, 24, source) : 0,
+      chunks: 0,
+    };
+  }
+
+  /** Invierte los 4 bytes del campo; vale para enteros y para floats. */
+  const swap = (offset: number): void => {
+    const first = converted[offset]!;
+    const second = converted[offset + 1]!;
+    const third = converted[offset + 2]!;
+    const fourth = converted[offset + 3]!;
+    converted[offset] = fourth;
+    converted[offset + 1] = third;
+    converted[offset + 2] = second;
+    converted[offset + 3] = first;
+  };
+
+  let fields = 0;
+  let programs = 0;
+  let chunks = 0;
+
+  // Cabecera del banco: chunkMagic, byteSize, fxMagic, version, fxID,
+  // fxVersion, numPrograms y currentProgram/future.
+  for (let offset = 0; offset < 32; offset += 4) {
+    swap(offset);
+    fields += 1;
+  }
+
+  if (fxMagic === FX_CHUNK_BANK_MAGIC) {
+    if (data.length < FXB_CHUNK_HEADER_SIZE) {
+      throw new Error(`un FBCh necesita al menos ${FXB_CHUNK_HEADER_SIZE} bytes`);
+    }
+    swap(FXB_HEADER_SIZE);
+    fields += 1;
+    chunks += 1;
+    return { data: converted, fields, programs, chunks };
+  }
+
+  const count = readU32(data, 24, source);
+  let offset = FXB_HEADER_SIZE;
+  for (let index = 0; index < count; index += 1) {
+    if (offset + 8 > data.length) {
+      throw new Error(`programa ${index + 1}: el archivo termina antes de su cabecera`);
+    }
+    const programSize = readU32(data, offset + 4, source);
+    const programMagic = readU32(data, offset + 8, source);
+    if (programMagic !== FX_PROGRAM_MAGIC && programMagic !== FX_CHUNK_PROGRAM_MAGIC) {
+      throw new Error(
+        `programa ${index + 1}: fxMagic 0x${programMagic.toString(16)} no es "FxCk" ni "FPCh"`,
+      );
+    }
+    if (offset + 8 + programSize > data.length) {
+      throw new Error(`programa ${index + 1}: byteSize ${programSize} se sale del archivo`);
+    }
+
+    // 7 campos del programa: chunkMagic, byteSize, fxMagic, version, fxID,
+    // fxVersion y numParams. El nombre de 28 bytes no es numérico.
+    for (let field = 0; field < 7; field += 1) {
+      swap(offset + 4 * field);
+      fields += 1;
+    }
+
+    if (programMagic === FX_PROGRAM_MAGIC) {
+      const numParams = readU32(data, offset + 24, source);
+      if (56 + 4 * numParams > 8 + programSize) {
+        throw new Error(
+          `programa ${index + 1}: ${numParams} parámetros no caben en ${programSize} bytes`,
+        );
+      }
+      for (let param = 0; param < numParams; param += 1) {
+        swap(offset + 56 + 4 * param);
+        fields += 1;
+      }
+    } else {
+      // Chunk opaco: solo se invierte el int32 que declara su tamaño.
+      swap(offset + 56);
+      fields += 1;
+      chunks += 1;
+    }
+
+    offset += 8 + programSize;
+    programs += 1;
+  }
+
+  return { data: converted, fields, programs, chunks };
+}
+
 export interface BankReference {
   source: 'explicit' | 'existing-bank' | 'batch' | 'none';
   uniqueId: string | null;

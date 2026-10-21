@@ -14,11 +14,15 @@ import {
   isFxbApiError,
   type FxbClient,
   type FxbConfigSnapshotResponse,
+  type LibraryBankConvertResponse,
+  type LibraryBankRestoreResponse,
   type LibraryBanksImportResponse,
   type LibraryBanksListResponse,
+  type LibraryBatchResponse,
   type LibraryInstallResponse,
   type LibraryScanResponse,
 } from '../src/client';
+import type { BatchStreamEvent } from '../src/client/batch-stream';
 import { buildBank } from './helpers/fxb-bank';
 
 /**
@@ -33,10 +37,39 @@ function typeChecks(client: FxbClient): void {
   void client.library.scan({ libraryRoot: 42 });
   // @ts-expect-error el scan devuelve plugins, no un plugin suelto
   void client.library.scan({ libraryRoot: 'C:\\VFX\\Library' }).then((scan) => scan.plugin);
+  // El orden de destino es opcional, pero solo admite big o little.
+  void client.library.convertDefaultBank({ libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' });
+  void client.library.convertDefaultBank({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'MySynth',
+    endianness: 'little',
+  });
+  void client.library.convertDefaultBank({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'MySynth',
+    // @ts-expect-error `endianness` desconocida
+    endianness: 'middle',
+  });
+  // Restaurar no elige orden: devuelve exactamente el respaldo `.orig`.
+  void client.library.restoreDefaultBank({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'MySynth',
+    // @ts-expect-error restaurar no admite orden de bytes
+    endianness: 'big',
+  });
+  // @ts-expect-error `plugin` es obligatorio al restaurar
+  void client.library.restoreDefaultBank({ libraryRoot: 'C:\\VFX\\Library' });
 }
 void typeChecks;
 
 const WEBAPP = path.resolve(__dirname, '..', '..');
+
+/** Etiqueta compacta de un evento del lote: `Synth:running`, `Synth:copy`… */
+function label(event: BatchStreamEvent): string {
+  if (event.type === 'plugin') return `${event.name}:${event.status}`;
+  if (event.type === 'step') return `${event.name}:${event.step}`;
+  return event.type;
+}
 
 test('api-types.ts está sincronizado con openapi.json', async () => {
   const schema = JSON.parse(await readFile(path.join(WEBAPP, 'openapi.json'), 'utf8')) as Parameters<
@@ -154,6 +187,53 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
     },
   );
 
+  // El lote pasa por el servidor y devuelve el resultado de cada plugin.
+  const batched: LibraryBatchResponse = await client.library.batch({
+    libraryRoot: data.root,
+    action: 'install',
+    plugins: ['Synth'],
+    dllSourcePath: data.dll,
+    force: true,
+  });
+  assert.equal(batched.action, 'install');
+  assert.equal(batched.total, 1);
+  assert.equal(batched.succeeded, 1);
+  assert.equal(batched.failed, 0);
+  assert.equal(batched.results[0]?.name, 'Synth');
+  assert.equal(batched.results[0]?.status, 'installed');
+  assert.equal(batched.results[0]?.message, null);
+  assert.equal(batched.results[0]?.entry?.installed, true);
+
+  // El mismo lote leyendo el progreso NDJSON: los eventos llegan en orden y el
+  // resultado es el del evento `end`.
+  const streamEvents: BatchStreamEvent[] = [];
+  const streamed = await client.library.batchStream(
+    {
+      libraryRoot: data.root,
+      action: 'install',
+      plugins: ['Synth'],
+      dllSourcePath: data.dll,
+      force: true,
+    },
+    { onEvent: (event) => streamEvents.push(event) },
+  );
+  assert.deepEqual(streamEvents.map(label), [
+    'start',
+    'Synth:running',
+    'Synth:backup',
+    'Synth:copy',
+    'Synth:patch',
+    'Synth:write-config',
+    'Synth:create-dir',
+    'Synth:installed',
+    'end',
+  ]);
+  assert.equal(streamed.succeeded, 1);
+  assert.deepEqual(
+    streamed.results.map((result) => [result.name, result.status]),
+    [['Synth', 'installed']],
+  );
+
   const inspected = await client.library.inspectBank({
     sourcePath: data.bank,
     libraryRoot: data.root,
@@ -184,6 +264,32 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   );
   assert.equal(listed.presetsDirExists, true);
   assert.equal(listed.config.exists, true);
+
+  // Exportación: el banco importado (little-endian) se convierte a big-endian.
+  const exported = await client.library.exportBank({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+    fileName: 'Rhodes.fxb',
+    endianness: 'big',
+  });
+  assert.equal(exported.changed, true);
+  assert.equal(exported.source.bank.endianness, 'little');
+  assert.equal(exported.target.bank.endianness, 'big');
+  assert.equal(exported.target.fileName, 'Rhodes-be.fxb');
+
+  await assert.rejects(
+    client.library.exportBank({
+      libraryRoot: data.root,
+      plugin: 'Synth',
+      fileName: 'Rhodes.fxb',
+      endianness: 'big',
+    }),
+    (error: unknown) => {
+      assert.equal(isFxbApiError(error), true);
+      assert.equal((error as FxbApiError).status, 409);
+      return true;
+    },
+  );
 
   await assert.rejects(
     client.library.importBanks({
@@ -218,6 +324,47 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   assert.equal(written.config.defaultFxbName, 'Rhodes.fxb');
   assert.equal(written.config.programDirName, 'presets');
 
+  // Conversión en el sitio del banco por defecto: mismo nombre y un respaldo.
+  const converted: LibraryBankConvertResponse = await client.library.convertDefaultBank({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+  });
+  assert.equal(converted.fileName, 'Rhodes.fxb');
+  assert.equal(converted.changed, true);
+  assert.equal(converted.source.bank.endianness, 'little');
+  assert.equal(converted.target.bank.endianness, 'big');
+  assert.equal(converted.target.fileName, 'Rhodes.fxb');
+  assert.equal(converted.backup?.fileName, 'Rhodes.fxb.orig');
+  assert.equal(converted.backupCreated, true);
+
+  // La lista anuncia el respaldo y la restauración lo devuelve sin consumirlo.
+  const withBackup: LibraryBanksListResponse = await client.library.listBanks({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+  });
+  assert.deepEqual(withBackup.defaultBackup, {
+    fileName: 'Rhodes.fxb.orig',
+    size: converted.backup?.size,
+  });
+
+  const restored: LibraryBankRestoreResponse = await client.library.restoreDefaultBank({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+  });
+  assert.equal(restored.fileName, 'Rhodes.fxb');
+  assert.equal(restored.changed, true);
+  assert.equal(restored.restored.bank.endianness, 'little');
+  assert.equal(restored.restored.sha256, converted.source.sha256);
+  assert.equal(restored.backup.fileName, 'Rhodes.fxb.orig');
+  assert.equal(restored.backup.sha256, converted.source.sha256);
+
+  const restoredAgain: LibraryBankRestoreResponse = await client.library.restoreDefaultBank({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+  });
+  assert.equal(restoredAgain.changed, false);
+  assert.equal(restoredAgain.backup.sha256, restored.backup.sha256);
+
   await assert.rejects(
     client.config.write({
       pluginDir: snapshot.configPath.replace(/[\\/]fxbLoader\.config$/, ''),
@@ -250,4 +397,95 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
     uninstalled.actions.map((action) => action.kind),
     ['restore', 'restore', 'delete'],
   );
+});
+
+/** Deja correr las microtareas pendientes de la lectura del flujo. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/** `fetch` falso que devuelve un flujo que el test controla trozo a trozo. */
+function controlledStream(): {
+  fetch: typeof globalThis.fetch;
+  push: (text: string) => void;
+  close: () => void;
+} {
+  const encoder = new TextEncoder();
+  let push: (text: string) => void = () => undefined;
+  let close: () => void = () => undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (text) => controller.enqueue(encoder.encode(text));
+      close = () => controller.close();
+    },
+  });
+  const fake = (async () =>
+    new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson; charset=utf-8' },
+    })) as unknown as typeof globalThis.fetch;
+  return { fetch: fake, push, close };
+}
+
+test('batchStream entrega cada evento según llega, sin esperar al final', async () => {
+  const stream = controlledStream();
+  const client = createFxbClient({ baseUrl: 'http://127.0.0.1:1', fetch: stream.fetch });
+
+  const seen: string[] = [];
+  let finished = false;
+  const pending = client.library.batchStream(
+    { libraryRoot: 'C:\VFX\Library', action: 'install', plugins: ['Synth'] },
+    { onEvent: (event) => seen.push(label(event)) },
+  );
+  void pending.then(
+    () => {
+      finished = true;
+    },
+    () => {
+      finished = true;
+    },
+  );
+
+  // El primer evento llega partido en dos trozos, como puede pasar por TCP.
+  stream.push(
+    '{"type":"start","action":"install","dryRun":false,"total":1,"plugins":["Synth"]}\n{"type":"plug',
+  );
+  await tick();
+  assert.deepEqual(seen, ['start'], 'el start se entrega con el lote aún abierto');
+  assert.equal(finished, false, 'la promesa no se resuelve hasta el evento end');
+
+  stream.push('in","index":0,"total":1,"name":"Synth","status":"running","message":null}\n');
+  await tick();
+  assert.deepEqual(seen, ['start', 'Synth:running']);
+  assert.equal(finished, false);
+
+  stream.push(
+    '{"type":"end","result":{"action":"install","dryRun":false,"total":1,"succeeded":1,' +
+      '"failed":0,"results":[{"name":"Synth","status":"installed","message":null}]}}\n',
+  );
+  stream.close();
+
+  const result = await pending;
+  assert.deepEqual(seen, ['start', 'Synth:running', 'end']);
+  assert.equal(result.succeeded, 1);
+  assert.equal(result.failed, 0);
+});
+
+test('batchStream falla si el flujo se corta sin evento end', async () => {
+  const stream = controlledStream();
+  const client = createFxbClient({ baseUrl: 'http://127.0.0.1:1', fetch: stream.fetch });
+
+  const pending = client.library.batchStream({
+    libraryRoot: 'C:\VFX\Library',
+    action: 'install',
+    plugins: ['Synth'],
+  });
+  stream.push('{"type":"start","action":"install","dryRun":false,"total":1,"plugins":["Synth"]}\n');
+  stream.close();
+
+  await assert.rejects(pending, (error: unknown) => {
+    assert.equal(isFxbApiError(error), true);
+    assert.match((error as FxbApiError).message, /sin evento end/);
+    return true;
+  });
 });

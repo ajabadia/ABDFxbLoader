@@ -124,6 +124,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/banks/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exporta un banco importado en big-endian o little-endian
+         * @description Reescribe un `.fxb` que ya está en `<plugin>\<programDirName>\` en el orden de bytes pedido y lo guarda al lado como `<banco>-le.fxb` o `<banco>-be.fxb`, para convertir los bancos legacy que un plugin de Windows guardó con su struct nativo. Solo se invierten los campos numéricos (enteros y floats): los nombres de programa y los chunks opacos quedan byte a byte iguales. El banco de origen no se toca.
+         */
+        post: operations["LibraryController_exportBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/banks/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convierte en el sitio el banco por defecto del plugin
+         * @description Reescribe el `.fxb` que `fxbLoader.config` marca como predeterminado (`defaultFxbName`) en su misma ruta y en el orden pedido —por defecto, el contrario al que tiene—, para que la DLL lo siga cargando sin renombrarlo. Antes de escribirlo guarda una copia byte a byte del original como `<banco>.orig`; si el respaldo ya existe no se pisa. Solo se invierten los campos numéricos (enteros y floats): los nombres de programa y los chunks opacos quedan iguales, y el archivo convertido se vuelve a parsear antes de sustituir al original.
+         */
+        post: operations["LibraryController_convertDefaultBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/banks/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restaura el banco por defecto desde su respaldo .orig
+         * @description Devuelve el `.fxb` que `fxbLoader.config` marca como predeterminado al contenido de `<banco>.orig`, que dejó `banks/convert`, en su misma ruta y con su mismo nombre. El respaldo **solo se lee**: no se renombra ni se reescribe, así que la restauración se puede repetir y el original sigue disponible. Antes de escribir se reparsea el respaldo, y si el banco ya es byte a byte el respaldo no se escribe nada (`changed: false`).
+         */
+        post: operations["LibraryController_restoreDefaultBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/banks/inspect": {
         parameters: {
             query?: never;
@@ -158,6 +218,46 @@ export interface paths {
          * @description Restaura `vfxinfo.tx_`, conserva el modificado como `vfxinfo.loader` y borra `fxbLoader.config`.
          */
         post: operations["LibraryController_uninstall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Instala o desinstala varios plugins de una vez
+         * @description El lote que antes hacía la UI con una petición por plugin pasa al servidor: se procesa en serie y en el orden recibido, y cada plugin devuelve su propio resultado. Un fallo individual no detiene al resto. Con `dryRun` solo se calcula el plan de cada uno. Como máximo 500 plugins por petición.
+         */
+        post: operations["LibraryController_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/batch/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Instala o desinstala varios plugins informando del progreso
+         * @description El mismo lote que `POST /library/batch`, pero la respuesta es NDJSON (una línea JSON por evento) escrita según avanza el servidor: `start` con el total y el orden, dos `plugin` por plugin (`running` y luego el estado final), un `step` por cada paso interno (respaldo, copia del DLL, parcheo de `dll_name`, config y `presets`) y `end` con el resultado completo. Así la vista sabe qué plugin y qué paso se están ejecutando sin esperar al final. La petición se valida entera antes del primer byte: un 400/422 sigue siendo una respuesta JSON normal.
+         */
+        post: operations["LibraryController_batchStream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -330,7 +430,7 @@ export interface components {
              */
             warnings: string[];
             /**
-             * @description `true` si el binario del plugin y el `fxbLoader.dll` instalado son PE32 i386; `false` si es incompatible de forma comprobable; `null` si no se pudo verificar.
+             * @description `true` si el binario del plugin y el `fxbLoader.dll` instalado son PE32 i386; `false` si es incompatible de forma comprobable (otra arquitectura, archivo vacío, truncado o sin cabecera PE); `null` si el DLL no existe o no se pudo leer.
              * @example true
              */
             compatible: boolean | null;
@@ -607,6 +707,12 @@ export interface components {
             size: number;
             bank: components["schemas"]["BankInfoDto"];
         };
+        BankBackupSummaryDto: {
+            /** @example Warm Rhodes.fxb.orig */
+            fileName: string;
+            /** @example 216 */
+            size: number;
+        };
         LibraryBanksListResponseDto: {
             plugin: components["schemas"]["PluginEntryDto"];
             /**
@@ -621,6 +727,8 @@ export interface components {
             presetsDirExists: boolean;
             /** @description Bancos válidos, ordenados por nombre. Solo se lee su cabecera. */
             banks: components["schemas"]["PluginBankEntryDto"][];
+            /** @description Respaldo `<banco>.orig` del banco por defecto, o `null` si no hay ninguno. Se lee solo su tamaño: sirve para habilitar «Restaurar original» sin pedir una restauración que vaya a fallar. */
+            defaultBackup: components["schemas"]["BankBackupSummaryDto"] | null;
             /** @description Snapshot de `fxbLoader.config` (con `mtimeMs` para el control optimista). Con el archivo ausente devuelve los valores por defecto y `exists: false`. */
             config: components["schemas"]["FxbConfigSnapshotDto"];
         };
@@ -671,6 +779,180 @@ export interface components {
             reference: components["schemas"]["BankReferenceDto"];
             /** @description Un elemento por archivo enviado, en el mismo orden. */
             results: components["schemas"]["BankImportResultDto"][];
+        };
+        LibraryBankExportRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Nombre de un `.fxb` ya importado en `<plugin>\<programDirName>\`. Solo se lee: el archivo exportado se crea al lado, con el sufijo del orden pedido.
+             * @example Legacy.fxb
+             */
+            fileName: string;
+            /**
+             * @description Orden de bytes del archivo de salida. `little` es el que escribe un plugin de Windows que guarda su struct nativo; `big` es el estándar VST2.
+             * @example little
+             * @enum {string}
+             */
+            endianness: "big" | "little";
+            /**
+             * @description Reemplazar el archivo de salida si ya existe. Por defecto `false`.
+             * @example false
+             */
+            overwrite?: boolean;
+        };
+        BankExportFileDto: {
+            /** @example Legacy.fxb */
+            fileName: string;
+            /** @example C:\VFX\Library\plugs\MySynth\presets\Legacy.fxb */
+            path: string;
+            /** @example 216 */
+            size: number;
+            /**
+             * @description SHA-256 del archivo.
+             * @example 9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d
+             */
+            sha256: string;
+            bank: components["schemas"]["BankInfoDto"];
+        };
+        LibraryBankExportResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /** @description Banco leído, en el orden en que estaba. No se modifica. */
+            source: components["schemas"]["BankExportFileDto"];
+            /** @description Archivo escrito en el orden pedido. */
+            target: components["schemas"]["BankExportFileDto"];
+            /**
+             * @description `false` si ya estaba en ese orden y no hubo nada que invertir.
+             * @example true
+             */
+            changed: boolean;
+            /**
+             * @description Campos de 32 bits cuyo orden de bytes se invirtió.
+             * @example 16
+             */
+            fields: number;
+            /**
+             * @description Programas recorridos; `0` en un `FBCh`.
+             * @example 1
+             */
+            programs: number;
+            /**
+             * @description Tamaños de chunk reescritos: uno por programa `FPCh`, más el del `FBCh`.
+             * @example 0
+             */
+            chunks: number;
+        };
+        LibraryBankConvertRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Orden de bytes de destino. Sin él se invierte el que tiene el banco por defecto, que es la conversión natural de un banco legacy guardado por un plugin de Windows.
+             * @example big
+             * @enum {string}
+             */
+            endianness?: "big" | "little";
+        };
+        BankBackupFileDto: {
+            /** @example Warm Rhodes.fxb.orig */
+            fileName: string;
+            /** @example C:\VFX\Library\plugs\MySynth\presets\Warm Rhodes.fxb.orig */
+            path: string;
+            /** @example 216 */
+            size: number;
+            /**
+             * @description SHA-256 del respaldo.
+             * @example 9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d
+             */
+            sha256: string;
+        };
+        LibraryBankConvertResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /**
+             * @description Banco por defecto tomado de `fxbLoader.config` (`defaultFxbName`).
+             * @example Warm Rhodes.fxb
+             */
+            fileName: string;
+            /** @description El archivo tal como estaba antes de convertirlo. */
+            source: components["schemas"]["BankExportFileDto"];
+            /** @description El mismo archivo, ya en el orden pedido: mismo nombre y misma ruta. */
+            target: components["schemas"]["BankExportFileDto"];
+            /** @description Respaldo del original (`<banco>.orig`), o `null` si el banco ya estaba en ese orden y no se escribió nada. */
+            backup: components["schemas"]["BankBackupFileDto"] | null;
+            /**
+             * @description `true` si el respaldo se creó en esta llamada. Si ya existía se conserva el primero, que es el original de verdad.
+             * @example true
+             */
+            backupCreated: boolean;
+            /**
+             * @description `false` si ya estaba en ese orden y no hubo nada que invertir.
+             * @example true
+             */
+            changed: boolean;
+            /**
+             * @description Campos de 32 bits cuyo orden de bytes se invirtió.
+             * @example 16
+             */
+            fields: number;
+            /**
+             * @description Programas recorridos; `0` en un `FBCh` o si no hubo nada que convertir.
+             * @example 1
+             */
+            programs: number;
+            /**
+             * @description Tamaños de chunk reescritos: uno por programa `FPCh`, más el del `FBCh`.
+             * @example 0
+             */
+            chunks: number;
+        };
+        LibraryBankRestoreRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+        };
+        LibraryBankRestoreResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /**
+             * @description Banco por defecto tomado de `fxbLoader.config` (`defaultFxbName`).
+             * @example Warm Rhodes.fxb
+             */
+            fileName: string;
+            /** @description El banco tal como queda en disco: mismo nombre y ruta, contenido del respaldo. Se vuelve a parsear antes de darlo por restaurado. */
+            restored: components["schemas"]["BankExportFileDto"];
+            /** @description Respaldo `<banco>.orig` usado. Solo se lee: conserva su tamaño y su hash, así que se puede restaurar varias veces. */
+            backup: components["schemas"]["BankBackupFileDto"];
+            /**
+             * @description `false` si el banco ya era byte a byte el respaldo y no se escribió nada.
+             * @example true
+             */
+            changed: boolean;
         };
         LibraryBankInspectRequestDto: {
             /**
@@ -785,6 +1067,93 @@ export interface components {
              * @example false
              */
             dryRun?: boolean;
+        };
+        LibraryBatchRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Acción aplicada a todos los plugins indicados.
+             * @example install
+             * @enum {string}
+             */
+            action: "install" | "uninstall";
+            /**
+             * @description Carpetas de `plugs\`, en el orden de procesado (en serie). Un fallo no detiene el lote: cada uno lleva su resultado. Como máximo 500 por petición.
+             * @example [
+             *       "MySynth",
+             *       "GrandPiano"
+             *     ]
+             */
+            plugins: string[];
+            /**
+             * @description DLL a copiar en la instalación; como en `install`, si se omite se usa la del repositorio.
+             * @example C:\fxbLoader\vst\fxbLoader.dll
+             */
+            dllSourcePath?: string;
+            /**
+             * @description Reinstalar los que ya tengan `fxbLoader.config`; sin esto, cada uno falla con 409.
+             * @example false
+             */
+            force?: boolean;
+            /**
+             * @description Devuelve el plan de `actions` de cada plugin sin tocar el disco y con `status: "planned"`.
+             * @example false
+             */
+            dryRun?: boolean;
+        };
+        LibraryBatchPluginResultDto: {
+            /**
+             * @description Carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            name: string;
+            /**
+             * @description `installed`/`uninstalled` si se aplicó, `planned` si solo se calculó el plan con `dryRun`, `failed` si ese plugin no se pudo operar.
+             * @example installed
+             * @enum {string}
+             */
+            status: "installed" | "uninstalled" | "planned" | "failed";
+            /**
+             * @description Motivo del fallo; `null` si la operación fue correcta.
+             * @example null
+             */
+            message: string | null;
+            /** @description Estado del plugin tras la operación; `null` si no se pudo operar. */
+            entry: components["schemas"]["PluginEntryDto"] | null;
+            /** @description Pasos aplicados o, con `dryRun`, el plan. Vacío si falló antes de planificar. */
+            actions: components["schemas"]["LibraryActionDto"][];
+        };
+        LibraryBatchResponseDto: {
+            /**
+             * @example install
+             * @enum {string}
+             */
+            action: "install" | "uninstall";
+            /**
+             * @description `true` si solo se calcularon los planes.
+             * @example false
+             */
+            dryRun: boolean;
+            /**
+             * @description Plugins pedidos en la petición.
+             * @example 2
+             */
+            total: number;
+            /**
+             * @description Plugins con `status` distinto de `failed`.
+             * @example 1
+             */
+            succeeded: number;
+            /**
+             * @description Plugins con `status: "failed"`.
+             * @example 1
+             */
+            failed: number;
+            /** @description Resultado de cada plugin, en el orden pedido. */
+            results: components["schemas"]["LibraryBatchPluginResultDto"][];
         };
     };
     responses: never;
@@ -1045,7 +1414,7 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryConflictErrorDto"] | components["schemas"]["LibraryErrorDto"];
                 };
             };
-            /** @description `vfxinfo.txt` ausente o sin `dll_name`, `fxbLoader.dll` que no es PE32 i386 o plugin de otra arquitectura; no se toca nada. */
+            /** @description `vfxinfo.txt` ausente o sin `dll_name`, `dll_name` que apunta a un archivo inexistente (se trata como incompatible), `fxbLoader.dll` que no es PE32 i386 o plugin de otra arquitectura; no se toca nada. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1107,6 +1476,10 @@ export interface operations {
                      *           }
                      *         }
                      *       ],
+                     *       "defaultBackup": {
+                     *         "fileName": "Warm Rhodes.fxb.orig",
+                     *         "size": 216
+                     *       },
                      *       "config": {
                      *         "configPath": "C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config",
                      *         "exists": true,
@@ -1335,6 +1708,344 @@ export interface operations {
             };
         };
     };
+    LibraryController_exportBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankExportRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Archivo exportado, con el hash y la cabecera de origen y destino. `changed: false` indica que ya estaba en ese orden. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "installed": true,
+                     *         "hasVfxinfo": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "source": {
+                     *         "fileName": "Legacy.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "big",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "target": {
+                     *         "fileName": "Legacy-le.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy-le.fxb",
+                     *         "size": 216,
+                     *         "sha256": "1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "changed": true,
+                     *       "fields": 16,
+                     *       "programs": 1,
+                     *       "chunks": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankExportResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` inválido, `fileName` con separadores o sin `.fxb`, banco ausente de la carpeta del plugin o `endianness` desconocida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\` o no tiene `fxbLoader.config`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description Ya existe el archivo de salida y `overwrite` no es `true`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "ya existe C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy-le.fxb; marca overwrite para reemplazarlo"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El archivo no es un banco VST2 válido o su nombre ya declara un orden que no coincide con su contenido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "el banco no es un .fxb válido: byteSize 999 no coincide con el tamaño del archivo (208 sin cabecera de chunk)"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_convertDefaultBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankConvertRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Banco convertido con el hash de origen y destino, el respaldo `<banco>.orig` y si se creó ahora. `changed: false` indica que ya estaba en ese orden y no se escribió nada. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "installed": true,
+                     *         "hasVfxinfo": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "fileName": "Warm Rhodes.fxb",
+                     *       "source": {
+                     *         "fileName": "Warm Rhodes.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "target": {
+                     *         "fileName": "Warm Rhodes.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb",
+                     *         "size": 216,
+                     *         "sha256": "1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "big",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "backup": {
+                     *         "fileName": "Warm Rhodes.fxb.orig",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb.orig",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+                     *       },
+                     *       "backupCreated": true,
+                     *       "changed": true,
+                     *       "fields": 16,
+                     *       "programs": 1,
+                     *       "chunks": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankConvertResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` o `plugin` inválidos, `endianness` desconocida o un `defaultFxbName` con separadores de ruta o sin `.fxb`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no tiene `defaultFxbName` configurado, o el banco que declara no está en su carpeta de presets. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El archivo no es un banco VST2 válido, la conversión lo dejaría inválido o el nombre declara el orden contrario al pedido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "\"Legacy-le.fxb\" declara little-endian en el nombre pero se pidió big-endian; renómbralo antes de convertir"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_restoreDefaultBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankRestoreRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Banco restaurado con el hash del respaldo usado. `changed: false` indica que ya era el respaldo y no se escribió nada. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryBankRestoreResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` o `plugin` inválidos, o un `defaultFxbName` con separadores de ruta o sin `.fxb`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "defaultFxbName debe terminar en .fxb: \"Warm Rhodes.txt\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no tiene `defaultFxbName` configurado, o no hay `<banco>.orig` que restaurar porque el banco nunca se convirtió. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El respaldo está vacío, supera el tamaño máximo o no es un `.fxb` válido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "el respaldo Warm Rhodes.fxb.orig no es un .fxb válido: archivo de 12 bytes; un .fxb necesita al menos 156"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
     LibraryController_inspectBank: {
         parameters: {
             query?: never;
@@ -1455,6 +2166,113 @@ export interface operations {
                     /**
                      * @example {
                      *       "message": "MySynth no tiene fxbLoader instalado"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBatchRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Resultado por plugin (`status`, `message` y `actions`); responde 200 aunque todos fallen, porque el lote ya se ha recorrido entero. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryBatchResponseDto"];
+                };
+            };
+            /** @description `action` desconocida, `plugins` vacío o por encima del tope, o rutas inválidas: se rechaza el lote entero sin procesar ningún plugin. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El cargador no es PE32 i386; se rechaza el lote antes de tocar ningún plugin. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "fxbLoader.dll no es un PE32 i386 válido: es PE32+ AMD64 (64 bits); fxbLoader.dll debe ser PE32 i386"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_batchStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBatchRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Un evento JSON por línea: `start`, por cada plugin un `plugin` con `status: "running"`, sus `step` internos y otro `plugin` con el estado final, y `end` con el mismo resultado que `POST /library/batch`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {"type":"start","action":"install","dryRun":false,"total":2,"plugins":["MySynth","GrandPiano"]}
+                     *     {"type":"plugin","index":0,"total":2,"name":"MySynth","status":"running","message":null}
+                     *     {"type":"step","index":0,"total":2,"name":"MySynth","step":"backup","stepIndex":0,"steps":5}
+                     *     {"type":"step","index":0,"total":2,"name":"MySynth","step":"copy","stepIndex":1,"steps":5}
+                     *     {"type":"step","index":0,"total":2,"name":"MySynth","step":"patch","stepIndex":2,"steps":5}
+                     *     {"type":"step","index":0,"total":2,"name":"MySynth","step":"write-config","stepIndex":3,"steps":5}
+                     *     {"type":"step","index":0,"total":2,"name":"MySynth","step":"create-dir","stepIndex":4,"steps":5}
+                     *     {"type":"plugin","index":0,"total":2,"name":"MySynth","status":"installed","message":null}
+                     *     {"type":"plugin","index":1,"total":2,"name":"GrandPiano","status":"running","message":null}
+                     *     {"type":"plugin","index":1,"total":2,"name":"GrandPiano","status":"failed","message":"GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)"}
+                     *     {"type":"end","result":{"action":"install","dryRun":false,"total":2,"succeeded":1,"failed":1,"results":[{"name":"MySynth","status":"installed","message":null,"entry":{"name":"MySynth","path":"C:\\VFX\\Library\\plugs\\MySynth","installed":true,"hasVfxinfo":true,"pluginName":"MySynth.dll","warnings":[],"compatible":true,"compatibilityIssues":[]},"actions":[{"kind":"backup","path":"C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_","detail":"copia del vfxinfo.txt original"},{"kind":"copy","path":"C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.dll","detail":"C:\\fxbLoader\\vst\\fxbLoader.dll"},{"kind":"patch","path":"C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt","detail":"dll_name: MySynth/fxbLoader.dll"},{"kind":"write-config","path":"C:\\VFX\\Library\\plugs\\MySynth\\fxbLoader.config","detail":"pluginName = MySynth.dll"},{"kind":"create-dir","path":"C:\\VFX\\Library\\plugs\\MySynth\\presets"}]},{"name":"GrandPiano","status":"failed","message":"GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)","entry":null,"actions":[]}]}}
+                     */
+                    "application/x-ndjson": string;
+                };
+            };
+            /** @description Lote inválido: se rechaza antes de escribir ningún evento (respuesta JSON). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El cargador no es PE32 i386; tampoco se escribe ningún evento. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "fxbLoader.dll no es un PE32 i386 válido: es PE32+ AMD64 (64 bits); fxbLoader.dll debe ser PE32 i386"
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];

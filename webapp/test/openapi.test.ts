@@ -12,6 +12,14 @@ import {
 } from '../src/fxb-config/fxb-config.dto';
 import {
   LIBRARY_BANKS_LIST_EXAMPLE,
+  LIBRARY_BATCH_DRY_RUN_EXAMPLE,
+  LIBRARY_BATCH_EXAMPLE,
+  LIBRARY_BATCH_LOADER_ERROR_EXAMPLE,
+  LIBRARY_BATCH_STREAM_EXAMPLE,
+  LIBRARY_CONVERT_EXAMPLE,
+  LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
+  LIBRARY_EXPORT_EXAMPLE,
+  LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
   LIBRARY_IMPORT_EXAMPLE,
   LIBRARY_IMPORT_REJECTED_EXAMPLE,
   LIBRARY_INSPECT_EXAMPLE,
@@ -19,12 +27,18 @@ import {
   LIBRARY_INSPECT_WITHOUT_PLUGIN_EXAMPLE,
   LIBRARY_INSTALL_CONFLICT_EXAMPLE,
   LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
+  LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
   LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_RESTORE_EXAMPLE,
+  LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE,
+  LIBRARY_RESTORE_NO_BACKUP_EXAMPLE,
+  LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
   LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
   LIBRARY_UNINSTALL_EXAMPLE,
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
 } from '../src/library/library.dto';
+import { MAX_PLUGINS_PER_BATCH } from '../src/client/batch-stream';
 import { MAX_BANKS_PER_REQUEST } from '../src/library/library.service';
 import { buildOpenApiDocument } from '../src/swagger';
 
@@ -60,9 +74,14 @@ test('el documento expone los endpoints de fxb-config', () => {
   assert.deepEqual(Object.keys(document.paths).sort(), [
     '/fxb-config',
     '/fxb-config/read',
+    '/library/banks/convert',
+    '/library/banks/export',
     '/library/banks/import',
     '/library/banks/inspect',
     '/library/banks/list',
+    '/library/banks/restore',
+    '/library/batch',
+    '/library/batch/stream',
     '/library/install',
     '/library/scan',
     '/library/uninstall',
@@ -97,8 +116,8 @@ test('PUT /fxb-config documenta 200, 400 y 409 con ejemplos', () => {
     message: 'Configuración no válida',
     issues: ['programDirName: no puede estar vacío'],
   });
-  const schema = bad['schema'] as { oneOf?: { $ref: string }[] };
-  assert.equal(schema.oneOf?.length, 2);
+  const schema = bad['schema'] as { anyOf?: { $ref: string }[] };
+  assert.equal(schema.anyOf?.length, 2);
 
   const conflict = jsonBody(write['409']);
   assert.deepEqual(conflict['example'], FXB_CONFIG_CONFLICT_EXAMPLE);
@@ -193,8 +212,8 @@ test('POST /library/install documenta 200 (real y dryRun), 400, 404, 409 y 422',
   );
 
   const conflict = jsonBody(install['409']);
-  const schema = conflict['schema'] as { oneOf?: { $ref: string }[] };
-  assert.deepEqual(schema.oneOf, [
+  const schema = conflict['schema'] as { anyOf?: { $ref: string }[] };
+  assert.deepEqual(schema.anyOf, [
     { $ref: '#/components/schemas/LibraryConflictErrorDto' },
     { $ref: '#/components/schemas/LibraryErrorDto' },
   ]);
@@ -208,8 +227,16 @@ test('POST /library/install documenta 200 (real y dryRun), 400, 404, 409 y 422',
     string,
     { value: unknown }
   >;
-  assert.deepEqual(Object.keys(unprocessableExamples).sort(), ['incompatible', 'vfxinfo']);
+  assert.deepEqual(Object.keys(unprocessableExamples).sort(), [
+    'binarioAusente',
+    'incompatible',
+    'vfxinfo',
+  ]);
   assert.deepEqual(unprocessableExamples['vfxinfo']!.value, LIBRARY_VFXINFO_ERROR_EXAMPLE);
+  assert.deepEqual(
+    unprocessableExamples['binarioAusente']!.value,
+    LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
+  );
   assert.deepEqual(
     unprocessableExamples['incompatible']!.value,
     LIBRARY_INCOMPATIBLE_ERROR_EXAMPLE,
@@ -227,6 +254,83 @@ test('POST /library/uninstall documenta 200, 400, 404 y 409', () => {
   const okExamples = jsonBody(uninstall['200'])['examples'] as Record<string, { value: unknown }>;
   assert.deepEqual(okExamples['desinstalado']!.value, LIBRARY_UNINSTALL_EXAMPLE);
   assert.deepEqual(jsonBody(uninstall['409'])['example'], LIBRARY_UNINSTALL_CONFLICT_EXAMPLE);
+});
+
+test('POST /library/batch documenta 200 con resultado por plugin, 400 y 422', () => {
+  const body = requestContent('/library/batch', 'post');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['instalacion', 'reconexion', 'simulacion']);
+
+  const batch = responses('/library/batch', 'post');
+  assert.deepEqual(Object.keys(batch).sort(), ['200', '400', '422']);
+  assert.equal(document.paths['/library/batch']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(batch['200']);
+  const okExamples = ok['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(okExamples).sort(), ['aplicado', 'dryRun']);
+  assert.deepEqual(okExamples['aplicado']!.value, LIBRARY_BATCH_EXAMPLE);
+  assert.deepEqual(okExamples['dryRun']!.value, LIBRARY_BATCH_DRY_RUN_EXAMPLE);
+
+  const bad = jsonBody(batch['400']);
+  assert.deepEqual(Object.keys(bad['examples'] as object).sort(), [
+    'actionInvalida',
+    'demasiadosPlugins',
+    'dllRelativa',
+    'pluginsVacios',
+  ]);
+  assert.deepEqual((bad['schema'] as { $ref: string }).$ref, '#/components/schemas/LibraryErrorDto');
+  assert.deepEqual(
+    (bad['examples'] as Record<string, { value: unknown }>)['demasiadosPlugins']!.value,
+    { message: `como máximo ${MAX_PLUGINS_PER_BATCH} plugins por petición` },
+  );
+
+  const unprocessable = jsonBody(batch['422']);
+  assert.deepEqual(unprocessable['example'], LIBRARY_BATCH_LOADER_ERROR_EXAMPLE);
+});
+
+test('POST /library/batch/stream documenta el NDJSON y los mismos errores', () => {
+  const body = requestContent('/library/batch/stream', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBatchRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['instalacion', 'simulacion']);
+
+  const stream = responses('/library/batch/stream', 'post');
+  assert.deepEqual(Object.keys(stream).sort(), ['200', '400', '422']);
+
+  // El 200 no es JSON: es el flujo de líneas, así que se documenta como NDJSON
+  // y el ejemplo es el texto exacto que escribe el servidor.
+  const ok = stream['200'] as { content?: Record<string, { example?: unknown }> };
+  assert.deepEqual(Object.keys(ok.content ?? {}), ['application/x-ndjson']);
+  assert.equal(ok.content?.['application/x-ndjson']?.example, LIBRARY_BATCH_STREAM_EXAMPLE);
+
+  const lines = LIBRARY_BATCH_STREAM_EXAMPLE.split('\n');
+  assert.equal(lines.length, 11, 'un evento por línea: start, los pasos del plugin y end');
+  assert.equal(lines[0]!.startsWith('{"type":"start"'), true);
+  assert.equal(lines[lines.length - 1]!.startsWith('{"type":"end"'), true);
+
+  // El ejemplo enseña el intercalado real: los pasos internos salen entre el
+  // `running` del plugin y su estado final.
+  const exampleEvents = lines.map(
+    (line) => JSON.parse(line) as { type: string; step?: string; name?: string },
+  );
+  assert.deepEqual(exampleEvents.map((event) => event.type), [
+    'start',
+    'plugin',
+    ...Array<string>(5).fill('step'),
+    'plugin',
+    'plugin',
+    'plugin',
+    'end',
+  ]);
+  assert.deepEqual(
+    exampleEvents.filter((event) => event.type === 'step').map((event) => event.step),
+    ['backup', 'copy', 'patch', 'write-config', 'create-dir'],
+  );
+
+  const bad = jsonBody(stream['400']);
+  assert.deepEqual(Object.keys(bad['examples'] as object).sort(), [
+    'demasiadosPlugins',
+    'pluginsVacios',
+  ]);
+  assert.deepEqual(jsonBody(stream['422'])['example'], LIBRARY_BATCH_LOADER_ERROR_EXAMPLE);
 });
 
 test('POST /library/banks/list documenta 200, 400, 404 y 422 sin escribir', () => {
@@ -271,6 +375,100 @@ test('POST /library/banks/import documenta 200, 400, 404 y 422 con el detalle po
   });
 });
 
+test('POST /library/banks/convert documenta 200, 400, 404, 409 y 422', () => {
+  const body = requestContent('/library/banks/convert', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBankConvertRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['alReves', 'explicito']);
+
+  const converted = responses('/library/banks/convert', 'post');
+  assert.deepEqual(Object.keys(converted).sort(), ['200', '400', '404', '409', '422']);
+  assert.equal(document.paths['/library/banks/convert']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(converted['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryBankConvertResponseDto',
+  );
+  assert.deepEqual(ok['example'], LIBRARY_CONVERT_EXAMPLE);
+
+  const bad = jsonBody(converted['400']);
+  assert.deepEqual(Object.keys(bad['examples'] as object).sort(), ['nombre', 'orden']);
+
+  const conflicts = jsonBody(converted['409'])['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(conflicts).sort(), ['ausente', 'sinDefecto']);
+  assert.deepEqual(conflicts['sinDefecto']!.value, LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE);
+
+  for (const status of ['400', '404', '409', '422'] as const) {
+    assert.equal(
+      (jsonBody(converted[status])['schema'] as { $ref: string }).$ref,
+      '#/components/schemas/LibraryErrorDto',
+      `${status} debe usar LibraryErrorDto`,
+    );
+  }
+});
+
+test('POST /library/banks/restore documenta 200, 400, 404, 409 y 422', () => {
+  const body = requestContent('/library/banks/restore', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBankRestoreRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}), ['restaurar']);
+
+  const restored = responses('/library/banks/restore', 'post');
+  assert.deepEqual(Object.keys(restored).sort(), ['200', '400', '404', '409', '422']);
+  assert.equal(document.paths['/library/banks/restore']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(restored['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryBankRestoreResponseDto',
+  );
+  const examples = ok['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(examples).sort(), ['restaurado', 'yaRestaurado']);
+  assert.deepEqual(examples['restaurado']!.value, LIBRARY_RESTORE_EXAMPLE);
+  assert.deepEqual(examples['yaRestaurado']!.value, LIBRARY_RESTORE_UNCHANGED_EXAMPLE);
+
+  const conflicts = jsonBody(restored['409'])['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(conflicts).sort(), ['sinDefecto', 'sinRespaldo']);
+  assert.deepEqual(conflicts['sinRespaldo']!.value, LIBRARY_RESTORE_NO_BACKUP_EXAMPLE);
+  assert.deepEqual(jsonBody(restored['422'])['example'], LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE);
+
+  for (const status of ['400', '404', '409', '422'] as const) {
+    assert.equal(
+      (jsonBody(restored[status])['schema'] as { $ref: string }).$ref,
+      '#/components/schemas/LibraryErrorDto',
+      `${status} debe usar LibraryErrorDto`,
+    );
+  }
+});
+
+test('POST /library/banks/export documenta 200, 400, 404, 409 y 422', () => {
+  const body = requestContent('/library/banks/export', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBankExportRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['big', 'little']);
+
+  const exported = responses('/library/banks/export', 'post');
+  assert.deepEqual(Object.keys(exported).sort(), ['200', '400', '404', '409', '422']);
+  assert.equal(document.paths['/library/banks/export']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(exported['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryBankExportResponseDto',
+  );
+  assert.deepEqual(ok['example'], LIBRARY_EXPORT_EXAMPLE);
+
+  const bad = jsonBody(exported['400']);
+  assert.deepEqual(Object.keys(bad['examples'] as object).sort(), ['nombre', 'orden']);
+  assert.deepEqual(jsonBody(exported['409'])['example'], LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE);
+  assert.equal(
+    (jsonBody(exported['404'])['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryErrorDto',
+  );
+  assert.equal(
+    (jsonBody(exported['422'])['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryErrorDto',
+  );
+});
+
 test('POST /library/banks/inspect documenta 200, 400, 404 y 422 sin copiar', () => {
   const body = requestContent('/library/banks/inspect', 'post');
   assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBankInspectRequestDto');
@@ -305,6 +503,12 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
     'LibraryUninstallRequestDto',
     'LibraryBanksImportRequestDto',
     'LibraryBanksImportResponseDto',
+    'LibraryBankConvertRequestDto',
+    'LibraryBankConvertResponseDto',
+    'BankBackupFileDto',
+    'LibraryBankExportRequestDto',
+    'LibraryBankExportResponseDto',
+    'BankExportFileDto',
     'LibraryBankInspectRequestDto',
     'LibraryBankInspectResponseDto',
     'LibraryBanksListRequestDto',
@@ -388,9 +592,69 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
     { $ref: '#/components/schemas/FxbConfigSnapshotDto' },
   ]);
   assert.equal(list.properties['presetsDirExists']?.type, 'boolean');
+  // El respaldo del banco por defecto es opcional: sin `.orig` la vista no
+  // habilita «Restaurar original».
+  assert.equal(list.properties['defaultBackup']?.nullable, true);
+  assert.deepEqual(list.properties['defaultBackup']?.allOf, [
+    { $ref: '#/components/schemas/BankBackupSummaryDto' },
+  ]);
 
   const entry = schemas['PluginBankEntryDto'] as { properties: Record<string, Prop> };
   assert.deepEqual(Object.keys(entry.properties).sort(), ['bank', 'fileName', 'size']);
+
+  const convertRequest = schemas['LibraryBankConvertRequestDto'] as {
+    properties: Record<string, { enum?: string[]; type?: string }>;
+    required: string[];
+  };
+  assert.deepEqual(convertRequest.properties['endianness']?.enum, ['big', 'little']);
+  assert.deepEqual(Object.keys(convertRequest.properties).sort(), [
+    'endianness',
+    'libraryRoot',
+    'plugin',
+  ]);
+  // El orden de destino es opcional: sin él se invierte el actual.
+  assert.deepEqual([...convertRequest.required].sort(), ['libraryRoot', 'plugin']);
+
+  const convertResponse = schemas['LibraryBankConvertResponseDto'] as {
+    properties: Record<string, Prop>;
+  };
+  assert.equal(convertResponse.properties['backup']?.nullable, true);
+  assert.deepEqual(convertResponse.properties['backup']?.allOf, [
+    { $ref: '#/components/schemas/BankBackupFileDto' },
+  ]);
+
+  const restoreRequest = schemas['LibraryBankRestoreRequestDto'] as {
+    properties: Record<string, Prop>;
+    required: string[];
+  };
+  assert.deepEqual(Object.keys(restoreRequest.properties).sort(), ['libraryRoot', 'plugin']);
+  assert.deepEqual([...restoreRequest.required].sort(), ['libraryRoot', 'plugin']);
+
+  const restoreResponse = schemas['LibraryBankRestoreResponseDto'] as {
+    properties: Record<string, Prop>;
+    required: string[];
+  };
+  assert.deepEqual(Object.keys(restoreResponse.properties).sort(), [
+    'backup',
+    'changed',
+    'fileName',
+    'plugin',
+    'presetsDir',
+    'restored',
+  ]);
+  assert.equal(restoreResponse.properties['backup']?.nullable, undefined, 'el respaldo es obligatorio');
+
+  const exportRequest = schemas['LibraryBankExportRequestDto'] as {
+    properties: Record<string, { enum?: string[]; type?: string }>;
+  };
+  assert.deepEqual(exportRequest.properties['endianness']?.enum, ['big', 'little']);
+  assert.deepEqual(Object.keys(exportRequest.properties).sort(), [
+    'endianness',
+    'fileName',
+    'libraryRoot',
+    'overwrite',
+    'plugin',
+  ]);
 });
 
 test('openapi.json está sincronizado con el documento generado', async () => {

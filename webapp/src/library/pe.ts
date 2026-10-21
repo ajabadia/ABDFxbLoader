@@ -31,6 +31,12 @@ const MACHINE_NAMES: Readonly<Record<number, string>> = {
 
 export type PeBitness = 32 | 64;
 
+/**
+ * Por qué no se pudo leer el archivo. Solo `unreadable` deja la arquitectura
+ * en duda: un archivo ausente o ilegible como PE es, con certeza, inutilizable.
+ */
+export type PeReadError = 'missing' | 'unreadable';
+
 export interface PeInspection {
   /** Cabecera PE completa y con arquitectura reconocible. */
   valid: boolean;
@@ -41,6 +47,8 @@ export interface PeInspection {
   /** `0x10b` (PE32) o `0x20b` (PE32+). */
   optionalMagic: number | null;
   issues: string[];
+  /** Error de E/S al abrir el archivo; `null` si el contenido se pudo leer. */
+  readError: PeReadError | null;
 }
 
 function machineName(machine: number): string {
@@ -55,6 +63,7 @@ function failed(issue: string, extras: Partial<PeInspection> = {}): PeInspection
     machineName: null,
     optionalMagic: null,
     issues: [issue],
+    readError: null,
     ...extras,
   };
 }
@@ -119,6 +128,7 @@ export function parsePeHeaders(dos: Buffer, pe: Buffer): PeInspection {
     machineName: machineName(machine),
     optionalMagic,
     issues,
+    readError: null,
   };
 }
 
@@ -177,8 +187,12 @@ export async function inspectPeFile(file: string): Promise<PeInspection> {
     return parsePeHeaders(dos, pe);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return failed(`no existe el archivo: ${file}`);
-    return failed(`no se pudo leer ${file}: ${(error as Error).message}`);
+    if (code === 'ENOENT') {
+      return failed(`no existe el archivo: ${file}`, { readError: 'missing' });
+    }
+    return failed(`no se pudo leer ${file}: ${(error as Error).message}`, {
+      readError: 'unreadable',
+    });
   } finally {
     await handle?.close().catch(() => undefined);
   }

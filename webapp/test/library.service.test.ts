@@ -19,6 +19,7 @@ import {
   VFXINFO_FILENAME,
 } from '../src/library/vfxinfo';
 import { pe32Dll, pe64Dll } from './helpers/pe';
+import { writePluginDll } from './helpers/vfx-plugin';
 
 const configService = new FxbConfigService();
 const service = new LibraryService(configService);
@@ -51,7 +52,9 @@ async function fixture(t: TestContext, dllName = 'Synth.dll'): Promise<Fixture> 
   const pluginDir = path.join(plugs, 'Synth');
   await mkdir(pluginDir, { recursive: true });
   await writeLatin1(path.join(pluginDir, VFXINFO_FILENAME), vfxinfo(dllName));
-  await writeFile(path.join(pluginDir, 'Synth.dll'), pe32Dll());
+  // Los fixtures declaran y crean el mismo binario PE32: la instalación
+  // rechaza un `dll_name` que apunte a un archivo inexistente.
+  await writePluginDll(pluginDir, dllName);
 
   const dllSource = path.join(root, 'fxbLoader.dll');
   await writeFile(dllSource, pe32Dll());
@@ -162,15 +165,55 @@ test('scan marca incompatible un dll_name que sale del plugin', async (t) => {
   assert.match(plugin.compatibilityIssues.join(' '), /fuera del plugin/);
 });
 
-test('scan deja en null un plugin cuyo binario no se puede verificar', async (t) => {
+test('scan marca incompatible un plugin cuyo DLL declarado no existe', async (t) => {
   const { root, pluginDir, dllSource } = await fixture(t);
   await rm(path.join(pluginDir, 'Synth.dll'));
 
   const result = await service.scan(root, dllSource);
   const plugin = result.plugins[0]!;
 
-  assert.equal(plugin.compatible, null);
-  assert.match(plugin.compatibilityIssues.join(' '), /no se pudo verificar el binario/);
+  // Ausente es incompatible: el host no tendría binario que cargar, así que el
+  // plugin no entra en el lote y la instalación se rechaza como cualquier otro
+  // binario que no sirve.
+  assert.equal(plugin.compatible, false);
+  assert.match(plugin.compatibilityIssues.join(' '), /no existe el binario declarado en dll_name/);
+});
+
+test('scan marca incompatible un supuesto DLL que no es un PE', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  // 200 bytes sin firma MZ: se pudo leer, así que la respuesta es concluyente.
+  await writeFile(path.join(pluginDir, 'Synth.dll'), Buffer.alloc(200, 0x41));
+
+  const result = await service.scan(root, dllSource);
+  const plugin = result.plugins[0]!;
+
+  assert.equal(plugin.compatible, false);
+  assert.match(plugin.compatibilityIssues.join(' '), /no es un PE32 i386 usable/);
+  assert.match(plugin.compatibilityIssues.join(' '), /firma MZ/);
+});
+
+test('scan marca incompatible un DLL vacío', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  await writeFile(path.join(pluginDir, 'Synth.dll'), Buffer.alloc(0));
+
+  const plugin = (await service.scan(root, dllSource)).plugins[0]!;
+
+  assert.equal(plugin.compatible, false);
+  assert.match(plugin.compatibilityIssues.join(' '), /archivo truncado/);
+});
+
+test('install rechaza un plugin cuyo DLL no es un PE, sin escribir nada', async (t) => {
+  const { root, pluginDir, dllSource, originalVfxinfo } = await fixture(t);
+  await writeFile(path.join(pluginDir, 'Synth.dll'), Buffer.alloc(200, 0x41));
+
+  await assert.rejects(
+    service.install({ libraryRoot: root, plugin: 'Synth', dllSourcePath: dllSource }),
+    (error: unknown) =>
+      error instanceof LibraryOperationError && /no es compatible/.test(error.message),
+  );
+
+  assert.deepEqual(await readFile(path.join(pluginDir, VFXINFO_FILENAME)), originalVfxinfo);
+  assert.equal((await readdir(pluginDir)).includes(VFXINFO_BACKUP_FILENAME), false);
 });
 
 test('install rechaza fxbLoader.dll que no sea PE32 i386', async (t) => {
@@ -379,6 +422,29 @@ test('install rechaza vfxinfo sin dll_name sin escribir nada', async (t) => {
   assert.deepEqual((await readdir(pluginDir)).sort(), before.sort());
 });
 
+test('install rechaza un plugin cuyo dll_name no existe en el disco', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  await rm(path.join(pluginDir, 'Synth.dll'));
+  const before = await pluginEntries(pluginDir);
+
+  await assert.rejects(
+    service.install({ libraryRoot: root, plugin: 'Synth', dllSourcePath: dllSource, dryRun: true }),
+    (error: unknown) => {
+      assert.ok(error instanceof LibraryOperationError);
+      assert.match(error.message, /no es compatible con fxbLoader\.dll de 32 bits/);
+      assert.match(error.message, /no existe el binario declarado en dll_name: Synth\.dll/);
+      return true;
+    },
+  );
+  await assert.rejects(
+    service.install({ libraryRoot: root, plugin: 'Synth', dllSourcePath: dllSource }),
+    LibraryOperationError,
+  );
+
+  // Ni respaldo, ni cargador, ni config: el plugin queda como estaba.
+  assert.deepEqual(await pluginEntries(pluginDir), before);
+});
+
 test('install rechaza un plugin sin vfxinfo o un DLL de origen inexistente', async (t) => {
   const { root, pluginDir, dllSource } = await fixture(t);
 
@@ -444,6 +510,110 @@ test('uninstall restaura el original y conserva DLL, bancos y copia modificada',
   // Igual que el original: DLL y bancos importados se quedan.
   assert.equal((await readFile(path.join(pluginDir, 'fxbLoader.dll'))).length > 0, true);
   assert.equal((await readFile(path.join(pluginDir, 'presets', 'Rhodes.fxb'))).toString(), 'bank');
+});
+
+test('cinco ciclos de force + uninstall no acumulan residuos en el plugin', async (t) => {
+  const { root, pluginDir, dllSource, originalVfxinfo } = await fixture(t);
+  const pluginBinary = await readFile(path.join(pluginDir, 'Synth.dll'));
+  const loaderSource = await readFile(dllSource);
+
+  // Listas exactas: si un ciclo dejara un temporal, un respaldo duplicado o
+  // una copia de más, el conjunto crecería y el test fallaría.
+  const installedEntries = [
+    'Synth.dll',
+    'fxbLoader.config',
+    'fxbLoader.dll',
+    'presets',
+    'vfxinfo.tx_',
+    'vfxinfo.txt',
+  ].sort();
+  const uninstalledEntries = [
+    'Synth.dll',
+    'fxbLoader.dll',
+    'presets',
+    'vfxinfo.loader',
+    'vfxinfo.txt',
+  ].sort();
+
+  // El primer ciclo define el contenido; los siguientes deben repetirlo byte a byte.
+  let config: Buffer | null = null;
+  let patched: Buffer | null = null;
+
+  for (let cycle = 1; cycle <= 5; cycle += 1) {
+    // Dos instalaciones con force seguidas: la segunda reinstala sobre lo ya escrito.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await service.install({
+        libraryRoot: root,
+        plugin: 'Synth',
+        dllSourcePath: dllSource,
+        force: true,
+      });
+
+      const entries = await pluginEntries(pluginDir);
+      assert.deepEqual(
+        entries.filter((name) => name.startsWith('.') || name.endsWith('.tmp')),
+        [],
+        `ciclo ${cycle}, force ${attempt}: quedaron temporales`,
+      );
+      assert.deepEqual(
+        entries,
+        // Desde el segundo ciclo sobrevive la copia del vfxinfo modificado.
+        [...installedEntries, ...(cycle === 1 ? [] : [VFXINFO_DISABLED_FILENAME])].sort(),
+        `ciclo ${cycle}, force ${attempt}: archivos tras instalar`,
+      );
+
+      config ??= await readFile(path.join(pluginDir, FXB_CONFIG_FILENAME));
+      patched ??= await readFile(path.join(pluginDir, VFXINFO_FILENAME));
+      assert.deepEqual(
+        await readFile(path.join(pluginDir, FXB_CONFIG_FILENAME)),
+        config,
+        `ciclo ${cycle}, force ${attempt}: la config cambió`,
+      );
+      assert.deepEqual(
+        await readFile(path.join(pluginDir, VFXINFO_FILENAME)),
+        patched,
+        `ciclo ${cycle}, force ${attempt}: el vfxinfo cambió`,
+      );
+      // El cargador copiado sigue siendo exactamente el de origen.
+      assert.deepEqual(
+        await readFile(path.join(pluginDir, 'fxbLoader.dll')),
+        loaderSource,
+        `ciclo ${cycle}, force ${attempt}: fxbLoader.dll`,
+      );
+    }
+
+    await service.uninstall({ libraryRoot: root, plugin: 'Synth' });
+
+    const entries = await pluginEntries(pluginDir);
+    assert.deepEqual(
+      entries.filter((name) => name.startsWith('.') || name.endsWith('.tmp')),
+      [],
+      `ciclo ${cycle}: quedaron temporales tras desinstalar`,
+    );
+    assert.deepEqual(entries, uninstalledEntries, `ciclo ${cycle}: archivos tras desinstalar`);
+    assert.deepEqual(
+      await readFile(path.join(pluginDir, VFXINFO_FILENAME)),
+      originalVfxinfo,
+      `ciclo ${cycle}: el vfxinfo original no se restauró`,
+    );
+    assert.deepEqual(
+      await readFile(path.join(pluginDir, VFXINFO_DISABLED_FILENAME)),
+      patched!,
+      `ciclo ${cycle}: la copia modificada se corrompió`,
+    );
+    assert.deepEqual(
+      await readFile(path.join(pluginDir, 'Synth.dll')),
+      pluginBinary,
+      `ciclo ${cycle}: el binario del plugin cambió`,
+    );
+    assert.deepEqual(await readdir(path.join(pluginDir, 'presets')), [], `ciclo ${cycle}: presets`);
+  }
+
+  // La configuración no acumula líneas ni claves repetidas entre ciclos.
+  assert.deepEqual(
+    config!.toString('latin1').trimEnd().split('\r\n').map((line) => line.split(' = ')[0]),
+    ['pluginName', 'defaultFxbName', 'programDirName', 'loadFxbBank'],
+  );
 });
 
 test('uninstall dryRun no toca el disco', async (t) => {

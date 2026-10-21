@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { pe32Dll } from './helpers/pe';
+import { writePluginDll } from './helpers/vfx-plugin';
 import { FXB_CONFIG_FILENAME } from '../src/fxb-config/fxb-config.constants';
 import type { BankInspectResult } from '../src/library/library.types';
 
@@ -59,6 +60,7 @@ async function scaffold(t: TestContext): Promise<Scaffold> {
     path.join(pluginDir, 'vfxinfo.txt'),
     Buffer.from('name: Synth\r\ndll_name: Synth/Synth.dll\r\n', 'latin1'),
   );
+  await writePluginDll(pluginDir, 'Synth/Synth.dll');
 
   const dll = path.join(root, 'loader.dll');
   await writeFile(dll, pe32Dll());
@@ -199,6 +201,7 @@ test('no crea la carpeta de presets si no existe', async (t) => {
     path.join(pluginDir, 'vfxinfo.txt'),
     Buffer.from('name: Synth\r\ndll_name: Synth/Synth.dll\r\n', 'latin1'),
   );
+  await writePluginDll(pluginDir, 'Synth/Synth.dll');
   const banks = path.join(root, 'banks');
   await mkdir(banks);
   const source = path.join(banks, 'Rhodes.fxb');

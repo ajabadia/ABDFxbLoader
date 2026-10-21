@@ -1,4 +1,5 @@
 import type { paths } from './api-types';
+import type { BatchStreamEvent, BatchStreamResult } from './batch-stream';
 
 /**
  * Cliente tipado construido sobre los tipos que `openapi-typescript` genera a
@@ -46,8 +47,12 @@ export type ErrorBody<
 export type LibraryScanResponse = SuccessBody<'/library/scan', 'post'>;
 export type LibraryInstallResponse = SuccessBody<'/library/install', 'post'>;
 export type LibraryUninstallResponse = SuccessBody<'/library/uninstall', 'post'>;
+export type LibraryBatchResponse = SuccessBody<'/library/batch', 'post'>;
 export type LibraryBanksListResponse = SuccessBody<'/library/banks/list', 'post'>;
 export type LibraryBanksImportResponse = SuccessBody<'/library/banks/import', 'post'>;
+export type LibraryBankConvertResponse = SuccessBody<'/library/banks/convert', 'post'>;
+export type LibraryBankRestoreResponse = SuccessBody<'/library/banks/restore', 'post'>;
+export type LibraryBankExportResponse = SuccessBody<'/library/banks/export', 'post'>;
 export type LibraryBankInspectResponse = SuccessBody<'/library/banks/inspect', 'post'>;
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
 
@@ -84,6 +89,13 @@ export function isFxbApiError(error: unknown): error is FxbApiError {
   return error instanceof FxbApiError;
 }
 
+export interface BatchStreamHandlers {
+  /** Se llama con cada evento de `POST /library/batch/stream`, según llega. */
+  onEvent?: (event: BatchStreamEvent) => void;
+  /** Cancela el lote desde el cliente (el servidor deja de escribir). */
+  signal?: AbortSignal;
+}
+
 export interface FxbClient {
   readonly library: {
     /** Enumera `plugs\` y marca los plugins con `fxbLoader.config`. */
@@ -98,6 +110,19 @@ export interface FxbClient {
     uninstall(
       body: RequestBody<'/library/uninstall', 'post'>,
     ): Promise<SuccessBody<'/library/uninstall', 'post'>>;
+    /** Instala o desinstala varios plugins en una llamada, con resultado por plugin. */
+    batch(
+      body: RequestBody<'/library/batch', 'post'>,
+    ): Promise<SuccessBody<'/library/batch', 'post'>>;
+    /**
+     * El mismo lote, leyendo el progreso NDJSON: `onEvent` recibe cada evento
+     * (`start`, `plugin`, `end`) mientras el servidor lo escribe, y la promesa
+     * se resuelve con el resultado final.
+     */
+    batchStream(
+      body: RequestBody<'/library/batch/stream', 'post'>,
+      handlers?: BatchStreamHandlers,
+    ): Promise<BatchStreamResult>;
     /** Lista los bancos del plugin y su configuración, sin escribir nada. */
     listBanks(
       body: RequestBody<'/library/banks/list', 'post'>,
@@ -106,6 +131,24 @@ export interface FxbClient {
     importBanks(
       body: RequestBody<'/library/banks/import', 'post'>,
     ): Promise<SuccessBody<'/library/banks/import', 'post'>>;
+    /**
+     * Convierte **en el sitio** el banco por defecto del plugin, guardando una
+     * copia del original como `<banco>.orig` antes de reescribirlo.
+     */
+    convertDefaultBank(
+      body: RequestBody<'/library/banks/convert', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/convert', 'post'>>;
+    /**
+     * Devuelve el banco por defecto al contenido de `<banco>.orig`, sin tocar
+     * el respaldo, que sigue disponible para restaurar otra vez.
+     */
+    restoreDefaultBank(
+      body: RequestBody<'/library/banks/restore', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/restore', 'post'>>;
+    /** Exporta un banco importado en big-endian o little-endian, sin tocar el original. */
+    exportBank(
+      body: RequestBody<'/library/banks/export', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/export', 'post'>>;
     /** Lee un `.fxb` y lo compara con los bancos del plugin, sin copiarlo. */
     inspectBank(
       body: RequestBody<'/library/banks/inspect', 'post'>,
@@ -175,6 +218,82 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
     return payload;
   }
 
+  /**
+   * Lote en NDJSON: cada línea es un evento que se entrega según llega, y el
+   * resultado es el del evento `end`. Los errores de la petición llegan como
+   * JSON normal (aún no se ha escrito ningún evento), así que se tratan igual
+   * que en el resto del cliente.
+   */
+  async function streamBatch(
+    body: unknown,
+    handlers: BatchStreamHandlers,
+  ): Promise<BatchStreamResult> {
+    const response = await doFetch(`${baseUrl}/library/batch/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/x-ndjson',
+        ...extraHeaders,
+      },
+      body: JSON.stringify(body),
+      ...(handlers.signal === undefined ? {} : { signal: handlers.signal }),
+    });
+
+    if (!response.ok) {
+      const payload = parsePayload(await response.text());
+      const fallback = `${response.status} ${response.statusText}`.trim();
+      throw new FxbApiError(response.status, payload, messageFrom(payload) ?? fallback);
+    }
+    if (response.body === null) {
+      throw new FxbApiError(response.status, null, 'la respuesta del lote no tiene cuerpo');
+    }
+
+    // `result` vive en un objeto porque se rellena desde el bucle de lectura.
+    const state: { result: BatchStreamResult | null } = { result: null };
+    const handleLine = (line: string): void => {
+      if (line.trim() === '') return;
+      let event: BatchStreamEvent;
+      try {
+        event = JSON.parse(line) as BatchStreamEvent;
+      } catch {
+        throw new FxbApiError(response.status, line, 'el servidor envió un evento NDJSON inválido');
+      }
+      handlers.onEvent?.(event);
+      if (event.type === 'end') state.result = event.result;
+    };
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let newline = buffer.indexOf('\n');
+        while (newline !== -1) {
+          handleLine(buffer.slice(0, newline));
+          buffer = buffer.slice(newline + 1);
+          newline = buffer.indexOf('\n');
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    buffer += decoder.decode();
+    handleLine(buffer);
+
+    if (state.result === null) {
+      throw new FxbApiError(
+        response.status,
+        null,
+        'el lote terminó sin evento end: el servidor cortó la respuesta',
+      );
+    }
+    return state.result;
+  }
+
   return {
     library: {
       scan: (body) =>
@@ -187,6 +306,11 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/uninstall', body) as Promise<
           SuccessBody<'/library/uninstall', 'post'>
         >,
+      batch: (body) =>
+        request('POST', '/library/batch', body) as Promise<
+          SuccessBody<'/library/batch', 'post'>
+        >,
+      batchStream: (body, handlers = {}) => streamBatch(body, handlers),
       listBanks: (body) =>
         request('POST', '/library/banks/list', body) as Promise<
           SuccessBody<'/library/banks/list', 'post'>
@@ -194,6 +318,18 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
       importBanks: (body) =>
         request('POST', '/library/banks/import', body) as Promise<
           SuccessBody<'/library/banks/import', 'post'>
+        >,
+      convertDefaultBank: (body) =>
+        request('POST', '/library/banks/convert', body) as Promise<
+          SuccessBody<'/library/banks/convert', 'post'>
+        >,
+      restoreDefaultBank: (body) =>
+        request('POST', '/library/banks/restore', body) as Promise<
+          SuccessBody<'/library/banks/restore', 'post'>
+        >,
+      exportBank: (body) =>
+        request('POST', '/library/banks/export', body) as Promise<
+          SuccessBody<'/library/banks/export', 'post'>
         >,
       inspectBank: (body) =>
         request('POST', '/library/banks/inspect', body) as Promise<

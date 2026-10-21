@@ -203,8 +203,10 @@ export class FxbConfigController {
     description:
       'Ruta inválida o valores fuera de los límites del binario ' +
       '(63 caracteres, sin `/`, sin controles, `programDirName` no vacío).',
+    // `anyOf`: los dos errores comparten `message`, así que un ejemplo puede
+    // cumplir ambos y `oneOf` sería una restricción falsa.
     schema: {
-      oneOf: [
+      anyOf: [
         { $ref: getSchemaPath(FxbConfigPathErrorDto) },
         { $ref: getSchemaPath(FxbConfigValidationErrorDto) },
       ],

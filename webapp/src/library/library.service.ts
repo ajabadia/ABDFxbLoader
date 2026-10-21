@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { promises as fs, type Stats } from 'node:fs';
 import * as path from 'node:path';
+import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import { copyFileAtomic, writeFileAtomic } from '../common/atomic-file';
 import { FXB_CONFIG_FILENAME } from '../fxb-config/fxb-config.constants';
 import { FxbConfigService } from '../fxb-config/fxb-config.service';
 import type { FxbConfigSnapshot } from '../fxb-config/fxb-config.types';
 import {
   checkBankCompatibility,
+  convertFxbEndianness,
   FXB_CHUNK_HEADER_SIZE,
   FXB_HEADER_SIZE,
   FXB_MAX_BYTES,
@@ -15,7 +17,7 @@ import {
   parseUniqueIdInput,
   uniqueIdToText,
 } from './fxb-bank';
-import type { BankReference } from './fxb-bank';
+import type { BankReference, FxbBankInfo, FxbEndianness } from './fxb-bank';
 import {
   analyzeVfxinfo,
   LOADER_DLL_FILENAME,
@@ -34,6 +36,13 @@ import {
   PluginStateError,
 } from './library.types';
 import type {
+  BankBackupFile,
+  BankBackupSummary,
+  BankConvertInput,
+  BankConvertResult,
+  BankExportFile,
+  BankExportInput,
+  BankExportResult,
   BankImportInput,
   BankImportResponse,
   BankImportResult,
@@ -41,6 +50,12 @@ import type {
   BankInspectResult,
   BankListInput,
   BankListResult,
+  BankRestoreInput,
+  BankRestoreResult,
+  BatchInput,
+  BatchPluginResult,
+  BatchResult,
+  BatchStreamEvent,
   InstallInput,
   InstallResult,
   LibraryAction,
@@ -49,6 +64,7 @@ import type {
   PluginBankEntry,
   PluginBankSummary,
   PluginEntry,
+  StepListener,
   UninstallInput,
   UninstallResult,
 } from './library.types';
@@ -96,6 +112,56 @@ async function exists(target: string): Promise<boolean> {
   return (await statOrNull(target)) !== null;
 }
 
+/**
+ * Aviso de los pasos de una operación: emite `actions[index]` con su posición,
+ * o no hace nada si no hay oyente. Cada paso se avisa justo antes de ejecutarlo.
+ */
+function stepReporter(
+  actions: readonly LibraryAction[],
+  onStep: StepListener | undefined,
+): (index: number) => void {
+  return (index) => {
+    const action = actions[index];
+    if (action !== undefined && onStep !== undefined) {
+      onStep({ action, index, total: actions.length });
+    }
+  };
+}
+
+/**
+ * Nombre del archivo exportado: `<banco>-le.fxb` o `<banco>-be.fxb`. Si el
+ * nombre ya lleva uno de los dos sufijos se sustituye, para poder alternar
+ * entre los dos órdenes sin acumular archivos.
+ */
+function exportedBankName(fileName: string, endianness: FxbEndianness): string {
+  const suffix = endianness === 'little' ? '-le' : '-be';
+  const base = fileName.replace(/\.fxb$/i, '').replace(/-(le|be)$/i, '');
+  return `${base}${suffix}.fxb`;
+}
+
+/**
+ * Sufijo del respaldo que deja la conversión en el sitio: el original se queda
+ * como `Legacy.fxb.orig`, junto al banco. No acaba en `.fxb`, así que no
+ * aparece en la lista de bancos del plugin y no se confunde con uno.
+ */
+export const BANK_BACKUP_SUFFIX = '.orig';
+
+/** Orden contrario, el destino natural al convertir en el sitio. */
+function oppositeEndianness(endianness: FxbEndianness): FxbEndianness {
+  return endianness === 'little' ? 'big' : 'little';
+}
+
+/** Orden que declara el sufijo `-le`/`-be` del nombre, si lo lleva. */
+function endiannessFromName(fileName: string): FxbEndianness | null {
+  const match = /-(le|be)\.fxb$/i.exec(fileName);
+  if (match === null) return null;
+  return match[1]!.toLowerCase() === 'le' ? 'little' : 'big';
+}
+
+function orderLabel(endianness: FxbEndianness): string {
+  return endianness === 'little' ? 'little-endian' : 'big-endian';
+}
+
 @Injectable()
 export class LibraryService {
   constructor(private readonly configService: FxbConfigService) {}
@@ -122,9 +188,10 @@ export class LibraryService {
   /**
    * Instala el cargador en un plugin: respalda `vfxinfo.txt` como
    * `vfxinfo.tx_`, copia el DLL, reescribe `dll_name` y crea
-   * `fxbLoader.config` + `presets\`.
+   * `fxbLoader.config` + `presets\`. `onStep` recibe cada paso antes de
+   * ejecutarlo, para que el lote pueda avisar del progreso.
    */
-  async install(input: InstallInput): Promise<InstallResult> {
+  async install(input: InstallInput, onStep?: StepListener): Promise<InstallResult> {
     const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
     const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
     const dllSource = await this.resolveDllSource(input.dllSourcePath);
@@ -211,6 +278,10 @@ export class LibraryService {
       { kind: 'create-dir', path: presetsPath },
     ];
 
+    // Con un `dryRun` no se avisa de ningún paso: no hay trabajo en curso, solo
+    // un plan.
+    const report = stepReporter(actions, onStep);
+
     if (input.dryRun === true) {
       return {
         plugin: await this.describe(plugsPath, input.plugin, loaderCheck),
@@ -219,12 +290,16 @@ export class LibraryService {
       };
     }
 
+    report(0);
     if (!backupExists) await copyFileAtomic(vfxinfoPath, backupPath);
+    report(1);
     await copyFileAtomic(dllSource, dllTarget);
+    report(2);
     if (patched.text !== raw) {
       await writeFileAtomic(vfxinfoPath, Buffer.from(patched.text, 'latin1'));
     }
 
+    report(3);
     const snapshot = await this.configService.read(pluginDir);
     await this.configService.write({
       pluginDir,
@@ -232,6 +307,7 @@ export class LibraryService {
       config: { pluginName },
     });
 
+    report(4);
     await fs.mkdir(presetsPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'EEXIST') throw error;
     });
@@ -246,9 +322,10 @@ export class LibraryService {
   /**
    * Restaura el `vfxinfo.txt` original desde `vfxinfo.tx_`, conserva el
    * modificado como `vfxinfo.loader` y borra `fxbLoader.config`. El DLL y los
-   * bancos importados se quedan, igual que en el binario original.
+   * bancos importados se quedan, igual que en el binario original. `onStep`
+   * recibe cada paso antes de ejecutarlo.
    */
-  async uninstall(input: UninstallInput): Promise<UninstallResult> {
+  async uninstall(input: UninstallInput, onStep?: StepListener): Promise<UninstallResult> {
     const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
     const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
 
@@ -273,6 +350,8 @@ export class LibraryService {
       { kind: 'delete', path: configPath },
     ];
 
+    const report = stepReporter(actions, onStep);
+
     if (input.dryRun === true) {
       return {
         plugin: await this.describe(plugsPath, input.plugin),
@@ -281,10 +360,13 @@ export class LibraryService {
       };
     }
 
+    report(0);
     if (await exists(vfxinfoPath)) {
       await fs.rename(vfxinfoPath, disabledPath);
     }
+    report(1);
     await fs.rename(backupPath, vfxinfoPath);
+    report(2);
     await fs.rm(configPath, { force: true });
 
     return {
@@ -292,6 +374,146 @@ export class LibraryService {
       actions,
       dryRun: false,
     };
+  }
+
+  /**
+   * Instala o desinstala varios plugins en una sola llamada, en serie y en el
+   * orden recibido (el instalador escribe sobre el mismo árbol, así que no se
+   * procesan en paralelo).
+   *
+   * La raíz de la librería y el cargador se validan una sola vez y su error es
+   * de la petición entera (400/422). En cambio, cada plugin se opera en su
+   * propio `try`: un plugin inexistente, ya instalado o sin respaldo no cancela
+   * al resto, que es el comportamiento que tenía el lote hecho desde el
+   * navegador con una petición por plugin. No hay reintentos automáticos: un
+   * fallo se reporta y el cliente decide.
+   *
+   * `emit` recibe cada evento en el momento en que ocurre (ver
+   * `BatchStreamEvent`): `start` tras validar la petición, `plugin` antes y
+   * después de operar cada plugin y, entre esos dos, un `step` por cada paso
+   * interno (respaldo, copia, parcheo, config, presets). El endpoint NDJSON los
+   * reenvía tal cual, así que la vista puede pintar el progreso con el lote en
+   * marcha.
+   */
+  async runBatch(
+    input: BatchInput,
+    emit: (event: BatchStreamEvent) => void = () => undefined,
+  ): Promise<BatchResult> {
+    if (input.action !== 'install' && input.action !== 'uninstall') {
+      throw new LibraryPathError(`acción de lote no válida: ${String(input.action)}`);
+    }
+    if (input.plugins.length === 0) {
+      throw new LibraryPathError('plugins debe contener al menos un nombre');
+    }
+    // Se rechaza el lote entero antes de tocar el primer plugin: es 400, no un
+    // fallo por plugin con el resto del lote ejecutado.
+    if (input.plugins.length > MAX_PLUGINS_PER_BATCH) {
+      throw new LibraryPathError(
+        `como máximo ${MAX_PLUGINS_PER_BATCH} plugins por petición`,
+      );
+    }
+
+    // Validación común a todo el lote: si falla, no se toca ningún plugin.
+    await this.resolvePlugs(input.libraryRoot);
+    if (input.action === 'install') {
+      const source = await this.resolveDllSource(input.dllSourcePath);
+      const loaderCheck = await this.inspectLoader(source);
+      if (!loaderCheck.valid) {
+        throw new LibraryOperationError(
+          `fxbLoader.dll no es un PE32 i386 válido: ${loaderCheck.issues.join('; ')}`,
+        );
+      }
+    }
+
+    const dryRun = input.dryRun === true;
+    const total = input.plugins.length;
+    const results: BatchPluginResult[] = [];
+
+    emit({
+      type: 'start',
+      action: input.action,
+      dryRun,
+      total,
+      plugins: [...input.plugins],
+    });
+
+    for (const [index, name] of input.plugins.entries()) {
+      emit({ type: 'plugin', index, total, name, status: 'running', message: null });
+
+      // Pasos internos del plugin en curso: la vista los pinta como detalle del
+      // aviso `running` sin que el servidor tenga que esperar al resultado.
+      const onStep: StepListener = ({ action, index: stepIndex, total: steps }) =>
+        emit({ type: 'step', index, total, name, step: action.kind, stepIndex, steps });
+
+      let result: BatchPluginResult;
+      try {
+        if (input.action === 'install') {
+          const outcome = await this.install(
+            {
+              libraryRoot: input.libraryRoot,
+              plugin: name,
+              dllSourcePath: input.dllSourcePath,
+              ...(input.force === undefined ? {} : { force: input.force }),
+              dryRun,
+            },
+            onStep,
+          );
+          result = {
+            name,
+            status: dryRun ? 'planned' : 'installed',
+            message: null,
+            entry: outcome.plugin,
+            actions: outcome.actions,
+          };
+        } else {
+          const outcome = await this.uninstall(
+            {
+              libraryRoot: input.libraryRoot,
+              plugin: name,
+              dryRun,
+            },
+            onStep,
+          );
+          result = {
+            name,
+            status: dryRun ? 'planned' : 'uninstalled',
+            message: null,
+            entry: outcome.plugin,
+            actions: outcome.actions,
+          };
+        }
+      } catch (error) {
+        result = {
+          name,
+          status: 'failed',
+          message: error instanceof Error && error.message !== '' ? error.message : String(error),
+          entry: null,
+          actions: [],
+        };
+      }
+
+      results.push(result);
+      emit({
+        type: 'plugin',
+        index,
+        total,
+        name,
+        status: result.status,
+        message: result.message,
+      });
+    }
+
+    const failed = results.filter((result) => result.status === 'failed').length;
+    const summary: BatchResult = {
+      action: input.action,
+      dryRun,
+      total: results.length,
+      succeeded: results.length - failed,
+      failed,
+      results,
+    };
+    emit({ type: 'end', result: summary });
+    return summary;
   }
 
   /**
@@ -466,6 +688,363 @@ export class LibraryService {
   }
 
   /**
+   * Exporta un banco ya importado en el orden de bytes pedido.
+   *
+   * Sirve para los bancos legacy que un plugin de Windows guardó con su struct
+   * nativo (little-endian): el cargador los lee igual porque el orden se
+   * detecta por `chunkMagic`, pero otra herramienta puede exigir el estándar
+   * big-endian. Se escribe un archivo **nuevo** junto al original
+   * (`<banco>-le.fxb` o `<banco>-be.fxb`), que no se toca, y el resultado se
+   * vuelve a parsear antes de escribirlo.
+   */
+  async exportBank(input: BankExportInput): Promise<BankExportResult> {
+    const endianness = input.endianness;
+    if (endianness !== 'big' && endianness !== 'little') {
+      throw new LibraryPathError('endianness debe ser "big" o "little"');
+    }
+
+    const fileName = typeof input.fileName === 'string' ? input.fileName.trim() : '';
+    if (fileName === '') {
+      throw new LibraryPathError('fileName es obligatorio y debe ser una cadena');
+    }
+    if (path.basename(fileName) !== fileName) {
+      throw new LibraryPathError(`fileName no puede contener separadores de ruta: "${fileName}"`);
+    }
+    if (!/\.fxb$/i.test(fileName)) {
+      throw new LibraryPathError('la extensión debe ser .fxb');
+    }
+
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const presetsDir = await this.resolvePresetsDir(pluginDir, 'exportar');
+
+    const sourcePath = path.join(presetsDir, fileName);
+    const stats = await statOrNull(sourcePath);
+    if (stats === null || !stats.isFile()) {
+      throw new LibraryPathError(`no existe el banco en la carpeta del plugin: ${sourcePath}`);
+    }
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío');
+    if (stats.size > FXB_MAX_BYTES) {
+      throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
+    }
+
+    const data = await fs.readFile(sourcePath);
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      throw new LibraryOperationError(`el banco no es un .fxb válido: ${parsed.issues.join('; ')}`);
+    }
+
+    const targetPath = path.join(presetsDir, exportedBankName(fileName, endianness));
+    const converted = convertFxbEndianness(data, endianness);
+    const reparsed = parseFxbBank(converted.data);
+    if (reparsed.bank === null || reparsed.issues.length > 0) {
+      throw new LibraryOperationError(
+        `la conversión a ${endianness === 'little' ? 'little-endian' : 'big-endian'} dejó un ` +
+          `banco inválido: ${reparsed.issues.join('; ')}`,
+      );
+    }
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    const source = this.exportFile(sourcePath, data, parsed.bank);
+    const changed = converted.fields > 0;
+
+    if (samePath(targetPath, sourcePath)) {
+      if (!changed) {
+        // El nombre ya declara ese orden y el contenido coincide: nada que hacer.
+        return {
+          plugin,
+          presetsDir,
+          source,
+          target: source,
+          changed: false,
+          fields: 0,
+          programs: converted.programs,
+          chunks: 0,
+        };
+      }
+      throw new LibraryOperationError(
+        `"${fileName}" ya lleva el sufijo de ese orden pero su contenido está en ` +
+          `${parsed.bank.endianness === 'little' ? 'little-endian' : 'big-endian'}; ` +
+          'renómbralo antes de exportar',
+      );
+    }
+
+    if ((await exists(targetPath)) && input.overwrite !== true) {
+      throw new PluginStateError(`ya existe ${targetPath}; marca overwrite para reemplazarlo`);
+    }
+
+    await fs.mkdir(presetsDir, { recursive: true });
+    await writeFileAtomic(targetPath, converted.data);
+
+    return {
+      plugin,
+      presetsDir,
+      source,
+      target: this.exportFile(targetPath, converted.data, reparsed.bank),
+      changed,
+      fields: converted.fields,
+      programs: converted.programs,
+      chunks: converted.chunks,
+    };
+  }
+
+  /**
+   * Convierte **en el sitio** el banco marcado como predeterminado del plugin.
+   *
+   * El nombre sale de `fxbLoader.config` (`defaultFxbName`) y el archivo se
+   * reescribe en su misma ruta, así que la DLL lo sigue cargando sin tocar la
+   * configuración. Antes de escribirlo se guarda una copia byte a byte del
+   * original como `<banco>.orig`; si el respaldo ya existe no se pisa, porque
+   * lo valioso es el archivo anterior a la primera conversión. El banco
+   * convertido se vuelve a parsear antes de sustituir al original, y sin
+   * `endianness` se elige el orden contrario al que tiene.
+   */
+  async convertDefaultBank(input: BankConvertInput): Promise<BankConvertResult> {
+    const requested = input.endianness;
+    if (requested !== undefined && requested !== 'big' && requested !== 'little') {
+      throw new LibraryPathError('endianness debe ser "big" o "little"');
+    }
+
+    const { plugsPath, presetsDir, fileName, sourcePath } = await this.resolveDefaultBankFile(
+      input,
+      'convertir el banco por defecto',
+    );
+    const stats = await statOrNull(sourcePath);
+    if (stats === null || !stats.isFile()) {
+      throw new PluginStateError(
+        `el banco por defecto "${fileName}" no está en la carpeta del plugin: ${sourcePath}`,
+      );
+    }
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío');
+    if (stats.size > FXB_MAX_BYTES) {
+      throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
+    }
+
+    const data = await fs.readFile(sourcePath);
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      throw new LibraryOperationError(
+        `el banco por defecto no es un .fxb válido: ${parsed.issues.join('; ')}`,
+      );
+    }
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    const source = this.exportFile(sourcePath, data, parsed.bank);
+    const target = requested ?? oppositeEndianness(parsed.bank.endianness);
+
+    // El nombre manda: convertirlo al orden contrario al que declara dejaría un
+    // archivo que miente sobre su contenido, y aquí no se puede renombrar.
+    const declared = endiannessFromName(fileName);
+    if (declared !== null && declared !== target) {
+      throw new LibraryOperationError(
+        `"${fileName}" declara ${orderLabel(declared)} en el nombre pero se pidió ` +
+          `${orderLabel(target)}; renómbralo antes de convertir`,
+      );
+    }
+
+    if (parsed.bank.endianness === target) {
+      // Ya está en ese orden: no se escribe ni se crea respaldo.
+      return {
+        plugin,
+        presetsDir,
+        fileName,
+        source,
+        target: source,
+        backup: null,
+        backupCreated: false,
+        changed: false,
+        fields: 0,
+        programs: 0,
+        chunks: 0,
+      };
+    }
+
+    const converted = convertFxbEndianness(data, target);
+    const reparsed = parseFxbBank(converted.data);
+    if (reparsed.bank === null || reparsed.issues.length > 0) {
+      throw new LibraryOperationError(
+        `la conversión a ${orderLabel(target)} dejó un banco inválido: ` +
+          reparsed.issues.join('; '),
+      );
+    }
+    if (reparsed.bank.endianness !== target) {
+      throw new LibraryOperationError(
+        `la conversión a ${orderLabel(target)} no cambió el orden del banco`,
+      );
+    }
+
+    const backupPath = `${sourcePath}${BANK_BACKUP_SUFFIX}`;
+    const backupCreated = !(await exists(backupPath));
+    if (backupCreated) await copyFileAtomic(sourcePath, backupPath);
+    const backup = await this.backupFile(backupPath);
+
+    await writeFileAtomic(sourcePath, converted.data);
+
+    return {
+      plugin,
+      presetsDir,
+      fileName,
+      source,
+      target: this.exportFile(sourcePath, converted.data, reparsed.bank),
+      backup,
+      backupCreated,
+      changed: true,
+      fields: converted.fields,
+      programs: converted.programs,
+      chunks: converted.chunks,
+    };
+  }
+
+  /**
+   * Devuelve **en el sitio** el banco por defecto al contenido del respaldo que
+   * dejó `convertDefaultBank` (`<banco>.orig`).
+   *
+   * El respaldo solo se lee: no se renombra ni se reescribe, así que se puede
+   * restaurar varias veces y el original sigue disponible. El banco actual se
+   * sustituye con la misma escritura atómica que el resto y, si ya era byte a
+   * byte el respaldo, no se escribe nada (`changed: false`). El respaldo se
+   * valida antes de usarlo: un `.orig` corrupto no puede dejar el plugin con un
+   * banco roto.
+   */
+  async restoreDefaultBank(input: BankRestoreInput): Promise<BankRestoreResult> {
+    const { plugsPath, presetsDir, fileName, sourcePath } = await this.resolveDefaultBankFile(
+      input,
+      'restaurar el banco por defecto',
+    );
+
+    const backupPath = `${sourcePath}${BANK_BACKUP_SUFFIX}`;
+    const backupStats = await statOrNull(backupPath);
+    if (backupStats === null || !backupStats.isFile()) {
+      throw new PluginStateError(
+        `no hay respaldo ${path.basename(backupPath)} en la carpeta del plugin; ` +
+          'solo se puede restaurar un banco que se convirtió antes',
+      );
+    }
+    if (backupStats.size === 0) {
+      throw new LibraryOperationError(`el respaldo ${path.basename(backupPath)} está vacío`);
+    }
+    if (backupStats.size > FXB_MAX_BYTES) {
+      throw new LibraryOperationError(
+        `el respaldo supera el máximo de ${FXB_MAX_BYTES} bytes`,
+      );
+    }
+
+    const data = await fs.readFile(backupPath);
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      throw new LibraryOperationError(
+        `el respaldo ${path.basename(backupPath)} no es un .fxb válido: ` +
+          parsed.issues.join('; '),
+      );
+    }
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    const backup = await this.backupFile(backupPath);
+    const current = await statOrNull(sourcePath);
+    const alreadyRestored =
+      current !== null &&
+      current.isFile() &&
+      current.size === data.length &&
+      (await fs.readFile(sourcePath)).equals(data);
+
+    if (alreadyRestored) {
+      return {
+        plugin,
+        presetsDir,
+        fileName,
+        restored: this.exportFile(sourcePath, data, parsed.bank),
+        backup,
+        changed: false,
+      };
+    }
+
+    await writeFileAtomic(sourcePath, data);
+
+    return {
+      plugin,
+      presetsDir,
+      fileName,
+      restored: this.exportFile(sourcePath, data, parsed.bank),
+      backup,
+      changed: true,
+    };
+  }
+
+  /**
+   * Resuelve el banco por defecto de un plugin (`defaultFxbName`): valida el
+   * nombre y devuelve su ruta dentro de la carpeta de presets. Lo comparten
+   * `convertDefaultBank` y `restoreDefaultBank` para que las dos rechacen lo
+   * mismo (sin banco configurado, con separadores o sin `.fxb`).
+   */
+  private async resolveDefaultBankFile(
+    input: { libraryRoot: string; plugin: string },
+    action: string,
+  ): Promise<{
+    plugsPath: string;
+    presetsDir: string;
+    fileName: string;
+    sourcePath: string;
+  }> {
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const snapshot = await this.configService.read(pluginDir);
+
+    const fileName = snapshot.config.defaultFxbName.trim();
+    if (fileName === '') {
+      throw new PluginStateError(
+        'el plugin no tiene un banco por defecto configurado en fxbLoader.config',
+      );
+    }
+    if (path.basename(fileName) !== fileName) {
+      throw new LibraryPathError(
+        `defaultFxbName no puede contener separadores de ruta: "${fileName}"`,
+      );
+    }
+    if (!/\.fxb$/i.test(fileName)) {
+      throw new LibraryPathError(`defaultFxbName debe terminar en .fxb: "${fileName}"`);
+    }
+
+    const presetsDir = await this.resolvePresetsDir(pluginDir, action, snapshot);
+    return { plugsPath, presetsDir, fileName, sourcePath: path.join(presetsDir, fileName) };
+  }
+
+  /**
+   * Respaldo del banco por defecto, si existe. Solo se lee el tamaño: la vista
+   * lo necesita para habilitar «Restaurar original», no para abrirlo.
+   */
+  private async defaultBackupSummary(
+    presetsDir: string,
+    fileName: string,
+  ): Promise<BankBackupSummary | null> {
+    if (fileName === '' || path.basename(fileName) !== fileName) return null;
+
+    const backupPath = path.join(presetsDir, `${fileName}${BANK_BACKUP_SUFFIX}`);
+    const stats = await statOrNull(backupPath);
+    if (stats === null || !stats.isFile() || stats.size === 0) return null;
+    return { fileName: path.basename(backupPath), size: stats.size };
+  }
+
+  private async backupFile(filePath: string): Promise<BankBackupFile> {
+    const data = await fs.readFile(filePath);
+    return {
+      fileName: path.basename(filePath),
+      path: filePath,
+      size: data.length,
+      sha256: createHash('sha256').update(data).digest('hex'),
+    };
+  }
+
+  private exportFile(filePath: string, data: Buffer, bank: FxbBankInfo): BankExportFile {
+    return {
+      fileName: path.basename(filePath),
+      path: filePath,
+      size: data.length,
+      sha256: createHash('sha256').update(data).digest('hex'),
+      bank,
+    };
+  }
+
+  /**
    * Inspecciona un `.fxb` **sin copiarlo**: valida el archivo, calcula su
    * SHA-256 y, si se indica un plugin, lo compara con los bancos que ya tiene
    * en su carpeta de presets.
@@ -571,6 +1150,10 @@ export class LibraryService {
       presetsDir,
       presetsDirExists: (await statOrNull(presetsDir))?.isDirectory() === true,
       banks: await this.listPluginBanks(presetsDir),
+      defaultBackup: await this.defaultBackupSummary(
+        presetsDir,
+        snapshot.config.defaultFxbName.trim(),
+      ),
       config: snapshot,
     };
   }
@@ -845,8 +1428,11 @@ export class LibraryService {
 
   /**
    * Compara el DLL original del plugin con el cargador de 32 bits. Un archivo
-   * ausente o ilegible no es «incompatible», pero tampoco se puede verificar:
-   * se devuelve `null` para que la UI lo muestre como tal.
+   * que existe pero no es un PE32 i386 usable es incompatible con certeza; un
+   * DLL ilegible deja la comprobación en `null` (no se pudo leer). Un DLL
+   * ausente es incompatible sin duda: el host no tendría nada que cargar, así
+   * que la instalación se bloquea como con cualquier binario de otra
+   * arquitectura.
    */
   private async inspectPluginBinary(
     pluginDir: string,
@@ -882,11 +1468,31 @@ export class LibraryService {
       };
     }
 
+    const declared = await statOrNull(binary);
+    if (declared === null || !declared.isFile()) {
+      return {
+        compatible: false,
+        issues: [`no existe el binario declarado en dll_name: ${value}`],
+      };
+    }
+
     const pe = await inspectPeFile(binary);
     if (!pe.valid) {
+      if (pe.readError !== null) {
+        return {
+          compatible: null,
+          issues: [
+            `no se pudo verificar el binario del plugin (${value}): ${pe.issues.join('; ')}`,
+          ],
+        };
+      }
+      // El archivo se leyó y aun así no es un PE32 i386: no hay duda posible.
       return {
-        compatible: null,
-        issues: [`no se pudo verificar el binario del plugin (${value}): ${pe.issues.join('; ')}`],
+        compatible: false,
+        issues: [
+          `el binario del plugin (${value}) no es un PE32 i386 usable: ` +
+            pe.issues.join('; '),
+        ],
       };
     }
     if (!isX86Pe32(pe)) {

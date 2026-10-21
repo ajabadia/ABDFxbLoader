@@ -16,6 +16,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { pe32Dll } from './helpers/pe';
+import { writePluginDll } from './helpers/vfx-plugin';
 import { FXB_CONFIG_FILENAME } from '../src/fxb-config/fxb-config.constants';
 import type { BankListResult } from '../src/library/library.types';
 import { buildBank } from './helpers/fxb-bank';
@@ -56,6 +57,7 @@ async function scaffold(t: TestContext, plugin = 'Synth'): Promise<Scaffold> {
     path.join(pluginDir, 'vfxinfo.txt'),
     Buffer.from(`name: ${plugin}\r\ndll_name: ${plugin}/${plugin}.dll\r\n`, 'latin1'),
   );
+  await writePluginDll(pluginDir, `${plugin}/${plugin}.dll`);
   const dll = path.join(root, 'loader.dll');
   await writeFile(dll, pe32Dll());
 
@@ -123,6 +125,7 @@ test('no crea la carpeta ni la configuración si no existen', async (t) => {
     path.join(pluginDir, 'vfxinfo.txt'),
     Buffer.from('name: Synth\r\ndll_name: Synth/Synth.dll\r\n', 'latin1'),
   );
+  await writePluginDll(pluginDir, 'Synth/Synth.dll');
 
   const body = (await list(root).expect(200)).body as BankListResult;
 

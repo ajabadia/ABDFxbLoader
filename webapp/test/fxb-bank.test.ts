@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   checkBankCompatibility,
+  convertFxbEndianness,
   parseFxbBank,
   parseUniqueIdInput,
   uniqueIdToText,
@@ -73,6 +74,62 @@ test('valida la cabecera sin recorrer programas cuando solo se lee el encabezado
 
   const truncatedFile = parseFxbBank(header, full.length + 10);
   assert.match(truncatedFile.issues.join(' '), /byteSize/);
+});
+
+test('convierte un FxBk de orden y lo deja idéntico al volver', () => {
+  const big = buildBank({ endianness: 'big', programs: 2 });
+  const little = convertFxbEndianness(big, 'little');
+
+  // 8 campos de cabecera + 7 de cada programa + 1 parámetro float de cada uno.
+  assert.equal(little.fields, 8 + 2 * (7 + 1));
+  assert.equal(little.programs, 2);
+  assert.equal(little.chunks, 0);
+
+  const parsed = parseFxbBank(little.data);
+  assert.deepEqual(parsed.issues, []);
+  assert.equal(parsed.bank?.endianness, 'little');
+  assert.equal(parsed.bank?.numPrograms, 2);
+  assert.equal(parsed.bank?.uniqueId, 'MySy');
+
+  assert.deepEqual(convertFxbEndianness(little.data, 'big').data, big);
+});
+
+test('convierte un FBCh y solo reescribe el tamaño del chunk', () => {
+  const big = buildBank({ kind: 'FBCh', chunkSize: 24, endianness: 'big' });
+  const little = convertFxbEndianness(big, 'little');
+
+  assert.equal(little.fields, 9); // 8 de cabecera + el chunkSize del banco
+  assert.equal(little.chunks, 1);
+  assert.equal(little.programs, 0);
+
+  const parsed = parseFxbBank(little.data);
+  assert.deepEqual(parsed.issues, []);
+  assert.equal(parsed.bank?.kind, 'FBCh');
+  assert.equal(parsed.bank?.chunkSize, 24);
+  assert.deepEqual(convertFxbEndianness(little.data, 'big').data, big);
+});
+
+test('no invierte nada si el banco ya está en el orden pedido', () => {
+  const little = buildBank({ endianness: 'little' });
+  const result = convertFxbEndianness(little, 'little');
+
+  assert.equal(result.fields, 0);
+  assert.equal(result.programs, 2);
+  assert.deepEqual(result.data, little);
+  assert.notEqual(result.data, little, 'devuelve una copia, no el mismo buffer');
+});
+
+test('rechaza lo que no puede convertir sin corromperlo', () => {
+  assert.throws(() => convertFxbEndianness(Buffer.alloc(200, 0x41), 'little'), /CcnK/);
+  assert.throws(() => convertFxbEndianness(Buffer.alloc(10), 'little'), /al menos 156/);
+  assert.throws(
+    () => convertFxbEndianness(buildBank(), 'medium' as never),
+    RangeError,
+  );
+
+  const truncated = buildBank({ endianness: 'big' });
+  truncated.writeUInt32BE(9999, 160); // byteSize del primer programa
+  assert.throws(() => convertFxbEndianness(truncated, 'little'), /se sale del archivo/);
 });
 
 test('convierte uniqueID entre texto y entero', () => {

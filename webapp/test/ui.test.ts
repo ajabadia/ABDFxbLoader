@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { readFile, readdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { after, before, test } from 'node:test';
 import { Test } from '@nestjs/testing';
@@ -7,6 +8,14 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureStaticAssets, resolvePublicDir } from '../src/app.setup';
+import {
+  elementIds,
+  htmlIdReferences,
+  parseHtml,
+  querySelectorAll,
+  scanUiSource,
+} from './helpers/ui-dom';
+import type { UiReference } from './helpers/ui-dom';
 
 let app: NestExpressApplication;
 
@@ -21,7 +30,7 @@ after(async () => {
   await app?.close();
 });
 
-test('sirve la UI en la raíz', async () => {
+test('sirve la UI y carga el módulo tipado', async () => {
   const response = await request(app.getHttpServer())
     .get('/')
     .expect(200)
@@ -33,49 +42,91 @@ test('sirve la UI en la raíz', async () => {
   assert.match(response.text, /id="banks"/);
   assert.match(response.text, /id="banks-rows"/);
   assert.match(response.text, /id="default-bank"/);
+  assert.match(response.text, /id="default-convert"/);
+  assert.match(response.text, /Convertir orden de bytes/);
+  assert.match(response.text, /id="default-restore"/);
+  assert.match(response.text, /Restaurar original/);
   assert.match(response.text, /id="import-paths"/);
+  assert.match(response.text, /id="export-bank"/);
+  assert.match(response.text, /id="export-order"/);
+  assert.match(response.text, /id="export-overwrite"/);
+  assert.match(response.text, /id="export-button"/);
+  assert.match(response.text, /Exportar un banco en otro orden de bytes/);
   assert.match(response.text, /id="install-all"/);
   assert.match(response.text, /id="uninstall-all"/);
   assert.match(response.text, /id="batch-errors"/);
   assert.match(response.text, /id="batch-error-list"/);
+  assert.match(response.text, /id="batch-progress"/);
   assert.match(response.text, /id="loader-status"/);
   assert.match(response.text, /Compatibilidad/);
   assert.match(response.text, /data-field="compatibility"/);
-  assert.match(response.text, /\/batch\.js/);
-  assert.match(response.text, /\/app\.js/);
+
+  // La UI es un módulo ESM compilado desde TypeScript; `app.js` ya no existe.
+  assert.match(response.text, /<script type="module" src="\/js\/ui\/browser\/main\.js">/);
+  assert.doesNotMatch(response.text, /\/app\.js/);
+  assert.doesNotMatch(response.text, /\/batch\.js/);
 });
 
-test('sirve los assets de la UI', async () => {
-  const script = await request(app.getHttpServer())
-    .get('/app.js')
+test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () => {
+  const main = await request(app.getHttpServer())
+    .get('/js/ui/browser/main.js')
     .expect(200)
     .expect('content-type', /javascript/);
 
-  // La vista de bancos usa el listado, la importación y el guardado optimista.
-  assert.match(script.text, /\/library\/banks\/list/);
-  assert.match(script.text, /\/library\/banks\/import/);
-  assert.match(script.text, /expectedMtimeMs/);
-
-  // El lote delega en el orquestador y cada fallo se puede reintentar.
-  assert.match(script.text, /FxbBatch\.runBatch/);
-  assert.match(script.text, /FxbBatch\.callWithRetry/);
-  assert.match(script.text, /FxbBatch\.summarize/);
-
-  // El escaneo valida el cargador y bloquea los plugins incompatibles.
-  assert.match(script.text, /dllSourcePath/);
-  assert.match(script.text, /loader\.valid/);
-  assert.match(script.text, /plugin\.compatible === false/);
-  assert.match(script.text, /plugin\.compatible === true/);
-  assert.match(script.text, /dataset\.blocked/);
+  // La vista usa el cliente tipado y conserva las operaciones de bancos.
+  assert.match(main.text, /client\.library\.scan/);
+  assert.match(main.text, /client\.library\.listBanks/);
+  assert.match(main.text, /client\.library\.importBanks/);
+  assert.match(main.text, /client\.library\.convertDefaultBank/);
+  assert.match(main.text, /client\.library\.restoreDefaultBank/);
+  // Restaurar pide confirmación y respeta el respaldo anunciado por la lista.
+  assert.match(main.text, /defaultBackup/);
+  assert.match(main.text, /client\.library\.exportBank/);
+  assert.match(main.text, /renderExportOptions/);
+  assert.match(main.text, /client\.config\.write/);
+  assert.match(main.text, /expectedMtimeMs/);
+  // El lote lo ejecuta el servidor, que además manda el progreso en caliente:
+  // la vista pinta qué plugin va y el resultado por plugin al terminar.
+  assert.match(main.text, /client\.library\.batchStream/);
+  assert.match(main.text, /failuresOf/);
+  assert.match(main.text, /progressLabel/);
+  assert.match(main.text, /batchProgress/);
+  assert.doesNotMatch(main.text, /runPluginBatch/);
+  assert.doesNotMatch(main.text, /callWithRetry/);
+  // El escaneo bloquea los plugins incompatibles.
+  assert.match(main.text, /plugin\.compatible === false/);
+  assert.match(main.text, /dataset\[['"]blocked['"]\]/);
 
   const batch = await request(app.getHttpServer())
-    .get('/batch.js')
+    .get('/js/ui/batch.js')
     .expect(200)
     .expect('content-type', /javascript/);
 
-  assert.match(batch.text, /async function runBatch/);
-  assert.match(batch.text, /async function callWithRetry/);
-  assert.match(batch.text, /function summarize/);
+  assert.match(batch.text, /export function failuresOf/);
+  assert.match(batch.text, /export function summarize/);
+  // El progreso del lote se calcula sin DOM ni red, a partir de los eventos.
+  assert.match(batch.text, /export function applyBatchEvent/);
+  assert.match(batch.text, /export function progressLabel/);
+  // La orquestación de cada petición vive en el servidor: el módulo no llama a
+  // `fetch` ni conoce las rutas, solo recibe el emisor. Lo que sí hace es
+  // trocear la lista por el tope del contrato y sumar el progreso de todas las
+  // peticiones en un único estado.
+  assert.doesNotMatch(batch.text, /fetch\(/);
+  assert.doesNotMatch(batch.text, /['"]\/library\//, 'el módulo no debe conocer rutas de la API');
+  assert.doesNotMatch(batch.text, /client\.library/);
+  assert.doesNotMatch(batch.text, /callWithRetry/);
+  assert.match(batch.text, /MAX_PLUGINS_PER_BATCH/);
+  assert.match(batch.text, /export function splitBatch/);
+  assert.match(batch.text, /export function mergeProgress/);
+  assert.match(batch.text, /export async function runBatchInChunks/);
+
+  const client = await request(app.getHttpServer())
+    .get('/js/client/fxb-client.js')
+    .expect(200)
+    .expect('content-type', /javascript/);
+
+  assert.match(client.text, /\/library\/banks\/import/);
+  assert.match(client.text, /class FxbApiError/);
 
   const styles = await request(app.getHttpServer())
     .get('/styles.css')
@@ -84,6 +135,103 @@ test('sirve los assets de la UI', async () => {
 
   assert.match(styles.text, /\.default-row/);
   assert.match(styles.text, /\.batch-errors/);
+  assert.match(styles.text, /\.batch-progress/);
+  assert.match(styles.text, /tr\.batch-running/);
+  assert.match(styles.text, /details\.export/);
+});
+
+test('el build de la UI existe y app.js ya no se sirve', () => {
+  const dir = resolvePublicDir();
+  assert.equal(existsSync(path.join(dir, 'js', 'ui', 'browser', 'main.js')), true);
+  assert.equal(existsSync(path.join(dir, 'app.js')), false);
+});
+
+async function indexHtml(): Promise<string> {
+  return readFile(path.join(resolvePublicDir(), 'index.html'), 'utf8');
+}
+
+async function uiSources(): Promise<{ file: string; source: string }[]> {
+  const uiDir = path.resolve(__dirname, '..', '..', 'src', 'ui');
+  const files = (await readdir(uiDir, { recursive: true }))
+    .filter((file) => file.endsWith('.ts'))
+    .map((file) => path.join(uiDir, file));
+
+  return Promise.all(
+    files.map(async (file) => ({
+      file: path.relative(uiDir, file).replace(/\\/g, '/'),
+      source: await readFile(file, 'utf8'),
+    })),
+  );
+}
+
+function describeReferences(references: UiReference[]): string {
+  return references.map((ref) => `${ref.value} (${ref.file}:${ref.line})`).join(', ');
+}
+
+/**
+ * La vista pide elementos por id (`byId`, `getElementById`, `#id` dentro de un
+ * selector), por atributo (`[data-field="…"]`, `[data-action="…"]`) y por
+ * etiqueta. Todo eso es texto escrito a mano: si uno deja de existir, la página
+ * falla al cargar o el botón deja de responder. Este test lo detecta sin abrir
+ * el navegador, incluidas las filas de la `<template>`.
+ */
+test('los ids y selectores de la UI existen en index.html', async () => {
+  const document = parseHtml(await indexHtml());
+  const htmlIds = elementIds(document);
+
+  const references = await Promise.all(
+    (await uiSources()).map(({ file, source }) => scanUiSource(source, file)),
+  );
+  const ids = references.flatMap((entry) => entry.ids);
+  const selectors = references.flatMap((entry) => entry.selectors);
+  const dynamic = references.flatMap((entry) => entry.dynamic);
+
+  // Un selector con plantilla no se puede comprobar contra el HTML.
+  assert.deepEqual(
+    dynamic.map((ref) => `${ref.value} (${ref.file}:${ref.line})`),
+    [],
+    'los selectores de la UI deben ser literales para poder comprobarlos',
+  );
+
+  // Sin estos mínimos, un cambio de sintaxis dejaría el test comparando nada.
+  assert.ok(ids.length >= 25, `solo se encontraron ${ids.length} ids en la UI`);
+  assert.ok(selectors.length >= 10, `solo se encontraron ${selectors.length} selectores en la UI`);
+
+  const missingIds = ids.filter((ref) => !htmlIds.has(ref.value));
+  assert.deepEqual(
+    missingIds.map((ref) => `#${ref.value} (${ref.file}:${ref.line})`),
+    [],
+    `index.html no tiene: ${describeReferences(missingIds)}`,
+  );
+
+  const unmatched = selectors.filter((ref) => querySelectorAll(document, ref.value).length === 0);
+  assert.deepEqual(
+    unmatched.map((ref) => `${ref.value} (${ref.file}:${ref.line})`),
+    [],
+    `index.html no tiene ningún elemento para: ${describeReferences(unmatched)}`,
+  );
+});
+
+/**
+ * `index.html` también referencia ids desde `for` y `aria-*`: una etiqueta sin
+ * su campo o una sección sin su título rompen la accesibilidad sin que falle
+ * ninguna otra cosa.
+ */
+test('las referencias por id de index.html apuntan a elementos existentes', async () => {
+  const document = parseHtml(await indexHtml());
+  const htmlIds = elementIds(document);
+  const references = htmlIdReferences(document);
+
+  assert.ok(references.length >= 5, `solo se encontraron ${references.length} referencias`);
+
+  const missing = references.filter((reference) => !htmlIds.has(reference.id));
+  assert.deepEqual(
+    missing.map((reference) => `${reference.origin} → #${reference.id}`),
+    [],
+    `index.html referencia ids que no existen: ${missing
+      .map((reference) => `#${reference.id}`)
+      .join(', ')}`,
+  );
 });
 
 test('los estáticos no tapan la API', async () => {

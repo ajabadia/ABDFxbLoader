@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { after, before, test, type TestContext } from 'node:test';
@@ -11,6 +11,10 @@ import { pe32Dll } from './helpers/pe';
 import {
   LIBRARY_BANK_EXAMPLE,
   LIBRARY_BANKS_LIST_EXAMPLE,
+  LIBRARY_BATCH_DRY_RUN_EXAMPLE,
+  LIBRARY_BATCH_EXAMPLE,
+  LIBRARY_EXPORT_EXAMPLE,
+  LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
   LIBRARY_IMPORT_EXAMPLE,
   LIBRARY_IMPORT_REJECTED_EXAMPLE,
   LIBRARY_INSPECT_EXAMPLE,
@@ -18,6 +22,8 @@ import {
   LIBRARY_INSTALL_CONFLICT_EXAMPLE,
   LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
   LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_RESTORE_EXAMPLE,
+  LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
   LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
   LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
@@ -111,6 +117,48 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
     .expect(409);
   assertSameKeys(conflict.body, LIBRARY_INSTALL_CONFLICT_EXAMPLE, 'install 409');
 
+  // El lote responde 200 con el resultado de cada plugin (uno bien y otro fallido).
+  const batched = await http()
+    .post('/library/batch')
+    .send({
+      libraryRoot: data.root,
+      action: 'install',
+      plugins: ['Synth', 'NoExiste'],
+      dllSourcePath: data.dll,
+      force: true,
+    })
+    .expect(200);
+  assertSameKeys(batched.body, LIBRARY_BATCH_EXAMPLE, 'batch 200');
+  assertSameKeys(batched.body.results[0], LIBRARY_BATCH_EXAMPLE.results[0]!, 'batch 200: resultado');
+  assertSameKeys(batched.body.results[1], LIBRARY_BATCH_EXAMPLE.results[1]!, 'batch 200: fallo');
+  assert.deepEqual(actionKinds(batched.body.results[0]), actionKinds(LIBRARY_BATCH_EXAMPLE.results[0]!));
+  assert.equal(batched.body.results[0].status, 'installed');
+  assert.equal(batched.body.results[1].status, 'failed');
+  assert.equal(batched.body.results[1].entry, null);
+
+  const batchDry = await http()
+    .post('/library/batch')
+    .send({
+      libraryRoot: data.root,
+      action: 'install',
+      plugins: ['Synth'],
+      dllSourcePath: data.dll,
+      force: true,
+      dryRun: true,
+    })
+    .expect(200);
+  assertSameKeys(batchDry.body, LIBRARY_BATCH_DRY_RUN_EXAMPLE, 'batch dryRun 200');
+  assertSameKeys(
+    batchDry.body.results[0],
+    LIBRARY_BATCH_DRY_RUN_EXAMPLE.results[0]!,
+    'batch dryRun: resultado',
+  );
+  assert.deepEqual(
+    actionKinds(batchDry.body.results[0]),
+    actionKinds(LIBRARY_BATCH_DRY_RUN_EXAMPLE.results[0]!),
+  );
+  assert.equal(batchDry.body.results[0].status, 'planned');
+
   const bank = path.join(data.banks, 'Rhodes.fxb');
   await writeFile(bank, buildBank({ uniqueId: 'MySy', programs: 1 }));
 
@@ -159,6 +207,63 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
     .send({ sourcePath: bank })
     .expect(200);
   assertSameKeys(inspectedOnly.body, LIBRARY_INSPECT_WITHOUT_PLUGIN_EXAMPLE, 'inspect sin plugin');
+
+  // El export convierte el banco importado y deja el original intacto.
+  const exported = await http()
+    .post('/library/banks/export')
+    .send({ libraryRoot: data.root, plugin: 'Synth', fileName: 'Rhodes.fxb', endianness: 'big' })
+    .expect(200);
+  assertSameKeys(exported.body, LIBRARY_EXPORT_EXAMPLE, 'banks/export 200');
+  assertSameKeys(exported.body.source, LIBRARY_EXPORT_EXAMPLE.source, 'banks/export: origen');
+  assertSameKeys(exported.body.target, LIBRARY_EXPORT_EXAMPLE.target, 'banks/export: destino');
+  assertSameKeys(exported.body.source.bank, LIBRARY_BANK_EXAMPLE, 'banks/export: banco original');
+  assertSameKeys(exported.body.target.bank, LIBRARY_BANK_EXAMPLE, 'banks/export: banco convertido');
+  assert.equal(exported.body.source.bank.endianness, 'little');
+  assert.equal(exported.body.target.bank.endianness, 'big');
+  assert.equal(exported.body.changed, true);
+
+  const existingTarget = await http()
+    .post('/library/banks/export')
+    .send({ libraryRoot: data.root, plugin: 'Synth', fileName: 'Rhodes.fxb', endianness: 'big' })
+    .expect(409);
+  assertSameKeys(existingTarget.body, LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE, 'banks/export 409');
+
+  // El banco por defecto se convierte y luego vuelve a su `.orig`, que queda
+  // intacto: la segunda restauración ya no escribe nada.
+  const configPath = path.join(data.root, 'plugs', 'Synth', 'fxbLoader.config');
+  await http()
+    .put('/fxb-config')
+    .send({
+      pluginDir: path.join(data.root, 'plugs', 'Synth'),
+      expectedMtimeMs: (await stat(configPath)).mtimeMs,
+      config: { defaultFxbName: 'Rhodes.fxb', pluginName: 'Synth.dll' },
+    })
+    .expect(200);
+  await http()
+    .post('/library/banks/convert')
+    .send({ libraryRoot: data.root, plugin: 'Synth' })
+    .expect(200);
+
+  const restoredBody = await http()
+    .post('/library/banks/restore')
+    .send({ libraryRoot: data.root, plugin: 'Synth' })
+    .expect(200);
+  assertSameKeys(restoredBody.body, LIBRARY_RESTORE_EXAMPLE, 'banks/restore 200');
+  assertSameKeys(restoredBody.body.restored, LIBRARY_RESTORE_EXAMPLE.restored, 'banks/restore: banco');
+  assertSameKeys(restoredBody.body.backup, LIBRARY_RESTORE_EXAMPLE.backup, 'banks/restore: respaldo');
+  assertSameKeys(
+    restoredBody.body.restored.bank,
+    LIBRARY_BANK_EXAMPLE,
+    'banks/restore: cabecera del banco',
+  );
+  assert.equal(restoredBody.body.changed, true);
+
+  const restoredAgain = await http()
+    .post('/library/banks/restore')
+    .send({ libraryRoot: data.root, plugin: 'Synth' })
+    .expect(200);
+  assertSameKeys(restoredAgain.body, LIBRARY_RESTORE_UNCHANGED_EXAMPLE, 'banks/restore 200 repetido');
+  assert.equal(restoredAgain.body.changed, false);
 
   const foreign = path.join(data.banks, 'Otro.fxb');
   await writeFile(foreign, buildBank({ uniqueId: 'OtSy', programs: 1 }));

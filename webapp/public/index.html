@@ -61,6 +61,15 @@
             </button>
           </div>
           <p id="batch-status" class="status" role="status" aria-live="polite"></p>
+          <progress
+            id="batch-progress"
+            class="batch-progress"
+            max="1"
+            value="0"
+            aria-label="Progreso del lote"
+            hidden
+          ></progress>
+          <p id="batch-step" class="batch-step" hidden></p>
           <details id="batch-errors" class="batch-errors" hidden>
             <summary id="batch-errors-summary"></summary>
             <ul id="batch-error-list" class="batch-error-list"></ul>
@@ -105,6 +114,20 @@
             Cargar el banco al abrir el plugin
           </label>
           <button id="default-save" class="primary" type="button">Guardar</button>
+          <button
+            id="default-convert"
+            type="button"
+            title="Convierte el banco por defecto en su mismo archivo y guarda el original como banco.fxb.orig"
+          >
+            Convertir orden de bytes
+          </button>
+          <button
+            id="default-restore"
+            type="button"
+            title="Devuelve el banco por defecto al contenido de banco.fxb.orig sin tocar el respaldo"
+          >
+            Restaurar original
+          </button>
         </div>
 
         <p id="banks-status" class="status" role="status" aria-live="polite"></p>
@@ -144,6 +167,33 @@
           </div>
           <ul id="import-results" class="import-results"></ul>
         </details>
+
+        <details class="export">
+          <summary>Exportar un banco en otro orden de bytes</summary>
+          <div class="import-row">
+            <div class="field">
+              <label for="export-bank">Banco importado</label>
+              <select id="export-bank"></select>
+            </div>
+            <div class="field">
+              <label for="export-order">Orden de salida</label>
+              <select id="export-order">
+                <option value="little">little-endian (legacy de Windows)</option>
+                <option value="big">big-endian (estándar VST2)</option>
+              </select>
+            </div>
+            <label class="check">
+              <input id="export-overwrite" type="checkbox" />
+              Sobrescribir si ya existe
+            </label>
+            <button id="export-button" class="primary" type="button">Exportar</button>
+          </div>
+          <p class="note">
+            Se guarda al lado del original como <code>banco-le.fxb</code> o
+            <code>banco-be.fxb</code>; solo cambian los campos numéricos y el banco
+            importado queda intacto.
+          </p>
+        </details>
       </section>
 
       <p class="hint">
@@ -170,7 +220,7 @@
     <noscript>
       <p class="status error">Esta página necesita JavaScript.</p>
     </noscript>
-    <script src="/batch.js" defer></script>
-    <script src="/app.js" defer></script>
+    <!-- UI en TypeScript, compilada a ESM por tsconfig.ui.json (`npm run build`). -->
+    <script type="module" src="/js/ui/browser/main.js"></script>
   </body>
 </html>

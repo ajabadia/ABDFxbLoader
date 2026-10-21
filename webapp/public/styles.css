@@ -258,6 +258,53 @@ details input {
   font-size: 13px;
 }
 
+.batch-progress {
+  flex: 0 0 160px;
+  width: 160px;
+  height: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--off-bg);
+  color: var(--accent);
+  appearance: none;
+  overflow: hidden;
+}
+
+.batch-progress::-webkit-progress-bar {
+  background: var(--off-bg);
+}
+
+.batch-progress::-webkit-progress-value {
+  background: var(--accent);
+  transition: width 120ms ease-out;
+}
+
+.batch-progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+/* Paso interno del plugin en curso (respaldo, copia, parcheo, config…). */
+.batch-step {
+  flex: 1 1 100%;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fila del plugin que el servidor está procesando (progreso del lote). */
+tr.batch-running td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+tr.batch-done td {
+  background: color-mix(in srgb, var(--ok-bg) 55%, transparent);
+}
+
+tr.batch-failed td {
+  background: color-mix(in srgb, var(--danger-bg) 70%, transparent);
+}
+
 .batch-errors {
   flex-basis: 100%;
   margin: 0;
@@ -486,13 +533,15 @@ textarea {
   accent-color: var(--accent);
 }
 
-details.import {
+details.import,
+details.export {
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
-details.import summary {
+details.import summary,
+details.export summary {
   margin-bottom: 10px;
 }
 
