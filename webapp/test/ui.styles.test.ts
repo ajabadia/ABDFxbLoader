@@ -10,7 +10,7 @@ import {
   sourceNames,
   splitSelectorList,
 } from './helpers/css';
-import { parseHtml } from './helpers/ui-dom';
+import { parseHtml, type HtmlNode } from './helpers/ui-dom';
 
 /**
  * `styles.css` se escribe a mano y crece con la vista: una regla que sobrevive
@@ -130,7 +130,8 @@ test('la auditoría distingue reglas vivas, dinámicas y muertas', () => {
   assert.equal(audit.total, 10);
 });
 
-test('styles.css no tiene reglas que no puedan pintar ningún elemento', async () => {
+/** La página real y los nombres que crea la vista, para auditar el CSS. */
+async function realPage(): Promise<{ html: HtmlNode; css: string; dynamic: Set<string> }> {
   const html = parseHtml(await readFile(path.join(PUBLIC, 'index.html'), 'utf8'));
   const css = await readFile(path.join(PUBLIC, 'styles.css'), 'utf8');
 
@@ -138,7 +139,11 @@ test('styles.css no tiene reglas que no puedan pintar ningún elemento', async (
     .filter((file) => file.endsWith('.ts'))
     .map((file) => path.join(UI, file));
   const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
-  const dynamic = sourceNames(sources);
+  return { html, css, dynamic: sourceNames(sources) };
+}
+
+test('styles.css no tiene reglas que no puedan pintar ningún elemento', async () => {
+  const { html, css, dynamic } = await realPage();
 
   const audit = auditCss(html, css, dynamic);
   const describe = (entry: (typeof audit.dead)[number]): string =>
@@ -157,4 +162,24 @@ test('styles.css no tiene reglas que no puedan pintar ningún elemento', async (
   );
   assert.ok(audit.dynamic >= 15, `solo ${audit.dynamic} selectores dependen de la vista`);
   assert.ok(audit.unverified >= 1, 'los combinadores + / ~ deben quedar como no comprobados');
+});
+
+test('la auditoría detecta una regla muerta añadida al styles.css real', async () => {
+  const { html, css, dynamic } = await realPage();
+  const selector = '.fxb-regla-inexistente';
+  const mutated = `${css}\n${selector} { color: red; }\n`;
+
+  const audit = auditCss(html, mutated, dynamic);
+
+  // Si el auditor no viera esta regla, el test anterior también pasaría por
+  // vacuidad: el CSS real se audita con el mismo código que esta mutación.
+  assert.equal(audit.dead.length, 1, 'la regla añadida debe quedar como muerta');
+  const dead = audit.dead[0]!;
+  assert.equal(dead.selector, selector);
+  assert.deepEqual(dead.unknown, ['fxb-regla-inexistente']);
+  assert.equal(
+    dead.line,
+    mutated.slice(0, mutated.indexOf(selector)).split('\n').length,
+    'la línea debe apuntar a la regla añadida',
+  );
 });
