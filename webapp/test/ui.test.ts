@@ -54,6 +54,8 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /Exportar un banco en otro orden de bytes/);
   assert.match(response.text, /id="install-all"/);
   assert.match(response.text, /id="uninstall-all"/);
+  assert.match(response.text, /id="batch-cancel"/);
+  assert.match(response.text, /Cancelar/);
   assert.match(response.text, /id="batch-errors"/);
   assert.match(response.text, /id="batch-error-list"/);
   assert.match(response.text, /id="batch-progress"/);

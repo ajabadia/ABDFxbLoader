@@ -14,6 +14,7 @@ import type {
   RequestBody,
 } from '../../client/fxb-client.js';
 import {
+  cancelledSummary,
   failuresOf,
   progressLabel,
   runBatchInChunks,
@@ -49,6 +50,7 @@ const els = {
   template: byId<HTMLTemplateElement>('row-template'),
   installAll: byId<HTMLButtonElement>('install-all'),
   uninstallAll: byId<HTMLButtonElement>('uninstall-all'),
+  batchCancel: byId<HTMLButtonElement>('batch-cancel'),
   batchStatus: byId<HTMLParagraphElement>('batch-status'),
   batchProgress: byId<HTMLProgressElement>('batch-progress'),
   batchStep: byId<HTMLElement>('batch-step'),
@@ -107,6 +109,8 @@ let banksBusy = false;
 let scanData: LibraryScanResponse | null = null;
 /** Fallos del último lote, con su reintento individual. */
 let batchFailures: BatchFailure[] = [];
+/** Corta el lote en curso; `null` cuando no hay ninguno. */
+let batchController: AbortController | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
 
@@ -151,6 +155,11 @@ function updateBatchControls(): void {
   els.uninstallAll.textContent =
     installed === 0 ? 'Desinstalar todos' : `Desinstalar todos (${installed})`;
   els.uninstallAll.disabled = busy || installed === 0;
+
+  // Cancelar solo tiene sentido mientras corre un lote: el mismo `busy` lo
+  // comparten el escaneo y los reintentos, que no se pueden cancelar así.
+  els.batchCancel.hidden = batchController === null;
+  els.batchCancel.disabled = batchController === null || batchController.signal.aborted;
 
   els.batchErrors.hidden = batchFailures.length === 0;
   els.batchErrorsSummary.textContent =
@@ -500,6 +509,8 @@ async function runBatch(action: BatchAction): Promise<void> {
 
   closeBanks();
   clearBatchErrors();
+  const controller = new AbortController();
+  batchController = controller;
   setBusy(true);
 
   const dll = currentDll();
@@ -510,10 +521,13 @@ async function runBatch(action: BatchAction): Promise<void> {
   const run = await runBatchInChunks({
     action,
     plugins: eligible.map((plugin) => plugin.name),
+    signal: controller.signal,
     send: (plugins, onEvent) => {
       const body: RequestBody<'/library/batch/stream', 'post'> = { libraryRoot, action, plugins };
       if (isInstall && dll !== '') body.dllSourcePath = dll;
-      return client.library.batchStream(body, { onEvent });
+      // La señal aborta el `fetch` en curso; el servidor deja de procesar en
+      // cuanto se cierra la respuesta (acaba el plugin que tenía entre manos).
+      return client.library.batchStream(body, { onEvent, signal: controller.signal });
     },
     onProgress: showBatchProgress,
     onPlugin: (event) => {
@@ -523,6 +537,8 @@ async function runBatch(action: BatchAction): Promise<void> {
       );
     },
   });
+  batchController = null;
+  els.batchCancel.disabled = true;
   hideBatchProgress();
 
   batchFailures = failuresOf(run);
@@ -541,7 +557,13 @@ async function runBatch(action: BatchAction): Promise<void> {
     return;
   }
 
-  if (run.error !== null) {
+  if (run.cancelled) {
+    // Cancelado por la persona: lo confirmado está hecho en disco y el resto
+    // puede seguir sin hacerlo, así que el resumen separa ambas cosas.
+    const message = cancelledSummary(run);
+    setBatchStatus(message, 'info');
+    setStatus(message, 'info');
+  } else if (run.error !== null) {
     // Una petición se cortó: lo anterior ya está hecho en disco, así que se
     // resume lo confirmado, se marcan los pendientes y se deja el motivo.
     const pending = run.unreported === 0 ? '' : ` ${run.unreported} plugin(s) sin confirmar.`;
@@ -1111,6 +1133,13 @@ els.installAll.addEventListener('click', () => {
 
 els.uninstallAll.addEventListener('click', () => {
   void runBatch('uninstall');
+});
+
+els.batchCancel.addEventListener('click', () => {
+  if (batchController === null || batchController.signal.aborted) return;
+  batchController.abort();
+  els.batchCancel.disabled = true;
+  setBatchStatus('Cancelando el lote…', 'busy');
 });
 
 els.banksClose.addEventListener('click', () => {

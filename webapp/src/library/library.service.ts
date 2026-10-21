@@ -408,6 +408,7 @@ export class LibraryService {
   async runBatch(
     input: BatchInput,
     emit: (event: BatchStreamEvent) => void = () => undefined,
+    shouldStop: () => boolean = () => false,
   ): Promise<BatchResult> {
     if (input.action !== 'install' && input.action !== 'uninstall') {
       throw new LibraryPathError(`acción de lote no válida: ${String(input.action)}`);
@@ -448,6 +449,9 @@ export class LibraryService {
     });
 
     for (const [index, name] of input.plugins.entries()) {
+      // Cancelación desde el cliente (cerró la respuesta): se termina el plugin
+      // en curso, que ya puede estar a medias en disco, y no se empieza otro.
+      if (shouldStop()) break;
       emit({ type: 'plugin', index, total, name, status: 'running', message: null });
 
       // Pasos internos del plugin en curso: la vista los pinta como detalle del

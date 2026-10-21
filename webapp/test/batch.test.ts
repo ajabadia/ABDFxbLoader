@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   applyBatchEvent,
+  cancelledSummary,
   failuresOf,
   initialProgress,
   mergeProgress,
@@ -480,6 +481,107 @@ test('si una petición falla, el lote se corta y conserva lo confirmado', async 
     'los fallos de las peticiones ya cerradas no se pierden',
   );
   assert.equal(summarize(run), `${MAX_PLUGINS_PER_BATCH - 2} de ${names.length} instalado(s); 2 con error.`);
+});
+
+test('cancelar corta la petición y conserva los plugins ya confirmados', async () => {
+  const controller = new AbortController();
+  const names = ['Alpha', 'Beta', 'Gamma'];
+  const requests: string[][] = [];
+
+  const send: BatchSender = async (plugins, onEvent) => {
+    requests.push([...plugins]);
+    onEvent({
+      type: 'start',
+      action: 'install',
+      dryRun: false,
+      total: plugins.length,
+      plugins: [...plugins],
+    });
+    onEvent({ type: 'plugin', index: 0, total: plugins.length, name: 'Alpha', status: 'running', message: null });
+    onEvent({ type: 'plugin', index: 0, total: plugins.length, name: 'Alpha', status: 'installed', message: null });
+    onEvent({ type: 'plugin', index: 1, total: plugins.length, name: 'Beta', status: 'running', message: null });
+
+    // Lo mismo que hace el botón: aborta mientras Beta está en curso.
+    controller.abort();
+    throw new Error('petición abortada');
+  };
+
+  const run = await runBatchInChunks({
+    action: 'install',
+    plugins: names,
+    send,
+    signal: controller.signal,
+  });
+
+  assert.equal(requests.length, 1, 'no se envía otra petición tras cancelar');
+  assert.equal(run.cancelled, true);
+  assert.equal(run.error, null, 'cancelar no es un fallo del lote');
+  assert.deepEqual(
+    run.results,
+    [{ name: 'Alpha', status: 'installed', message: null }],
+    'solo se conserva el plugin que ya había avisado su estado final',
+  );
+  assert.equal(run.succeeded, 1);
+  assert.equal(run.failed, 0);
+  assert.equal(run.unreported, 2, 'Beta estaba en curso y Gamma ni empezó');
+  assert.equal(cancelledSummary(run), 'Lote cancelado: 1 de 3 instalado(s); 2 sin confirmar.');
+});
+
+test('cancelar entre peticiones no envía la siguiente', async () => {
+  const controller = new AbortController();
+  const names = namesFrom(MAX_PLUGINS_PER_BATCH + 2);
+  const requests: string[][] = [];
+
+  const send: BatchSender = async (plugins, onEvent) => {
+    requests.push([...plugins]);
+    onEvent({
+      type: 'start',
+      action: 'uninstall',
+      dryRun: false,
+      total: plugins.length,
+      plugins: [...plugins],
+    });
+    for (const [index, name] of plugins.entries()) {
+      onEvent({ type: 'plugin', index, total: plugins.length, name, status: 'running', message: null });
+      onEvent({
+        type: 'plugin',
+        index,
+        total: plugins.length,
+        name,
+        status: 'uninstalled',
+        message: null,
+      });
+    }
+    const result = streamResult('uninstall', plugins);
+    onEvent({ type: 'end', result });
+    if (requests.length === 1) controller.abort();
+    return result;
+  };
+
+  const run = await runBatchInChunks({
+    action: 'uninstall',
+    plugins: names,
+    send,
+    signal: controller.signal,
+  });
+
+  assert.equal(requests.length, 1, 'la petición siguiente no llega a salir');
+  assert.equal(run.cancelled, true);
+  assert.equal(run.error, null);
+  assert.equal(run.results.length, MAX_PLUGINS_PER_BATCH);
+  assert.equal(run.succeeded, MAX_PLUGINS_PER_BATCH);
+  assert.equal(run.unreported, 2);
+});
+
+test('un lote cancelado resume lo confirmado y los fallos', () => {
+  assert.equal(
+    cancelledSummary({ action: 'install', total: 6, succeeded: 3, failed: 1, unreported: 2 }),
+    'Lote cancelado: 3 de 6 instalado(s) y 1 con error; 2 sin confirmar.',
+  );
+  assert.equal(
+    cancelledSummary({ action: 'uninstall', total: 2, succeeded: 2, failed: 0, unreported: 0 }),
+    'Lote cancelado: 2 de 2 desinstalado(s).',
+  );
 });
 
 test('un lote vacío no manda ninguna petición', async () => {

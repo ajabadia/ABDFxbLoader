@@ -273,6 +273,8 @@ export interface BatchRunOptions {
   onProgress?: (progress: BatchProgress) => void;
   /** Estado de cada plugin (en curso, terminado o fallido), para marcarlo. */
   onPlugin?: (event: Extract<BatchStreamEvent, { type: 'plugin' }>) => void;
+  /** Cancela el lote: corta la petición actual y no envía la siguiente. */
+  signal?: AbortSignal;
 }
 
 /** Resultado del lote completo, sumando todas las peticiones enviadas. */
@@ -288,8 +290,10 @@ export interface BatchRun {
   requests: number;
   /** Plugins cuyo resultado no llegó porque una petición se cortó. */
   unreported: number;
-  /** Error que cortó el lote, o `null` si terminó entero. */
+  /** Error que cortó el lote, o `null` si terminó entero o se canceló. */
   error: unknown;
+  /** `true` si lo cortó la señal de cancelación, no un fallo. */
+  cancelled: boolean;
 }
 
 /**
@@ -297,6 +301,11 @@ export interface BatchRun {
  * de todas en un solo estado. Si una petición falla (400, error de red, `end`
  * ausente) se corta ahí: lo que sí respondió se conserva en el resultado y
  * `unreported` dice cuántos plugins quedaron sin confirmar.
+ *
+ * Con `signal` la parada es una cancelación, no un fallo: se corta la petición
+ * en curso (el `fetch` aborta) y no se envía la siguiente. Los plugins que ya
+ * habían avisado su estado final por el stream se conservan aunque la respuesta
+ * no llegue a completarse, que es lo que permite resumir lo confirmado.
  */
 export async function runBatchInChunks(options: BatchRunOptions): Promise<BatchRun> {
   const batches = splitBatch(options.plugins);
@@ -309,17 +318,37 @@ export async function runBatchInChunks(options: BatchRunOptions): Promise<BatchR
   };
   let requests = 0;
   let error: unknown = null;
+  let cancelled = false;
+  // Se consulta a través de una función: el narrowing de TypeScript no alcanza
+  // a ver que la señal puede abortarse mientras se espera la respuesta.
+  const signal = options.signal;
+  const aborted = (): boolean => signal?.aborted === true;
 
   options.onProgress?.(initialProgress(totals.action, totals.total));
 
   for (const plugins of batches) {
+    if (aborted()) {
+      cancelled = true;
+      break;
+    }
+
     let chunk = initialProgress(totals.action, plugins.length);
     options.onProgress?.(mergeProgress(totals, chunk));
     requests += 1;
 
+    // Estado final de cada plugin según los eventos ya recibidos. Si la
+    // petición se corta a mitad, la respuesta completa no llega, pero estos
+    // sí son resultados reales: el servidor ya los había confirmado.
+    const confirmed: BatchStreamPluginResult[] = [];
+
     try {
       const response = await options.send(plugins, (event) => {
-        if (event.type === 'plugin') options.onPlugin?.(event);
+        if (event.type === 'plugin') {
+          options.onPlugin?.(event);
+          if (event.status !== 'running') {
+            confirmed.push({ name: event.name, status: event.status, message: event.message });
+          }
+        }
         chunk = applyBatchEvent(chunk, event);
         options.onProgress?.(mergeProgress(totals, chunk));
       });
@@ -330,7 +359,9 @@ export async function runBatchInChunks(options: BatchRunOptions): Promise<BatchR
         failed: totals.failed + response.failed,
       };
     } catch (caught) {
-      error = caught;
+      results.push(...confirmed);
+      cancelled = aborted();
+      if (!cancelled) error = caught;
       break;
     }
   }
@@ -345,5 +376,20 @@ export async function runBatchInChunks(options: BatchRunOptions): Promise<BatchR
     requests,
     unreported: totals.total - results.length,
     error,
+    cancelled,
   };
+}
+
+/**
+ * Resumen de un lote cancelado: lo que el servidor confirmó por el stream y
+ * cuántos plugins quedaron sin respuesta (el que estaba en curso y los que ya
+ * no se enviaron).
+ */
+export function cancelledSummary(
+  run: Pick<BatchRun, 'action' | 'total' | 'succeeded' | 'failed' | 'unreported'>,
+): string {
+  const verb = run.action === 'install' ? 'instalado' : 'desinstalado';
+  const errors = run.failed === 0 ? '' : ` y ${run.failed} con error`;
+  const pending = run.unreported === 0 ? '' : `; ${run.unreported} sin confirmar`;
+  return `Lote cancelado: ${run.succeeded} de ${run.total} ${verb}(s)${errors}${pending}.`;
 }

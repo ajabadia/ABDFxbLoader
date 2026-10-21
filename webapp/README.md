@@ -183,7 +183,11 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    cada plugin, cada paso y cada cierre. Al terminar muestra el resumen
    (`N de M`, cuántos fallaron) y un desplegable con el error de cada plugin
    fallido, cada uno con su botón **Reintentar** (que usa los endpoints
-   individuales y no repite el lote entero);
+   individuales y no repite el lote entero). **Cancelar** aparece solo
+   mientras corre el lote y aborta la petición en curso con `AbortController`:
+   el servidor termina el plugin que tenía entre manos y no empieza otro, y el
+   resumen separa lo confirmado (`N de M`) de los plugins que quedaron sin
+   confirmar;
 5. **Bancos** abre la vista del plugin: sus `.fxb` con tipo, programas,
    `uniqueID` y `fxVersion`; un formulario para importar rutas absolutas de
    `.fxb` (una por línea, admite las comillas de «copiar como ruta») con el
@@ -614,6 +618,10 @@ El mismo cuerpo, el mismo tope de 500 plugins y las mismas validaciones que
   a medias.
 - `plugin` sale dos veces por plugin: `status: "running"` antes de operarlo y
   el estado final (`installed`, `uninstalled`, `planned`, `failed`) después.
+- Si el cliente cierra la respuesta (el botón **Cancelar** de la vista), el
+  servidor deja de empezar plugins: termina el que está en curso —puede estar
+  ya a medias en disco— y corta el flujo sin `end`. La vista conserva los
+  eventos finales que sí recibió y resume con ellos lo confirmado.
 - `step` sale entre esos dos avisos, uno por cada paso interno del plugin:
   `backup`, `copy`, `patch`, `write-config` y `create-dir` al instalar;
   `restore`, `restore` y `delete` al desinstalar. `stepIndex`/`steps` dicen por

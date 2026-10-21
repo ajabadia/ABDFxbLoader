@@ -1179,8 +1179,10 @@ export class LibraryController {
 
     try {
       // `start` sale después de validar: mientras no se escriba nada, un error
-      // de la petición sigue siendo un 400/422 JSON.
-      await this.service.runBatch(input, write);
+      // de la petición sigue siendo un 400/422 JSON. Si el cliente corta la
+      // respuesta (botón «Cancelar»), `closed` detiene el lote tras el plugin
+      // en curso en vez de seguir instalando lo que ya nadie va a ver.
+      await this.service.runBatch(input, write, () => closed);
     } catch (error) {
       if (!started) mapDomainError(error);
       // Ya hay eventos enviados: no se puede cambiar el código de estado. Se

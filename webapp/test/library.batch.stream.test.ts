@@ -207,6 +207,45 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
   assert.equal(silent.succeeded, 2);
 });
 
+test('runBatch se detiene tras el plugin en curso si la respuesta se cerró', async (t) => {
+  const lib = await makeLibrary(t, ['Synth', 'Bass']);
+  const service = app.get(LibraryService);
+  const events: BatchStreamEvent[] = [];
+  let closed = false;
+
+  // El cliente corta la conexión después de que Synth confirme su instalación:
+  // el plugin en curso se termina, pero Bass ya no se empieza.
+  const result = await service.runBatch(
+    {
+      libraryRoot: lib.root,
+      action: 'install',
+      plugins: ['Synth', 'Bass'],
+      dllSourcePath: lib.dllSource,
+    },
+    (event) => {
+      events.push(event);
+      if (event.type === 'plugin' && event.status === 'installed') closed = true;
+    },
+    () => closed,
+  );
+
+  assert.deepEqual(events.map(label), [
+    'start',
+    'Synth:running',
+    ...INSTALL_STEPS.map((step) => `Synth:${step}`),
+    'Synth:installed',
+    'end',
+  ]);
+  assert.equal(result.total, 1, 'solo cuenta el plugin que llegó a procesarse');
+  assert.equal(result.succeeded, 1);
+  assert.equal(existsSync(path.join(lib.pluginDir('Synth'), FXB_CONFIG_FILENAME)), true);
+  assert.equal(
+    existsSync(path.join(lib.pluginDir('Bass'), FXB_CONFIG_FILENAME)),
+    false,
+    'el plugin siguiente no debe instalarse tras cancelar',
+  );
+});
+
 test('un dryRun calcula el plan sin avisar de pasos internos', async (t) => {
   const lib = await makeLibrary(t, ['Synth']);
   const service = app.get(LibraryService);
