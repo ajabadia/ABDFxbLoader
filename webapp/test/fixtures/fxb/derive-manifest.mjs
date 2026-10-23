@@ -1,24 +1,26 @@
 #!/usr/bin/env node
 /**
- * Deriva el bloque `programs` de cada fixture a partir de los bytes del propio
- * `.fxb`, sin creerse el manifiesto.
+ * Deriva de los bytes de cada `.fxb` los campos del manifiesto que describen el
+ * archivo: `size`, `sha256` y el bloque `programs` (cuántos programas recorre,
+ * cómo se reparten entre `FxCk` y `FPCh`, el rango de `numParams`/`chunkSize` y
+ * la suma de los `byteSize`). Nada de eso se escribe a mano: el manifiesto sale
+ * de los binarios, y el test
+ * `el manifiesto coincide con lo derivado de los .fxb` exige que coincida con
+ * lo generado; este script es la única vía para escribir esos campos.
  *
- * El bloque resume lo que declara el archivo: cuántos programas recorre, cómo se
- * reparten entre `FxCk` (parámetros) y `FPCh` (chunk opaco), el rango de
- * `numParams`/`chunkSize` y la suma de los `byteSize`. Es exactamente lo que
- * `manifest.json` guarda en cada entrada, y el test
- * `el manifiesto coincide con los bloques programs derivados de los .fxb`
- * exige que coincidan; este script es la única vía para escribirlo.
- *
- *   node test/fixtures/fxb/derive-programs.mjs             # imprime los bloques
- *   node test/fixtures/fxb/derive-programs.mjs --check     # falla si se desvían
- *   node test/fixtures/fxb/derive-programs.mjs --write     # reescribe los bloques
+ *   node test/fixtures/fxb/derive-manifest.mjs             # imprime lo derivado
+ *   node test/fixtures/fxb/derive-manifest.mjs --check     # falla si se desvía
+ *   node test/fixtures/fxb/derive-manifest.mjs --write     # reescribe y añade los campos
  *
  * `--manifest <ruta>` permite trabajar sobre una copia y `--fixtures <dir>`
  * derivar de otro directorio (ambos los usan los tests de mutación y de error).
- * `--write` solo sustituye el valor de `programs` de cada entrada: el resto del
- * archivo queda byte a byte igual, y una entrada ya sincronizada no se toca.
+ * `--write` sustituye los valores de `size`, `sha256` y `programs` de cada
+ * entrada y **añade los que falten**: una entrada nueva solo necesita `file`,
+ * `source` y `expected`, sin ningún número provisional. El resto del archivo
+ * (formato, orden y esos campos editoriales) queda byte a byte igual, y una
+ * entrada ya sincronizada no se toca.
  */
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -138,16 +140,25 @@ export function derivePrograms(data, label = 'banco') {
   };
 }
 
-/** Bloques derivados de todos los `.fxb` del directorio, ordenados por nombre. */
+/** Todo lo que el manifiesto declara de un `.fxb` y se puede leer de sus bytes. */
+export function deriveFixture(data, label = 'banco') {
+  return {
+    size: data.length,
+    sha256: createHash('sha256').update(data).digest('hex'),
+    programs: derivePrograms(data, label),
+  };
+}
+
+/** Campos derivados de todos los `.fxb` del directorio, ordenados por nombre. */
 export function deriveAll(dir = DIR) {
   const files = readdirSync(dir)
     .filter((name) => /\.fxb$/i.test(name))
     .sort();
-  const blocks = new Map();
+  const records = new Map();
   for (const file of files) {
-    blocks.set(file, derivePrograms(readFileSync(path.join(dir, file)), file));
+    records.set(file, deriveFixture(readFileSync(path.join(dir, file)), file));
   }
-  return blocks;
+  return records;
 }
 
 function formatRange(value, fields) {
@@ -203,12 +214,113 @@ function jsonValueEnd(text, start) {
   throw new Error('manifest.json: valor sin cerrar');
 }
 
+/** Índice justo después de un escalar JSON (número, `true`, `false`, `null` o cadena). */
+function scalarEnd(text, start, file, key) {
+  if (text[start] === '"') {
+    for (let index = start + 1; index < text.length; index += 1) {
+      const character = text[index];
+      if (character === '\\') index += 1;
+      else if (character === '"') return index + 1;
+    }
+    throw new Error(`${file}: cadena sin cerrar en "${key}"`);
+  }
+  const match = /^[^\s,}\]]+/.exec(text.slice(start));
+  if (match === null) throw new Error(`${file}: campo "${key}" sin valor`);
+  return start + match[0].length;
+}
+
+/** Índice justo después del valor JSON que empieza en `start`, objeto o escalar. */
+function valueEnd(text, start, file, key) {
+  return text[start] === '{' || text[start] === '['
+    ? jsonValueEnd(text, start)
+    : scalarEnd(text, start, file, key);
+}
+
+/** Rango del texto ocupado por la entrada de `file` (desde su `{` hasta su `}`). */
+function entrySpan(text, file) {
+  const marker = `"file": ${JSON.stringify(file)}`;
+  const markerAt = text.indexOf(marker);
+  if (markerAt === -1) throw new Error(`${file}: no se encuentra su entrada en el texto`);
+
+  const lineStart = text.lastIndexOf('\n', markerAt) + 1;
+  const open = text.lastIndexOf('\n    {\n', lineStart);
+  if (open === -1 || open + '\n    {\n'.length !== lineStart) {
+    throw new Error(`${file}: se esperaba la entrada abierta en una línea propia`);
+  }
+  const close = text.indexOf('\n    }', lineStart);
+  if (close === -1) throw new Error(`${file}: entrada sin cerrar`);
+  return { start: open, end: close };
+}
+
+/** Los tres campos que salen de los bytes, en el orden del manifiesto. */
+const DERIVED_FIELDS = ['programs', 'size', 'sha256'];
+
+/** ¿La entrada declara ya este campo? */
+function declaresField(text, span, key) {
+  const marker = `\n      "${key}": `;
+  const at = text.indexOf(marker, span.start);
+  return at !== -1 && at < span.end;
+}
+
 /**
- * Devuelve el manifiesto con el bloque `programs` de cada entrada sustituido
- * por el derivado. Solo se reemplaza ese valor: el resto del texto (formato,
- * orden y comentarios, si los hubiera) se conserva tal cual.
+ * Sustitución del valor de un campo de la entrada, conservando la clave, la
+ * indentación, la coma y el orden.
  */
-export function rewriteManifest(source, blocks) {
+function fieldPatch(text, span, file, key, value) {
+  const marker = `\n      "${key}": `;
+  const at = text.indexOf(marker, span.start);
+  if (at === -1 || at > span.end) {
+    throw new Error(`${file}: la entrada no declara "${key}"`);
+  }
+  const valueAt = at + marker.length;
+  return {
+    start: at,
+    end: valueEnd(text, valueAt, file, key),
+    text: marker + value,
+  };
+}
+
+/**
+ * Inserta justo después de `"file"` los campos derivados que la entrada aún no
+ * declara, con la misma indentación y las comas que pida el marcado. Así una
+ * entrada nueva puede escribirse solo con `file`, `source` y `expected`.
+ */
+function insertDerivedFields(text, span, file, fields) {
+  const marker = `"file": ${JSON.stringify(file)}`;
+  const markerAt = text.indexOf(marker, span.start);
+  if (markerAt === -1 || markerAt > span.end) {
+    throw new Error(`${file}: la entrada no declara "file"`);
+  }
+
+  // El marcador incluye el valor JSON completo (`"file": "x.fxb"`).
+  const afterValue = markerAt + marker.length;
+  let cursor = afterValue;
+  while (cursor < text.length && /\s/.test(text[cursor])) cursor += 1;
+
+  const comma = text[cursor] === ',';
+  if (!comma && text[cursor] !== '}') {
+    throw new Error(`${file}: se esperaba una coma o el cierre después de "file"`);
+  }
+
+  const body = fields.map(({ key, value }) => `      "${key}": ${value}`).join(',\n');
+  const start = comma ? cursor + 1 : afterValue;
+  return {
+    start,
+    end: start,
+    // Con una coma delante, los campos nuevos continúan la lista y el último
+    // lleva coma porque detrás quedan `source`/`expected`; si `file` era el
+    // último, la coma abre la lista y el último campo cierra el objeto.
+    text: comma ? `\n${body},` : `,\n${body}`,
+  };
+}
+
+/**
+ * Devuelve el manifiesto con `size`, `sha256` y `programs` de cada entrada
+ * sustituidos por los derivados, y los inserta detrás de `file` cuando la
+ * entrada aún no los declara. El resto del texto (formato, orden y campos
+ * editoriales como `source` y `expected`) se conserva tal cual.
+ */
+export function rewriteManifest(source, records) {
   // El manifiesto versionado usa LF, pero un checkout con `autocrlf` puede
   // traerlo en CRLF: se parchea en LF y se devuelve con el fin de línea de
   // origen, para no reescribir el archivo entero por el cambio de formato.
@@ -218,36 +330,34 @@ export function rewriteManifest(source, blocks) {
   const patches = [];
 
   for (const fixture of manifest.fixtures) {
-    const block = blocks.get(fixture.file);
-    if (block === undefined) {
+    const record = records.get(fixture.file);
+    if (record === undefined) {
       throw new Error(`${fixture.file}: está en manifest.json pero no en el directorio`);
     }
 
-    const marker = `"file": ${JSON.stringify(fixture.file)}`;
-    const markerAt = text.indexOf(marker);
-    if (markerAt === -1) throw new Error(`${fixture.file}: no se encuentra su entrada en el texto`);
+    const span = entrySpan(text, fixture.file);
+    const values = {
+      programs: formatPrograms(record.programs),
+      size: String(record.size),
+      sha256: JSON.stringify(record.sha256),
+    };
 
-    const lineStart = text.lastIndexOf('\n', markerAt) + 1;
-    const open = text.lastIndexOf('\n    {\n', lineStart);
-    if (open === -1 || open + '\n    {\n'.length !== lineStart) {
-      throw new Error(`${fixture.file}: se esperaba la entrada abierta en una línea propia`);
+    const missing = DERIVED_FIELDS.filter((key) => !declaresField(text, span, key));
+    if (missing.length > 0) {
+      patches.push(
+        insertDerivedFields(
+          text,
+          span,
+          fixture.file,
+          missing.map((key) => ({ key, value: values[key] })),
+        ),
+      );
     }
-    const close = text.indexOf('\n    }', lineStart);
-    if (close === -1) throw new Error(`${fixture.file}: entrada sin cerrar`);
 
-    const key = '\n      "programs": ';
-    const keyAt = text.indexOf(key, lineStart);
-    if (keyAt === -1 || keyAt > close) {
-      throw new Error(`${fixture.file}: entrada sin bloque "programs"`);
+    for (const key of DERIVED_FIELDS) {
+      if (missing.includes(key)) continue;
+      patches.push(fieldPatch(text, span, fixture.file, key, values[key]));
     }
-    const valueAt = keyAt + key.length;
-    if (text[valueAt] !== '{') throw new Error(`${fixture.file}: "programs" no es un objeto`);
-
-    patches.push({
-      start: keyAt,
-      end: jsonValueEnd(text, valueAt),
-      text: key + formatPrograms(block),
-    });
   }
 
   patches.sort((first, second) => second.start - first.start);
@@ -258,7 +368,7 @@ export function rewriteManifest(source, blocks) {
   return crlf ? result.replace(/\n/g, '\r\n') : result;
 }
 
-/** Diferencias campo a campo entre el bloque del manifiesto y el derivado. */
+/** Diferencias campo a campo entre el bloque `programs` del manifiesto y el derivado. */
 function describeDifferences(expected, derived) {
   const differences = [];
   const show = (value) => (value === undefined ? 'ausente' : JSON.stringify(value));
@@ -270,7 +380,8 @@ function describeDifferences(expected, derived) {
       if (declared !== actual) differences.push(`${field}: manifiesto ${show(declared)}, .fxb ${show(actual)}`);
       continue;
     }
-    if (declared === null || actual === null) {
+    // `undefined` es un bloque ausente, igual que un `null` declarado a mano.
+    if (declared === null || declared === undefined || actual === null || actual === undefined) {
       if (declared !== actual) differences.push(`${field}: manifiesto ${show(declared)}, .fxb ${show(actual)}`);
       continue;
     }
@@ -289,35 +400,50 @@ function describeDifferences(expected, derived) {
   return differences;
 }
 
-function check(text, blocks) {
+/** Lo que el manifiesto declara de un `.fxb` que tiene que coincidir con sus bytes. */
+function differences(fixture, record) {
+  const show = (value) => (value === undefined ? 'ausente' : JSON.stringify(value));
+  const problems = [];
+
+  if (fixture.size !== record.size) {
+    problems.push(`size: manifiesto ${show(fixture.size)}, .fxb ${record.size}`);
+  }
+  if (fixture.sha256 !== record.sha256) {
+    problems.push(`sha256: manifiesto ${show(fixture.sha256)}, .fxb ${show(record.sha256)}`);
+  }
+  problems.push(...describeDifferences(fixture.programs, record.programs));
+  return problems;
+}
+
+function check(text, records) {
   const manifest = JSON.parse(text);
   const problems = [];
   const listed = new Set(manifest.fixtures.map((fixture) => fixture.file));
 
-  for (const [file, block] of blocks) {
+  for (const [file, record] of records) {
     if (!listed.has(file)) {
       problems.push(`${file}: el .fxb no tiene entrada en manifest.json`);
     }
   }
   for (const fixture of manifest.fixtures) {
-    const block = blocks.get(fixture.file);
-    if (block === undefined) {
+    const record = records.get(fixture.file);
+    if (record === undefined) {
       problems.push(`${fixture.file}: está en manifest.json pero no en el directorio`);
       continue;
     }
-    for (const difference of describeDifferences(fixture.programs, block)) {
-      problems.push(`${fixture.file}: ${difference}`);
+    for (const problem of differences(fixture, record)) {
+      problems.push(`${fixture.file}: ${problem}`);
     }
   }
 
   if (problems.length > 0) {
     console.error('manifest.json no coincide con los bytes de los .fxb:');
     for (const problem of problems) console.error(`  ${problem}`);
-    console.error('\nEjecuta `node test/fixtures/fxb/derive-programs.mjs --write` para regenerarlos.');
+    console.error('\nEjecuta `node test/fixtures/fxb/derive-manifest.mjs --write` para regenerarlo.');
     return 1;
   }
 
-  console.log(`manifest.json coincide con los ${blocks.size} .fxb del directorio`);
+  console.log(`manifest.json coincide con los ${records.size} .fxb del directorio`);
   return 0;
 }
 
@@ -342,22 +468,24 @@ function main(argv) {
     }
   }
 
-  const blocks = deriveAll(fixturesDir);
+  const records = deriveAll(fixturesDir);
   const manifestText = readFileSync(manifestPath, 'utf8');
 
   if (mode === 'print') {
-    console.log(JSON.stringify(Object.fromEntries(blocks), null, 2));
+    console.log(JSON.stringify(Object.fromEntries(records), null, 2));
     return 0;
   }
-  if (mode === 'check') return check(manifestText, blocks);
+  if (mode === 'check') return check(manifestText, records);
 
-  const rewritten = rewriteManifest(manifestText, blocks);
+  const rewritten = rewriteManifest(manifestText, records);
   if (rewritten === manifestText) {
-    console.log(`${manifestPath}: ${blocks.size} bloques ya coinciden, sin cambios`);
+    console.log(`${manifestPath}: ${records.size} entradas ya coinciden, sin cambios`);
     return 0;
   }
   writeFileSync(manifestPath, rewritten);
-  console.log(`${manifestPath}: bloques "programs" reescritos desde ${blocks.size} .fxb`);
+  console.log(
+    `${manifestPath}: size, sha256 y programs reescritos desde ${records.size} .fxb`,
+  );
   return 0;
 }
 

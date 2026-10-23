@@ -1,11 +1,12 @@
 {
-  "description": "Bancos .fxb reales de plugins y sintetizadores que no son nuestros, usados como fixtures del parser. Cada entrada lleva el SHA-256, el origen exacto y el resultado esperado de parseFxbBank. Los archivos con `derivedFrom` son el mismo banco real re-serializado en el otro orden de bytes; `massive-fpch-bank.fxb` es un banco ensamblado con dos programas FPCh reales del repositorio de origen (ver `source.method`).",
+  "description": "Bancos .fxb reales de plugins y sintetizadores que no son nuestros, usados como fixtures del parser. Cada entrada lleva el SHA-256, el origen exacto y el resultado esperado de parseFxbBank; `size`, `sha256` y `programs` no se escriben a mano, los deriva de los bytes `test/fixtures/fxb/derive-manifest.mjs` y un test exige que coincidan. Los archivos con `derivedFrom` son el mismo banco real re-serializado en el otro orden de bytes; `massive-fpch-bank.fxb` es un banco ensamblado con dos programas FPCh reales del repositorio de origen (ver `source.method`). `purpose` es el texto editorial de la tabla del README; el tamaño de esa tabla sale del archivo, no de este campo.",
   "fixtures": [
     {
       "file": "massive-test-bank.FXB",
       "programs": { "count": 0, "fxck": 0, "fpch": 0, "params": null, "chunkBytes": null, "byteSizeTotal": 0 },
       "size": 2886,
       "sha256": "52b67bab4d0361591888c33d75a16da91100249eefd88ed981eb67166d98a3a9",
+      "purpose": "Banco opaco con 128 programas y `chunkSize` de 2726",
       "source": {
         "repo": "https://github.com/CharlesHolbrow/vst2-preset-parser",
         "commit": "d6c4e0e985e6e47026b5f60a44458908967449d1",
@@ -42,6 +43,7 @@
       },
       "size": 5724,
       "sha256": "e17d11bc0d6a0d5dd93cad596aa2765ce0311d290f8050d8cc92d713bbe6ac66",
+      "purpose": "Dos programas `FPCh` reales, chunks de 2718 y 2730 bytes",
       "source": {
         "repo": "https://github.com/CharlesHolbrow/vst2-preset-parser",
         "commit": "d6c4e0e985e6e47026b5f60a44458908967449d1",
@@ -80,6 +82,7 @@
       },
       "size": 288,
       "sha256": "1334524b6547ebd36467f68514e6fa08d50b3099a4a86f37cf6cacb991fbbc00",
+      "purpose": "Banco de un programa `FxCk` de 19 parámetros, `fxVersion` 1100",
       "source": {
         "repo": "https://github.com/CharlesHolbrow/vst2-preset-parser",
         "commit": "d6c4e0e985e6e47026b5f60a44458908967449d1",
@@ -109,6 +112,7 @@
       "programs": { "count": 0, "fxck": 0, "fpch": 0, "params": null, "chunkBytes": null, "byteSizeTotal": 0 },
       "size": 320,
       "sha256": "f56f3107c19e2ce452a00c760cb9e22fc4c724d807521c9342097d6068f87393",
+      "purpose": "Versión 2 (con `currentProgram`) y chunk opaco de 160 bytes",
       "source": {
         "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
         "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
@@ -145,6 +149,7 @@
       },
       "size": 248,
       "sha256": "cf7c8442afac4af13d5cef8a19437d51f644129a6d567265ddd754f993c7e490",
+      "purpose": "Programa `FxCk` de 9 parámetros, `fxVersion` 0",
       "source": {
         "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
         "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
@@ -181,6 +186,7 @@
       },
       "size": 248,
       "sha256": "f41e53b828850271fcf367a7ec12bc9ff00e2238bad844f99092637a000b7460",
+      "purpose": "El mismo export con los enteros y floats invertidos: es el caso de un plugin que guarda su struct nativo sin convertir",
       "source": {
         "derivedFrom": "wavosaur-reeq-3set.fxb",
         "method": "Mismos 240 bytes de datos del export de Wavosaur con cada entero y float de 32 bits invertido; nombres y chunks quedan intactos. Reproduce lo que escribe un plugin de Windows que guarda su struct nativo sin pasarlo a big-endian.",
@@ -216,6 +222,7 @@
       },
       "size": 260,
       "sha256": "48f9ce04ced42db933a3c498e35670ddffc20bb142f88af362e981c4c483d785",
+      "purpose": "Programa `FxCk` de 12 parámetros, otro export del host",
       "source": {
         "repo": "https://github.com/nokitakaze/VSTAudioProcessor",
         "commit": "3e721c7478e500e792061e1977b85a6b71060fb9",
@@ -245,6 +252,7 @@
       "programs": { "count": 0, "fxck": 0, "fpch": 0, "params": null, "chunkBytes": null, "byteSizeTotal": 0 },
       "size": 86357,
       "sha256": "8e7da0df667fec72020de7c55efc13ed87b3339141b970f4f49556fee7924408",
+      "purpose": "Banco de fábrica real de 128 programas, `currentProgram` 6",
       "source": {
         "repo": "https://github.com/webaudiomodules/wam-examples",
         "commit": "2179e50cf7bbc1f038a6e423651d9915505621f8",
@@ -281,6 +289,7 @@
       },
       "size": 34156,
       "sha256": "3335a308a9b154ccddbe15eecd832e117c454cd7968075cc63aea95d1f548156",
+      "purpose": "100 programas `FxCk` con nombre propio y parámetros float; el único `FxBk` de versión 2, con `currentProgram` 0",
       "source": {
         "url": "http://bji.yukihotaru.com/vst/MauSynth%20AZ%20bank.fxb",
         "retrieved": "2026-10-20",

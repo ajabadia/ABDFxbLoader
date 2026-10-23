@@ -42,8 +42,8 @@ import type { BankImportResponse } from '../src/library/library.types';
 const execFileAsync = promisify(execFile);
 
 const FIXTURES = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'fxb');
-/** Script que deriva el bloque `programs` de los bytes de cada `.fxb`. */
-const DERIVE_PROGRAMS = path.join(FIXTURES, 'derive-programs.mjs');
+/** Script que deriva `size`, `sha256` y el bloque `programs` de cada `.fxb`. */
+const DERIVE_MANIFEST = path.join(FIXTURES, 'derive-manifest.mjs');
 
 interface FixtureSource {
   /** Archivo publicado en un repositorio: commit y ruta exacta de donde se copió. */
@@ -429,10 +429,17 @@ interface DerivationRun {
   stderr: string;
 }
 
+/** Lo que el script deriva de cada `.fxb` y tiene que estar en el manifiesto. */
+interface DerivedFixture {
+  size: number;
+  sha256: string;
+  programs: FixturePrograms;
+}
+
 /** Ejecuta el script como lo haría una persona, con el Node que corre los tests. */
-async function derivePrograms(args: string[]): Promise<DerivationRun> {
+async function deriveManifest(args: string[]): Promise<DerivationRun> {
   try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [DERIVE_PROGRAMS, ...args]);
+    const { stdout, stderr } = await execFileAsync(process.execPath, [DERIVE_MANIFEST, ...args]);
     return { code: 0, stdout, stderr };
   } catch (error) {
     const failure = error as { code?: number | string; stdout?: string; stderr?: string };
@@ -455,14 +462,51 @@ async function tempManifest(t: TestContext, contents: string): Promise<string> {
   return file;
 }
 
-/** Un byte de diferencia en el bloque `programs` de `rea-comp.FXB` (124 → 125). */
-const REA_COMP_BYTES = '"byteSizeTotal": 124';
-const BROKEN_REA_COMP_BYTES = '"byteSizeTotal": 125';
+/** Fixture pequeño y conocido que usan los tests de mutación del manifiesto. */
+function reaCompFixture(): Fixture {
+  const fixture = manifest.fixtures.find((candidate) => candidate.file === 'rea-comp.FXB');
+  assert.ok(fixture, 'falta el fixture rea-comp.FXB');
+  return fixture;
+}
 
-test('el manifiesto coincide con los bloques programs derivados de los .fxb', async () => {
-  const run = await derivePrograms([]);
+/** Manifest con el `size` de `rea-comp.FXB` cambiado en un byte. */
+function brokenSize(original: string): { text: string; declared: number } {
+  const { size, sha256 } = reaCompFixture();
+  const declared = size + 1;
+  // El `size` va justo antes del `sha256`: anclarlo así no confunde 288 con 2886,
+  // y el `\r?\n` lo hace funcionar también en un checkout con CRLF.
+  const text = original.replace(
+    new RegExp(`"size": ${size},(\\r?\\n\\s*"sha256": "${sha256}")`),
+    `"size": ${declared},$1`,
+  );
+  assert.notEqual(text, original, `manifest.json debe declarar "size": ${size} en rea-comp.FXB`);
+  return { text, declared };
+}
+
+/** Manifest con un dígito del `sha256` de `rea-comp.FXB` cambiado. */
+function brokenSha256(original: string): { text: string; declared: string } {
+  const { sha256 } = reaCompFixture();
+  const declared = `${sha256[0] === 'a' ? 'b' : 'a'}${sha256.slice(1)}`;
+  const text = original.replace(`"sha256": "${sha256}"`, `"sha256": "${declared}"`);
+  assert.notEqual(text, original, `manifest.json debe declarar el sha256 de rea-comp.FXB`);
+  return { text, declared };
+}
+
+/** Manifest con la suma de `byteSize` de `rea-comp.FXB` cambiada en un byte. */
+function brokenPrograms(original: string): { text: string; declared: number } {
+  const { byteSizeTotal } = reaCompFixture().programs;
+  const text = original.replace(
+    `"byteSizeTotal": ${byteSizeTotal}`,
+    `"byteSizeTotal": ${byteSizeTotal + 1}`,
+  );
+  assert.notEqual(text, original, 'manifest.json debe declarar el byteSizeTotal de rea-comp.FXB');
+  return { text, declared: byteSizeTotal + 1 };
+}
+
+test('el manifiesto coincide con lo derivado de los .fxb: size, sha256 y programs', async () => {
+  const run = await deriveManifest([]);
   assert.equal(run.code, 0, run.stderr);
-  const derived = JSON.parse(run.stdout) as Record<string, FixturePrograms>;
+  const derived = JSON.parse(run.stdout) as Record<string, DerivedFixture>;
 
   const files = (await readdir(FIXTURES))
     .filter((name) => /\.fxb$/i.test(name))
@@ -481,26 +525,49 @@ test('el manifiesto coincide con los bloques programs derivados de los .fxb', as
   for (const fixture of manifest.fixtures) {
     assert.deepEqual(
       derived[fixture.file],
-      fixture.programs,
-      `${fixture.file}: el bloque "programs" no coincide con lo que declaran sus bytes ` +
-        '(regenera con `node test/fixtures/fxb/derive-programs.mjs --write`)',
+      { size: fixture.size, sha256: fixture.sha256, programs: fixture.programs },
+      `${fixture.file}: size, sha256 o programs no coinciden con sus bytes ` +
+        '(regenera con `node test/fixtures/fxb/derive-manifest.mjs --write`)',
     );
   }
 
   // El mismo contrato por la vía que usa una persona en la terminal.
-  const check = await derivePrograms(['--check']);
+  const check = await deriveManifest(['--check']);
   assert.equal(check.code, 0, check.stderr);
 });
 
 test('la comprobación falla si el manifiesto se desvía un solo byte', async (t) => {
   const original = await readFile(path.join(FIXTURES, 'manifest.json'), 'utf8');
-  const broken = original.replace(REA_COMP_BYTES, BROKEN_REA_COMP_BYTES);
-  assert.notEqual(broken, original, `manifest.json debe declarar ${REA_COMP_BYTES}`);
+  const broken = brokenPrograms(original);
 
-  const run = await derivePrograms(['--check', '--manifest', await tempManifest(t, broken)]);
+  const run = await deriveManifest(['--check', '--manifest', await tempManifest(t, broken.text)]);
   assert.equal(run.code, 1, 'una diferencia de un byte debe romper la comprobación');
-  assert.match(run.stderr, /rea-comp\.FXB: byteSizeTotal: manifiesto 125, \.fxb 124/);
+  assert.match(
+    run.stderr,
+    new RegExp(
+      `rea-comp\\.FXB: byteSizeTotal: manifiesto ${broken.declared}, \\.fxb ${reaCompFixture().programs.byteSizeTotal}`,
+    ),
+  );
   assert.match(run.stderr, /--write/);
+});
+
+test('la comprobación también falla si se desvía el size o el sha256', async (t) => {
+  const original = await readFile(path.join(FIXTURES, 'manifest.json'), 'utf8');
+  const fixture = reaCompFixture();
+
+  const size = brokenSize(original);
+  const sizeRun = await deriveManifest(['--check', '--manifest', await tempManifest(t, size.text)]);
+  assert.equal(sizeRun.code, 1, 'un tamaño distinto debe romper la comprobación');
+  assert.match(
+    sizeRun.stderr,
+    new RegExp(`rea-comp\\.FXB: size: manifiesto ${size.declared}, \\.fxb ${fixture.size}`),
+  );
+
+  const hash = brokenSha256(original);
+  const hashRun = await deriveManifest(['--check', '--manifest', await tempManifest(t, hash.text)]);
+  assert.equal(hashRun.code, 1, 'un hash distinto debe romper la comprobación');
+  assert.match(hashRun.stderr, /rea-comp\.FXB: sha256: manifiesto "[0-9a-f]+", \.fxb "[0-9a-f]+"/);
+  assert.match(hashRun.stderr, new RegExp(`\.fxb "${fixture.sha256}"`));
 });
 
 /** Directorio de fixtures temporal para los caminos de error del script. */
@@ -519,7 +586,7 @@ test('el script falla ante un .fxb truncado en vez de inventar el bloque', async
   const data = await readFile(path.join(FIXTURES, 'rea-comp.FXB'));
   const fixtures = await tempFixtures(t, { 'rea-comp.FXB': data.subarray(0, 200) });
 
-  const run = await derivePrograms(['--fixtures', fixtures]);
+  const run = await deriveManifest(['--fixtures', fixtures]);
   assert.equal(run.code, 1, 'un banco truncado no puede producir un bloque');
   assert.match(run.stderr, /programa 1: byteSize 124 se sale del archivo/);
   assert.doesNotMatch(run.stdout, /byteSizeTotal/, 'no debe imprimir un bloque a medias');
@@ -533,31 +600,101 @@ test('la comprobación nombra un .fxb sin entrada en el manifiesto', async (t) =
     JSON.stringify({ description: 'sin entradas', fixtures: [] }, null, 2),
   );
 
-  const run = await derivePrograms(['--check', '--fixtures', fixtures, '--manifest', manifestPath]);
+  const run = await deriveManifest(['--check', '--fixtures', fixtures, '--manifest', manifestPath]);
   assert.equal(run.code, 1);
   assert.match(run.stderr, /rea-comp\.FXB: el \.fxb no tiene entrada en manifest\.json/);
 });
 
-test('--write corrige el bloque programs y no toca el resto del manifiesto', async (t) => {
+test('--write corrige size, sha256 y programs y no toca el resto del manifiesto', async (t) => {
   const original = await readFile(path.join(FIXTURES, 'manifest.json'), 'utf8');
-  const manifestPath = await tempManifest(
-    t,
-    original.replace(REA_COMP_BYTES, BROKEN_REA_COMP_BYTES),
-  );
+  const fixture = reaCompFixture();
+  const broken = brokenSize(original)
+    .text.replace(
+      `"sha256": "${fixture.sha256}"`,
+      `"sha256": "${brokenSha256(original).declared}"`,
+    )
+    .replace(
+      `"byteSizeTotal": ${fixture.programs.byteSizeTotal}`,
+      `"byteSizeTotal": ${brokenPrograms(original).declared}`,
+    );
+  assert.notEqual(broken, original, 'las tres mutaciones deben cambiar el manifiesto');
 
-  const run = await derivePrograms(['--write', '--manifest', manifestPath]);
+  const manifestPath = await tempManifest(t, broken);
+  const run = await deriveManifest(['--write', '--manifest', manifestPath]);
   assert.equal(run.code, 0, run.stderr);
   assert.equal(
     await readFile(manifestPath, 'utf8'),
     original,
-    'el bloque regenerado debe dejar el manifiesto byte a byte como el versionado',
+    'los tres campos regenerados deben dejar el manifiesto byte a byte como el versionado',
   );
 
   // Y una segunda pasada no reescribe nada.
-  const again = await derivePrograms(['--write', '--manifest', manifestPath]);
+  const again = await deriveManifest(['--write', '--manifest', manifestPath]);
   assert.equal(again.code, 0, again.stderr);
   assert.match(again.stdout, /sin cambios/);
   assert.equal(await readFile(manifestPath, 'utf8'), original);
+});
+
+test('--write añade size, sha256 y programs a una entrada que no los declara', async (t) => {
+  const fixture = reaCompFixture();
+  const manifestPath = await tempManifest(
+    t,
+    `${JSON.stringify(
+      {
+        description: 'entrada recién añadida, sin campos derivados',
+        fixtures: [{ file: fixture.file, source: fixture.source, expected: fixture.expected }],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  // `--check` los echa en falta: una entrada sin ellos no se da por buena.
+  const check = await deriveManifest(['--check', '--fixtures', FIXTURES, '--manifest', manifestPath]);
+  assert.equal(check.code, 1);
+  assert.match(check.stderr, /rea-comp\.FXB: size: manifiesto ausente/);
+
+  const run = await deriveManifest(['--write', '--fixtures', FIXTURES, '--manifest', manifestPath]);
+  assert.equal(run.code, 0, run.stderr);
+
+  const written = JSON.parse(await readFile(manifestPath, 'utf8')) as { fixtures: Fixture[] };
+  assert.deepEqual(written.fixtures[0], {
+    file: fixture.file,
+    programs: fixture.programs,
+    size: fixture.size,
+    sha256: fixture.sha256,
+    source: fixture.source,
+    expected: fixture.expected,
+  });
+  assert.match(
+    await readFile(manifestPath, 'utf8'),
+    /"file": "rea-comp\.FXB",\n      "programs": \{/,
+    'los campos se insertan detrás de "file", con la indentación del manifiesto',
+  );
+
+  // Con los tres campos ya dentro, la segunda pasada no toca el archivo.
+  const again = await deriveManifest(['--write', '--fixtures', FIXTURES, '--manifest', manifestPath]);
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, /sin cambios/);
+});
+
+test('--write completa una entrada cuyo "file" es el último campo', async (t) => {
+  const manifestPath = await tempManifest(
+    t,
+    '{\n  "fixtures": [\n    {\n      "file": "rea-comp.FXB"\n    }\n  ]\n}\n',
+  );
+
+  const run = await deriveManifest(['--write', '--fixtures', FIXTURES, '--manifest', manifestPath]);
+  assert.equal(run.code, 0, run.stderr);
+
+  const written = JSON.parse(await readFile(manifestPath, 'utf8')) as { fixtures: Fixture[] };
+  const fixture = reaCompFixture();
+  assert.deepEqual(written.fixtures[0], {
+    file: 'rea-comp.FXB',
+    programs: fixture.programs,
+    size: fixture.size,
+    sha256: fixture.sha256,
+  });
 });
 
 test('la comprobación de tamaños detecta un FxCk con numParams manipulado', async () => {
