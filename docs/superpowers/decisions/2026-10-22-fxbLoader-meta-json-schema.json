@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.net/fxbLoader.meta.json/draft-1",
+  "title": "fxbLoader.meta.json",
+  "description": "Catálogo de metadatos extendidos por plugin, gestionado por la web de fxbLoader. No sustituye a `vfxinfo.txt`: `vfxinfo.txt` sigue siendo fuente de los campos rígidos del plugin; este archivo solo gestiona lo extendido por la app.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "common": {
+      "type": "object",
+      "description": "Campos comunes que la app sabe interpretar del plugin. Provienen del `vfxinfo.txt` real cuando está disponible; si falta o está truncado, el catálogo se construye solo con lo que la app puede leer o pedir.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identidad del plugin para el catálogo. Viene del `id` de `vfxinfo.txt`; la app no inventa un id universal."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nombre legible del plugin, tal como lo ofrece el wizard de VMachine y el `vfxinfo.txt`."
+        },
+        "vendor": {
+          "type": "string",
+          "description": "Fabricante. Campo genérico del formato del wizard de VMachine; puede estar vacío."
+        },
+        "vendor_url": {
+          "type": "string",
+          "format": "uri-reference",
+          "description": "URL del fabricante, si aparece en `vfxinfo.txt`."
+        },
+        "genre": {
+          "type": "string",
+          "description": "Género o categoría del plugin, si el wizard la expone como campo común."
+        },
+        "name_abbreviation": {
+          "type": "string",
+          "description": "Abreviatura del nombre del plugin, si el wizard la expone como campo común."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notas del plugin, si el wizard las expone como campo común."
+        },
+        "created": {
+          "type": "string",
+          "format": "date",
+          "description": "Fecha de creación del plugin, si el wizard la expone y la app la reconoce como campo común."
+        }
+      }
+    },
+    "extended": {
+      "type": "object",
+      "description": "Campos extendidos arbitrarios por plugin, sin forzar una forma fija. Cada clave es una cadena corta sin espacios al principio ni al final; cada valor es un escalar o un objeto plano.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_:-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null", "object"],
+        "maxProperties": 128,
+        "additionalProperties": false
+      }
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Marca de lectura/escritura mantenida por la app, no editable por la persona."
+    },
+    "source": {
+      "type": "object",
+      "description": "Origen breve del catálogo en el momento de la última escritura.",
+      "additionalProperties": false,
+      "properties": {
+        "vfxinfo": {
+          "type": "boolean",
+          "description": "El catálogo leyó campos comunes desde `vfxinfo.txt` en la última escritura."
+        }
+      }
+    }
+  },
+  "required": ["common", "extended", "updated"]
+}
+
+---
+
+Decisión: formato del archivo propio de metadatos
+
+- Archivo: `<plugin>/fxbLoader.meta.json`
+- Formato: JSON con esquema validado.
+- Qué manda `vfxinfo.txt`: los campos rígidos del plugin.
+- Qué manda `fxbLoader.meta.json`: todo lo demás que la app maneja.
+- Identidad del plugin para el catálogo: `id` del `vfxinfo.txt`.
+- Campos comunes: los que la app sabe interpretar del `vfxinfo.txt` real.
+- Campos extendidos: cualquier par clave/valor complementario que el esquema admita.
+- Lectura defensiva: si el archivo propio es corrupto, fallo explícito y modo degradado, sin tocar `vfxinfo.txt` ni los bancos.
+- Escritura: atómica dentro de `pluginDir`, estilo `fxbLoader.config`.
+- Control optimista: `mtimeMs` de lectura antes de escribir, igual que hoy hace `fxbLoader.config`.
+- Campos propios de la app como `updated` y `source`: mantenidos por la app, no editables directamente.
+
+Decisión firmada el 2026-10-22.
