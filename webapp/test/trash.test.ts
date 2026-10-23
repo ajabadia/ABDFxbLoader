@@ -96,3 +96,40 @@ test('la papelera XDG de Linux deja el archivo y su .trashinfo', async (t) => {
     .join('/');
   assert.equal(decoded, path.resolve(target), 'la ruta se guarda codificada pero completa');
 });
+
+/**
+ * Dos respaldos distintos pueden llamarse igual (`Rhodes.fxb.orig` de dos
+ * plugins). La papelera XDG usa el `.trashinfo` como índice, así que el nombre
+ * libre hay que buscarlo ahí: si se busca en `files/` el segundo respaldo pisa
+ * al primero y su escritura falla con `EEXIST`. Se fuerza la rama de Linux para
+ * cubrirlo también desde Windows, donde la rama nativa es otra.
+ */
+test('la papelera XDG no pisa un respaldo que ya tiene ese nombre', async (t) => {
+  const dataHome = await tempDir(t, 'fxb-xdg-dup-');
+  const previous = process.env['XDG_DATA_HOME'];
+  process.env['XDG_DATA_HOME'] = dataHome;
+  t.after(() => {
+    if (previous === undefined) delete process.env['XDG_DATA_HOME'];
+    else process.env['XDG_DATA_HOME'] = previous;
+  });
+
+  const first = path.join(await tempDir(t, 'fxb-trash-uno-'), 'Rhodes.fxb.orig');
+  const second = path.join(await tempDir(t, 'fxb-trash-dos-'), 'Rhodes.fxb.orig');
+  await writeFile(first, 'uno');
+  await writeFile(second, 'dos');
+
+  await moveToTrash(first, 'linux');
+  await moveToTrash(second, 'linux');
+
+  const files = path.join(dataHome, 'Trash', 'files');
+  const info = path.join(dataHome, 'Trash', 'info');
+  assert.deepEqual((await readdir(files)).sort(), ['Rhodes.fxb (1).orig', 'Rhodes.fxb.orig']);
+  assert.deepEqual((await readdir(info)).sort(), [
+    'Rhodes.fxb (1).orig.trashinfo',
+    'Rhodes.fxb.orig.trashinfo',
+  ]);
+
+  // El contenido importa: pisar el primero lo dejaría con los bytes del segundo.
+  assert.equal(await readFile(path.join(files, 'Rhodes.fxb.orig'), 'utf8'), 'uno');
+  assert.equal(await readFile(path.join(files, 'Rhodes.fxb (1).orig'), 'utf8'), 'dos');
+});

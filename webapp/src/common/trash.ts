@@ -139,7 +139,11 @@ async function sendToLinuxTrash(target: string): Promise<TrashInfo> {
   await fs.mkdir(files, { recursive: true });
   await fs.mkdir(info, { recursive: true });
 
-  const name = await uniqueName(files, path.basename(target), '.trashinfo');
+  // El nombre libre se busca en `info/`, que es donde colisiona de verdad: el
+  // `.trashinfo` es el índice de la papelera. Mirando `files/` con el sufijo
+  // nunca se encontraba nada, así que el segundo respaldo con el mismo nombre
+  // sobrescribía al primero y la escritura con `wx` fallaba con `EEXIST`.
+  const name = await uniqueName(info, path.basename(target), '.trashinfo');
   const destination = path.join(files, name);
   const infoPath = path.join(info, `${name}.trashinfo`);
 

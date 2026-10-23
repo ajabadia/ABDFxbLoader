@@ -45,7 +45,10 @@ export function readPaths(body: unknown): string[] {
       throw new BadRequestException('paths debe ser una lista de cadenas');
     }
     const target = entry.trim();
-    if (!path.isAbsolute(target)) {
+    // `path.isAbsolute` mira al sistema que ejecuta, y la app es de Windows: en
+    // Linux esa comprobación rechazaría `C:\VFX\Library`, que sí es absoluta
+    // para quien la escribió. Se acepta cualquiera de las dos formas.
+    if (!path.isAbsolute(target) && !path.win32.isAbsolute(target)) {
       throw new BadRequestException(
         `paths debe contener rutas absolutas: ${JSON.stringify(entry)}`,
       );
