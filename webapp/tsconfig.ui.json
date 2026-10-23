@@ -12,5 +12,7 @@
     "sourceMap": false,
     "noEmitOnError": true
   },
-  "include": ["src/ui/**/*.ts", "src/client/fxb-client.ts", "src/client/api-types.ts"]
+  "include": ["src/ui/**/*.ts", "src/client/fxb-client.ts", "src/client/api-types.ts"],
+  // La base excluye `src/ui/browser` (es su compilación); aquí sí entra.
+  "exclude": ["node_modules"]
 }

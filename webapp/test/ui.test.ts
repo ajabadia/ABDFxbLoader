@@ -39,6 +39,18 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /fxbLoader/);
   assert.match(response.text, /id="plugins"/);
   assert.match(response.text, /id="scan-form"/);
+  assert.match(response.text, /id="library-root-recents"/);
+  assert.match(response.text, /list="library-root-recents"/);
+  assert.match(response.text, /id="root-browse"/);
+  assert.match(response.text, /Elegir carpeta…/);
+  assert.match(response.text, /id="dll-source-recents"/);
+  assert.match(response.text, /list="dll-source-recents"/);
+  assert.match(response.text, /id="dll-browse"/);
+  assert.match(response.text, /Elegir DLL…/);
+  assert.match(response.text, /id="recents-clear"/);
+  assert.match(response.text, /Vaciar historial de rutas/);
+  assert.match(response.text, /id="import-browse"/);
+  assert.match(response.text, /Añadir archivos…/);
   assert.match(response.text, /id="banks"/);
   assert.match(response.text, /id="banks-rows"/);
   assert.match(response.text, /id="default-bank"/);
@@ -46,7 +58,13 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /Convertir orden de bytes/);
   assert.match(response.text, /id="default-restore"/);
   assert.match(response.text, /Restaurar original/);
+  assert.match(response.text, /id="default-discard"/);
+  assert.match(response.text, /Descartar respaldo/);
   assert.match(response.text, /id="import-paths"/);
+  assert.match(response.text, /id="recent-banks"/);
+  assert.match(response.text, /Bancos usados recientemente/);
+  assert.match(response.text, /id="import-progress"/);
+  assert.match(response.text, /Progreso de la importación de bancos/);
   assert.match(response.text, /id="export-bank"/);
   assert.match(response.text, /id="export-order"/);
   assert.match(response.text, /id="export-overwrite"/);
@@ -56,6 +74,10 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="uninstall-all"/);
   assert.match(response.text, /id="batch-cancel"/);
   assert.match(response.text, /Cancelar/);
+  assert.match(response.text, /id="batch-resume"/);
+  assert.match(response.text, /Reanudar/);
+  assert.match(response.text, /id="retry-all"/);
+  assert.match(response.text, /Reintentar fallidos/);
   assert.match(response.text, /id="batch-errors"/);
   assert.match(response.text, /id="batch-error-list"/);
   assert.match(response.text, /id="batch-progress"/);
@@ -77,14 +99,43 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
 
   // La vista usa el cliente tipado y conserva las operaciones de bancos.
   assert.match(main.text, /client\.library\.scan/);
+  // Elegir carpetas y archivos sin teclearlos: el diálogo lo abre el servidor.
+  assert.match(main.text, /client\.system\.pick/);
+  assert.match(main.text, /appendPaths/);
+  // Las rutas usadas se recuerdan y se ofrecen como sugerencias en su campo.
+  assert.match(main.text, /parseRecents/);
+  assert.match(main.text, /rememberRecent/);
+  assert.match(main.text, /rememberRecentPaths/);
+  assert.match(main.text, /recentRoots/);
+  assert.match(main.text, /recentDlls/);
+  assert.match(main.text, /recentBanks/);
+  // Las sugerencias caducadas se podan contra el disco al cargar la vista.
+  assert.match(main.text, /client\.system\.paths/);
+  assert.match(main.text, /existingRecents/);
+  // Y se pueden olvidar a mano desde Opciones avanzadas, o solo los bancos
+  // desde el propio panel de bancos.
+  assert.match(main.text, /recentsClear/);
+  assert.match(main.text, /clearRecents/);
+  assert.match(main.text, /clearRecentBanks/);
+  assert.match(main.text, /recent-clear/);
+  // Cada chip se puede olvidar por separado con su «×».
+  assert.match(main.text, /forgetRecentBank/);
+  assert.match(main.text, /recent-chip-remove/);
   assert.match(main.text, /client\.library\.listBanks/);
-  assert.match(main.text, /client\.library\.importBanks/);
+  assert.match(main.text, /client\.library\.importBanksStream/);
   assert.match(main.text, /client\.library\.convertDefaultBank/);
   assert.match(main.text, /client\.library\.restoreDefaultBank/);
+  assert.match(main.text, /client\.library\.discardDefaultBankBackup/);
   // Restaurar pide confirmación y respeta el respaldo anunciado por la lista.
   assert.match(main.text, /defaultBackup/);
   assert.match(main.text, /client\.library\.exportBank/);
   assert.match(main.text, /renderExportOptions/);
+  // Importar bancos lee NDJSON y acumula el resultado; la barra avanza con
+  // cada banco, no solo al terminar el trozo.
+  assert.match(main.text, /runImportInChunks/);
+  assert.match(main.text, /onEvent/);
+  assert.match(main.text, /importProgressLabel/);
+  assert.match(main.text, /importProgress/);
   assert.match(main.text, /client\.config\.write/);
   assert.match(main.text, /expectedMtimeMs/);
   // El lote lo ejecuta el servidor, que además manda el progreso en caliente:
@@ -93,6 +144,12 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /failuresOf/);
   assert.match(main.text, /progressLabel/);
   assert.match(main.text, /batchProgress/);
+  // Reanudar solo los plugins sin confirmar: el botón se pinta con lo pendiente.
+  assert.match(main.text, /resumablePlugins/);
+  assert.match(main.text, /batchResume/);
+  // Los fallos se pueden reintentar de uno en uno o todos en orden.
+  assert.match(main.text, /retryAllFailures/);
+  assert.match(main.text, /retryAll/);
   assert.doesNotMatch(main.text, /runPluginBatch/);
   assert.doesNotMatch(main.text, /callWithRetry/);
   // El escaneo bloquea los plugins incompatibles.
@@ -138,6 +195,12 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(styles.text, /\.default-row/);
   assert.match(styles.text, /\.batch-errors/);
   assert.match(styles.text, /\.batch-progress/);
+  assert.match(styles.text, /\.import-progress/);
+  assert.match(styles.text, /\.recents/);
+  assert.match(styles.text, /\.recent-chip/);
+  assert.match(styles.text, /\.recent-item/);
+  assert.match(styles.text, /\.recent-chip-remove/);
+  assert.match(styles.text, /\.recent-clear/);
   assert.match(styles.text, /tr\.batch-running/);
   assert.match(styles.text, /details\.export/);
 });
@@ -246,4 +309,40 @@ test('resolvePublicDir encuentra index.html', () => {
   const dir = resolvePublicDir();
   assert.equal(path.basename(dir), 'public');
   assert.equal(existsSync(path.join(dir, 'index.html')), true);
+});
+
+/**
+ * El navegador no reescribe rutas de módulo: `from './x'` sin extensión no
+ * carga, y el error ocurre antes de que la vista pinte nada, así que el resto
+ * de los tests no lo verían. Se recorre el grafo emitido desde `main.js` y se
+ * exige que cada import relativo termine en `.js` y exista en el build.
+ */
+test('el grafo de la UI se resuelve en el navegador: imports relativos con .js', async () => {
+  const jsRoot = path.join(resolvePublicDir(), 'js');
+  const seen = new Set<string>();
+  const pending = [path.join(jsRoot, 'ui', 'browser', 'main.js')];
+  const imports = /^(?:import|export)\s[^\n]*\bfrom\s+['"]([^'"]+)['"]/gm;
+
+  while (pending.length > 0) {
+    const file = pending.pop()!;
+    if (seen.has(file)) continue;
+    seen.add(file);
+
+    const source = await readFile(file, 'utf8');
+    const relative = path.relative(jsRoot, file);
+    for (const match of source.matchAll(imports)) {
+      const specifier = match[1]!;
+      assert.match(
+        specifier,
+        /\.js$/,
+        `${relative} importa "${specifier}" sin extensión: el navegador no lo resuelve`,
+      );
+      const target = path.resolve(path.dirname(file), specifier);
+      assert.equal(existsSync(target), true, `${relative} importa "${specifier}", que no existe`);
+      pending.push(target);
+    }
+  }
+
+  // Sin este mínimo, un `main.js` recortado pasaría el test sin recorrer nada.
+  assert.ok(seen.size >= 5, `solo se recorrieron ${seen.size} módulos`);
 });

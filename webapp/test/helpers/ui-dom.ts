@@ -1,8 +1,8 @@
 /**
  * Comprobación estática de la UI: parsea `public/index.html` y resuelve los ids
  * y selectores que el código escribe a mano, para que un `#id`, un
- * `[data-field="…"]` o un `for="…"` mal escrito falle en los tests en vez de al
- * abrir la página.
+ * `[data-field="…"]`, un `[aria-live="…"]` o un `for="…"` mal escrito falle en
+ * los tests en vez de al abrir la página.
  *
  * No es un navegador: cubre el subconjunto de CSS que usa la UI (etiqueta, `#id`,
  * `.clase`, `[atributo]`/`[atributo="valor"]`, descendiente, hijo `>` y grupos
@@ -95,6 +95,75 @@ export function elementIds(root: HtmlNode): Set<string> {
   };
   visit(root);
   return ids;
+}
+
+/** Un atributo `data-*` del documento, tal cual aparece en el marcado. */
+export interface HtmlDataAttribute {
+  /** Nombre completo, en minúsculas: `data-field`. */
+  attribute: string;
+  /** Valor tal cual; `''` si el atributo no declara ninguno. */
+  value: string;
+}
+
+/**
+ * Atributos `data-*` del documento, plantilla de filas incluida. Es el lado
+ * inverso de `elementClasses`: sirve para detectar un campo o una acción que
+ * solo vive en `index.html` y ya no lee ni la vista ni el CSS.
+ */
+export function elementDataAttributes(root: HtmlNode): HtmlDataAttribute[] {
+  const attributes: HtmlDataAttribute[] = [];
+  const visit = (node: HtmlNode): void => {
+    for (const [attribute, value] of Object.entries(node.attributes)) {
+      if (attribute.startsWith('data-')) attributes.push({ attribute, value });
+    }
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return attributes;
+}
+
+/** Un atributo ARIA (`role` o `aria-*`) del documento, tal cual aparece. */
+export interface HtmlAriaAttribute {
+  /** Nombre completo, en minúsculas: `role` o `aria-live`. */
+  attribute: string;
+  /** Valor tal cual; `''` si el atributo no declara ninguno. */
+  value: string;
+}
+
+/**
+ * Atributos ARIA del documento, plantilla de filas incluida. Es el lado inverso
+ * de los selectores y lecturas de ARIA: sirve para detectar un estado que solo
+ * vive en `index.html` y ya no consulta ni pinta nadie.
+ */
+export function elementAriaAttributes(root: HtmlNode): HtmlAriaAttribute[] {
+  const attributes: HtmlAriaAttribute[] = [];
+  const visit = (node: HtmlNode): void => {
+    for (const [attribute, value] of Object.entries(node.attributes)) {
+      if (attribute === 'role' || attribute.startsWith('aria-')) {
+        attributes.push({ attribute, value });
+      }
+    }
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return attributes;
+}
+
+/**
+ * Clases del documento con el número de elementos que las llevan, plantilla de
+ * filas incluida. Es el lado inverso de `elementIds`: sirve para detectar una
+ * clase que solo vive en `index.html` y ya no pinta ni usa nadie.
+ */
+export function elementClasses(root: HtmlNode): Map<string, number> {
+  const classes = new Map<string, number>();
+  const visit = (node: HtmlNode): void => {
+    for (const name of (node.attributes['class'] ?? '').split(/\s+/)) {
+      if (name !== '') classes.set(name, (classes.get(name) ?? 0) + 1);
+    }
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return classes;
 }
 
 interface Compound {
@@ -286,8 +355,148 @@ export interface UiReferences {
   ids: UiReference[];
   /** Selectores literales pasados a las APIs de DOM. */
   selectors: UiReference[];
+  /** Atributos `data-*` que lee la vista, con su valor cuando lo exige. */
+  data: UiDataReference[];
+  /** Atributos `role`/`aria-*` que lee o actualiza la vista. */
+  aria: UiAriaReference[];
   /** Selectores con plantilla (`` `#${x}` ``): no se pueden comprobar. */
   dynamic: UiReference[];
+}
+
+/** Un `data-*` leído por un selector (`[data-field="name"]`) o por `dataset`. */
+export interface UiDataReference {
+  /** Nombre completo, en minúsculas: `data-field`. */
+  attribute: string;
+  /** Valor exigido, o `null` si la referencia vale para cualquier valor. */
+  value: string | null;
+  file: string;
+  line: number;
+}
+
+/** Un `role`/`aria-*` consultado en un selector o con `getAttribute`/`setAttribute`. */
+export interface UiAriaReference {
+  /** Nombre completo, en minúsculas: `role` o `aria-expanded`. */
+  attribute: string;
+  /** Valor exigido, o `null` si la referencia vale para cualquier valor. */
+  value: string | null;
+  file: string;
+  line: number;
+}
+
+/** `[data-x]` y `[data-x="valor"]` dentro de un selector. */
+const DATA_SELECTOR =
+  /\[\s*(data-[\w-]+)\s*(?:(?:[*^$|~]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\s*\]/g;
+
+/**
+ * Atributos `data-*` que exige un selector, con el valor si lo fija. Un selector
+ * genérico (`[data-open]`) devuelve `value: null` porque no distingue valores.
+ */
+export function dataReferencesInSelector(
+  selector: string,
+  file: string,
+  line: number,
+): UiDataReference[] {
+  const references: UiDataReference[] = [];
+  for (const match of selector.matchAll(DATA_SELECTOR)) {
+    const value = match[2] ?? match[3] ?? match[4];
+    references.push({
+      attribute: match[1]!.toLowerCase(),
+      value: value === undefined || value === '' ? null : value,
+      file,
+      line,
+    });
+  }
+  return references;
+}
+
+/** `[role]`, `[role="status"]`, `[aria-live]` y `[aria-expanded="true"]`. */
+const ARIA_SELECTOR =
+  /\[\s*((?:role|aria-[\w-]+))\s*(?:(?:[*^$|~]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\s*\]/gi;
+
+/**
+ * Atributos ARIA que exige un selector, con el valor si lo fija. Un selector
+ * genérico (`[aria-expanded]`) devuelve `value: null` porque no distingue
+ * valores; `[role="status"]` solo cuenta para ese rol.
+ */
+export function ariaReferencesInSelector(
+  selector: string,
+  file: string,
+  line: number,
+): UiAriaReference[] {
+  const references: UiAriaReference[] = [];
+  for (const match of selector.matchAll(ARIA_SELECTOR)) {
+    const value = match[2] ?? match[3] ?? match[4];
+    references.push({
+      attribute: match[1]!.toLowerCase(),
+      value: value === undefined || value === '' ? null : value,
+      file,
+      line,
+    });
+  }
+  return references;
+}
+
+/** `dataset.camelCase` / `dataset['key']` que **leen** la vista (no las escrituras). */
+const DATASET_ACCESS =
+  /\.dataset\s*(?:\.([A-Za-z_$][\w$]*)|\[\s*(?:'([^']*)'|\"([^\"]*)\")\s*\])/g;
+
+/** `blocked` → `data-blocked`; `bankName` → `data-bank-name`. */
+function datasetAttribute(name: string): string {
+  return `data-${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).toLowerCase()}`;
+}
+
+/** `getAttribute('data-x')` / `hasAttribute('data-x')`, que leen el atributo. */
+const DATA_ATTRIBUTE_CALL =
+  /\b(?:getAttribute|hasAttribute)\s*\(\s*(?:'([^']*)'|"([^"]*)")\s*\)/g;
+
+/**
+ * Atributos `data-*` que la vista consulta con `dataset` o `getAttribute`. Las
+ * asignaciones (`dataset.blocked = …`) no cuentan: la auditoría busca quién
+ * **lee** el marcado, y una escritura sobre otro elemento no prueba que ese
+ * atributo del HTML se use.
+ */
+export function dataReferencesInSource(source: string, file: string): UiDataReference[] {
+  const references: UiDataReference[] = [];
+
+  for (const match of source.matchAll(DATASET_ACCESS)) {
+    const rest = source.slice(match.index + match[0].length);
+    if (/^\s*[-+*/%]?=(?!=)/.test(rest)) continue;
+    references.push({
+      attribute: datasetAttribute(match[1] ?? match[2] ?? match[3] ?? ''),
+      value: null,
+      file,
+      line: lineAt(source, match.index),
+    });
+  }
+
+  for (const match of source.matchAll(DATA_ATTRIBUTE_CALL)) {
+    const attribute = (match[1] ?? match[2] ?? '').toLowerCase();
+    if (!attribute.startsWith('data-')) continue;
+    references.push({ attribute, value: null, file, line: lineAt(source, match.index) });
+  }
+
+  return references;
+}
+
+/** `getAttribute`, `hasAttribute`, `setAttribute`, `removeAttribute` y `toggleAttribute`. */
+const ARIA_ATTRIBUTE_CALL =
+  /\b(?:getAttribute|hasAttribute|setAttribute|removeAttribute|toggleAttribute)\s*\(\s*(?:'([^']*)'|"([^"]*)")/g;
+
+/**
+ * Atributos ARIA que la vista lee **o actualiza**. A diferencia de `data-*`, una
+ * escritura sí cuenta: un estado como `aria-expanded` se mantiene con
+ * `setAttribute` y sin esa llamada el valor del marcado quedaría congelado.
+ */
+export function ariaReferencesInSource(source: string, file: string): UiAriaReference[] {
+  const references: UiAriaReference[] = [];
+
+  for (const match of source.matchAll(ARIA_ATTRIBUTE_CALL)) {
+    const attribute = (match[1] ?? match[2] ?? '').toLowerCase();
+    if (attribute !== 'role' && !attribute.startsWith('aria-')) continue;
+    references.push({ attribute, value: null, file, line: lineAt(source, match.index) });
+  }
+
+  return references;
 }
 
 function lineAt(source: string, index: number): number {
@@ -328,7 +537,7 @@ const DYNAMIC_CALLS = [
  * selectores dinámicos se devuelven aparte para que el test pueda rechazarlos.
  */
 export function scanUiSource(source: string, file: string): UiReferences {
-  const references: UiReferences = { ids: [], selectors: [], dynamic: [] };
+  const references: UiReferences = { ids: [], selectors: [], data: [], aria: [], dynamic: [] };
 
   for (const match of source.matchAll(BY_ID_CALL)) {
     references.ids.push({ value: literalValue(match), file, line: lineAt(source, match.index) });
@@ -355,11 +564,26 @@ export function scanUiSource(source: string, file: string): UiReferences {
     }
   }
 
+  // Los `data-*` llegan por dos caminos: un selector literal y `dataset`.
+  for (const reference of references.selectors) {
+    references.data.push(...dataReferencesInSelector(reference.value, file, reference.line));
+  }
+  references.data.push(...dataReferencesInSource(source, file));
+
+  // Los ARIA llegan por un selector (`[aria-live]`) o por una llamada al DOM
+  // (`getAttribute`, `setAttribute`…).
+  for (const reference of references.selectors) {
+    references.aria.push(...ariaReferencesInSelector(reference.value, file, reference.line));
+  }
+  references.aria.push(...ariaReferencesInSource(source, file));
+
   // Cada patrón recorre la fuente por su cuenta; se ordena por línea para que
   // los mensajes sigan el orden del archivo.
-  const byLine = (a: UiReference, b: UiReference): number => a.line - b.line;
+  const byLine = (a: { line: number }, b: { line: number }): number => a.line - b.line;
   references.ids.sort(byLine);
   references.selectors.sort(byLine);
+  references.data.sort(byLine);
+  references.aria.sort(byLine);
   references.dynamic.sort(byLine);
   return references;
 }

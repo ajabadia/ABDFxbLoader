@@ -25,19 +25,49 @@
             placeholder="C:\VFX\Library"
             autocomplete="off"
             spellcheck="false"
+            list="library-root-recents"
             required
           />
+          <button
+            id="root-browse"
+            type="button"
+            title="Elegir la carpeta con el diálogo del sistema"
+          >
+            Elegir carpeta…
+          </button>
           <button id="scan-button" class="primary" type="submit">Escanear</button>
         </div>
+        <datalist id="library-root-recents"></datalist>
         <details>
           <summary>Opciones avanzadas</summary>
           <label for="dll-source">DLL del cargador (vacío = la del servidor)</label>
-          <input
-            id="dll-source"
-            placeholder="C:\fxbLoader\vst\fxbLoader.dll"
-            autocomplete="off"
-            spellcheck="false"
-          />
+          <div class="row">
+            <input
+              id="dll-source"
+              placeholder="C:\fxbLoader\vst\fxbLoader.dll"
+              autocomplete="off"
+              spellcheck="false"
+              list="dll-source-recents"
+            />
+            <button
+              id="dll-browse"
+              type="button"
+              title="Elegir el fxbLoader.dll con el diálogo del sistema"
+            >
+              Elegir DLL…
+            </button>
+          </div>
+          <datalist id="dll-source-recents"></datalist>
+          <div class="row">
+            <span class="note">Las rutas usadas se guardan solo en este navegador.</span>
+            <button
+              id="recents-clear"
+              type="button"
+              title="Olvidar las rutas sugeridas; lo escrito en los campos no cambia"
+            >
+              Vaciar historial de rutas
+            </button>
+          </div>
         </details>
       </form>
 
@@ -62,6 +92,8 @@
             <button id="batch-cancel" type="button" hidden>
               Cancelar
             </button>
+            <button id="batch-resume" type="button" hidden>Reanudar</button>
+            <button id="retry-all" type="button" hidden>Reintentar fallidos</button>
           </div>
           <p id="batch-status" class="status" role="status" aria-live="polite"></p>
           <progress
@@ -73,6 +105,7 @@
             hidden
           ></progress>
           <p id="batch-step" class="batch-step" hidden></p>
+          <p id="batch-clock" class="batch-clock" hidden></p>
           <details id="batch-errors" class="batch-errors" hidden>
             <summary id="batch-errors-summary"></summary>
             <ul id="batch-error-list" class="batch-error-list"></ul>
@@ -98,6 +131,7 @@
 
       <section id="banks" class="card" hidden aria-labelledby="banks-title">
         <div class="summary">
+          <!-- #banks-title solo lo referencia aria-labelledby de #banks: la vista no lo toca. -->
           <h2 id="banks-title">Bancos de <span id="banks-plugin"></span></h2>
           <button id="banks-close" type="button">Cerrar</button>
         </div>
@@ -131,6 +165,14 @@
           >
             Restaurar original
           </button>
+          <button
+            id="default-discard"
+            class="danger"
+            type="button"
+            title="Envía el respaldo .orig del banco por defecto a la Papelera de reciclaje para poder recuperarlo"
+          >
+            Descartar respaldo
+          </button>
         </div>
 
         <p id="banks-status" class="status" role="status" aria-live="polite"></p>
@@ -161,13 +203,38 @@
             spellcheck="false"
             placeholder="C:\Bancos\Rhodes.fxb"
           ></textarea>
+          <div
+            id="recent-banks"
+            class="recents"
+            role="group"
+            aria-label="Bancos usados recientemente"
+            hidden
+          ></div>
+          <div class="import-row">
+            <button
+              id="import-browse"
+              type="button"
+              title="Elegir los bancos .fxb con el diálogo del sistema"
+            >
+              Añadir archivos…
+            </button>
+          </div>
           <div class="import-row">
             <label class="check">
               <input id="import-overwrite" type="checkbox" checked />
               Sobrescribir un banco con el mismo nombre
             </label>
             <button id="import-button" class="primary" type="button">Importar</button>
+            <button id="import-cancel" type="button" hidden>Cancelar</button>
           </div>
+          <progress
+            id="import-progress"
+            class="import-progress"
+            max="1"
+            value="0"
+            aria-label="Progreso de la importación de bancos"
+            hidden
+          ></progress>
           <ul id="import-results" class="import-results"></ul>
         </details>
 

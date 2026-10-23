@@ -20,7 +20,20 @@
  * se pueden comprobar estructuralmente: se quedan en la comprobación de nombres.
  */
 
-import { querySelectorAll, type HtmlNode } from './ui-dom';
+import {
+  ariaReferencesInSelector,
+  dataReferencesInSelector,
+  elementAriaAttributes,
+  elementClasses,
+  elementDataAttributes,
+  elementIds,
+  htmlIdReferences,
+  querySelectorAll,
+  scanUiSource,
+  type HtmlNode,
+  type UiAriaReference,
+  type UiDataReference,
+} from './ui-dom';
 
 export interface CssRule {
   /** Preludio completo de la regla, tal cual (puede ser una lista con comas). */
@@ -233,6 +246,232 @@ function templateRoots(root: HtmlNode): HtmlNode[] {
   };
   visit(root);
   return templates;
+}
+
+/** Fuente de la vista, con su ruta relativa a `src/ui` para los mensajes. */
+export interface UiSource {
+  file: string;
+  source: string;
+}
+
+export interface MarkupAudit {
+  /** Ids de `index.html` que no usa ni el CSS, ni la vista, ni otro atributo. */
+  deadIds: string[];
+  /** Clases de `index.html` sin regla de CSS y sin uso en la vista. */
+  deadClasses: string[];
+  /**
+   * Atributos `data-*` del marcado que no lee nadie (`data-field="name"`), con
+   * el valor incluido: es lo que distingue un campo o una acción de la plantilla
+   * que la vista ya no consulta de otro que sí.
+   */
+  deadData: string[];
+  /**
+   * Estados ARIA (`aria-expanded`, `aria-pressed`…) que el marcado declara y
+   * ni el CSS ni la vista mantienen, con el valor incluido. Los roles, nombres,
+   * regiones vivas, relaciones y propiedades fijas no se auditan aquí: los
+   * consume el árbol de accesibilidad y una declaración estática ya es su uso.
+   */
+  deadAria: string[];
+  /** Totales revisados, para que un escáner roto no pase por vacuidad. */
+  ids: number;
+  classes: number;
+  data: number;
+  aria: number;
+}
+
+/**
+ * Estados ARIA que la interfaz tiene que mantener al día. El resto de ARIA
+ * (roles, nombres accesibles, descripciones, live regions, relaciones y
+ * propiedades fijas) lo consume el árbol de accesibilidad sin que haga falta
+ * consultarlo desde el código: una declaración estática ya es su uso. Estos,
+ * en cambio, quedan congelados si nadie los lee o actualiza.
+ */
+const STATEFUL_ARIA = new Set([
+  'aria-busy',
+  'aria-checked',
+  'aria-expanded',
+  'aria-pressed',
+  'aria-selected',
+]);
+
+/** `classList.add(...)` y compañía: la lista de argumentos, sin paréntesis. */
+const CLASS_LIST_CALL = /\bclassList\.(add|remove|toggle|replace|contains)\s*\(([^()]*)\)/g;
+const CLASS_ASSIGNMENT =
+  /\bclassName\s*=\s*(?:`([^`]*)`|'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
+const CLASS_ATTRIBUTE =
+  /\bsetAttribute\s*\(\s*['"]class['"]\s*,\s*(?:`([^`]*)`|'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")\s*\)/g;
+const STRING_IN_ARGUMENT = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g;
+/** Comparaciones: `state === 'done'` es un valor de estado, no una clase. */
+const COMPARISON = /[=!]==?/;
+
+/** Palabras de un valor de `class`: la interpolación no se puede leer estática. */
+function classTokens(value: string): string[] {
+  return value
+    .replace(/\$\{[^}]*\}/g, ' ')
+    .split(/\s+/)
+    .filter((token) => /^[A-Za-z][\w-]*$/.test(token));
+}
+
+/**
+ * Clases que la vista escribe o consulta, con el primer sitio donde aparecen:
+ *
+ * - `classList.add/remove/toggle/replace/contains(...)`, todos sus argumentos
+ *   menos los que son comparaciones (`toggle('on', plugin.installed)`);
+ * - `className = …`, también con plantilla (`\`status ${kind}\`` aporta
+ *   `status` y deja la variable sin resolver);
+ * - `setAttribute('class', …)`;
+ * - las clases de los selectores literales (`querySelector('.badge.on')`).
+ *
+ * Los nombres que solo llegan por una variable (`kind`) no se pueden atribuir a
+ * una clase concreta sin ejecutar el código, así que no cuentan: si un elemento
+ * del HTML depende de ellos, la clase debe estar también en el CSS.
+ */
+export function classNamesInSource(sources: Iterable<UiSource>): Map<string, string> {
+  const classes = new Map<string, string>();
+  const add = (name: string, origin: string): void => {
+    if (name !== '' && !classes.has(name)) classes.set(name, origin);
+  };
+
+  for (const { file, source } of sources) {
+    const lineAt = (index: number): number => source.slice(0, index).split('\n').length;
+
+    for (const match of source.matchAll(CLASS_LIST_CALL)) {
+      const origin = `${file}:${lineAt(match.index)}`;
+      for (const argument of splitSelectorList(match[2] ?? '')) {
+        if (COMPARISON.test(argument)) continue;
+        for (const literal of argument.matchAll(STRING_IN_ARGUMENT)) {
+          for (const token of classTokens(literal[1] ?? literal[2] ?? '')) add(token, origin);
+        }
+      }
+    }
+
+    for (const pattern of [CLASS_ASSIGNMENT, CLASS_ATTRIBUTE]) {
+      for (const match of source.matchAll(pattern)) {
+        const origin = `${file}:${lineAt(match.index)}`;
+        for (const token of classTokens(match[1] ?? match[2] ?? match[3] ?? '')) add(token, origin);
+      }
+    }
+
+    // Un selector literal también nombra clases que la vista consulta.
+    for (const reference of scanUiSource(source, file).selectors) {
+      for (const match of reference.value.matchAll(/\.([\w-]+)/g)) {
+        add(match[1]!, `${file}:${reference.line}`);
+      }
+    }
+  }
+
+  return classes;
+}
+
+/**
+ * Auditoría inversa de `index.html`: qué ids, clases, atributos `data-*` y
+ * estados ARIA del marcado no usa nadie.
+ *
+ * Un id vale si lo pinta el CSS (`#id`), lo busca la vista (`byId`,
+ * `getElementById`, `#id` en un selector) o lo referencia otro atributo del
+ * propio HTML (`for`, `aria-labelledby`, `href="#…"`). Una clase vale si tiene
+ * regla en `styles.css` o si la vista la escribe o la consulta
+ * (`classNamesInSource`). Un `data-*` vale si un selector del CSS o de la vista
+ * lo exige con ese valor (`[data-field="name"]`), o si la vista lee el atributo
+ * entero con `dataset`; una escritura (`dataset.x = …`) no cuenta, porque no
+ * prueba que ese atributo del HTML se consulte. Un ARIA vale si es declarativo
+ * (rol, nombre, live region, relación o propiedad fija) o si es uno de los
+ * estados de `STATEFUL_ARIA` y el CSS o la vista lo consultan o actualizan, con
+ * el valor exigido cuando el selector lo fija. Lo que no cumpla nada es
+ * marcado muerto: o sobra, o hay que documentar por qué se queda.
+ */
+export function auditMarkup(
+  root: HtmlNode,
+  css: string,
+  sources: Iterable<UiSource>,
+): MarkupAudit {
+  const allSources = [...sources];
+  const cssNames = new Set<string>();
+  for (const rule of parseCssSelectors(css)) {
+    for (const selector of splitSelectorList(rule.selector)) {
+      for (const name of selectorNames(selector)) cssNames.add(name);
+    }
+  }
+
+  const usedIds = new Set<string>();
+  for (const { file, source } of allSources) {
+    for (const reference of scanUiSource(source, file).ids) usedIds.add(reference.value);
+  }
+  for (const reference of htmlIdReferences(root)) usedIds.add(reference.id);
+
+  const ids = elementIds(root);
+  const deadIds = [...ids].filter((id) => !usedIds.has(id) && !cssNames.has(id)).sort();
+
+  const usedClasses = classNamesInSource(allSources);
+  const classes = elementClasses(root);
+  const deadClasses = [...classes.keys()]
+    .filter((name) => !usedClasses.has(name) && !cssNames.has(name))
+    .sort();
+
+  const dataReferences: UiDataReference[] = allSources.flatMap(
+    ({ file, source }) => scanUiSource(source, file).data,
+  );
+  const ariaReferences: UiAriaReference[] = allSources.flatMap(
+    ({ file, source }) => scanUiSource(source, file).aria,
+  );
+  for (const rule of parseCssSelectors(css)) {
+    for (const selector of splitSelectorList(rule.selector)) {
+      dataReferences.push(...dataReferencesInSelector(selector, 'styles.css', rule.line));
+      ariaReferences.push(...ariaReferencesInSelector(selector, 'styles.css', rule.line));
+    }
+  }
+
+  const attributes = elementDataAttributes(root);
+  const deadData = [
+    ...new Set(
+      attributes
+        .filter(({ attribute, value }) => {
+          const references = dataReferences.filter(
+            (reference) => reference.attribute === attribute,
+          );
+          // Sin valor (`<div data-open>`) basta con que alguien nombre el
+          // atributo; con valor, la referencia tiene que ser genérica o pedir
+          // justo ese valor.
+          return value === ''
+            ? references.length === 0
+            : !references.some(
+                (reference) => reference.value === null || reference.value === value,
+              );
+        })
+        .map(({ attribute, value }) => (value === '' ? attribute : `${attribute}="${value}"`)),
+    ),
+  ].sort();
+
+  const ariaAttributes = elementAriaAttributes(root);
+  const deadAria = [
+    ...new Set(
+      ariaAttributes
+        .filter(({ attribute, value }) => {
+          // Un ARIA sin valor no lo consume nadie, ni siquiera un rol o un
+          // nombre accesible: el árbol de accesibilidad necesita el valor.
+          if (value === '') return true;
+          if (!STATEFUL_ARIA.has(attribute)) return false;
+          const references = ariaReferences.filter(
+            (reference) => reference.attribute === attribute,
+          );
+          return !references.some(
+            (reference) => reference.value === null || reference.value === value,
+          );
+        })
+        .map(({ attribute, value }) => (value === '' ? attribute : `${attribute}="${value}"`)),
+    ),
+  ].sort();
+
+  return {
+    deadIds,
+    deadClasses,
+    deadData,
+    deadAria,
+    ids: ids.size,
+    classes: classes.size,
+    data: attributes.length,
+    aria: ariaAttributes.length,
+  };
 }
 
 function matches(root: HtmlNode, selector: string): boolean {

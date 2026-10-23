@@ -187,6 +187,15 @@ details input {
   margin-top: 8px;
 }
 
+details .row {
+  align-items: flex-end;
+  margin-top: 8px;
+}
+
+details .row input {
+  margin-top: 0;
+}
+
 .status {
   min-height: 22px;
   margin: 0;
@@ -285,6 +294,15 @@ details input {
 
 /* Paso interno del plugin en curso (respaldo, copia, parcheo, config…). */
 .batch-step {
+  flex: 1 1 100%;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reloj del lote: transcurrido, estimación del resto y tiempo del paso. */
+.batch-clock {
   flex: 1 1 100%;
   margin: -4px 0 0;
   color: var(--muted);
@@ -553,6 +571,105 @@ details.import label[for='import-paths'] {
   margin-top: 10px;
   margin-bottom: 0;
   justify-content: space-between;
+}
+
+/* Sugerencias de rutas usadas antes; los bancos se suman con un clic. */
+.recents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.recents[hidden] {
+  display: none;
+}
+
+.recents-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recent-chip {
+  max-width: 100%;
+  padding: 4px 9px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+/* Cada sugerencia con su «×»: quita ese banco sin vaciar la fila. */
+.recent-item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.recent-item .recent-chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.recent-chip-remove {
+  padding: 4px 8px;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.recent-chip-remove:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/* «Olvidar» cierra la fila de bancos recientes sin competir con los chips. */
+.recent-clear {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.recent-clear:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Progreso de la importación: archivos con resultado sobre el total pedido. */
+.import-progress {
+  width: 100%;
+  height: 8px;
+  margin: 10px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--off-bg);
+  color: var(--accent);
+  appearance: none;
+  overflow: hidden;
+}
+
+.import-progress::-webkit-progress-bar {
+  background: var(--off-bg);
+}
+
+.import-progress::-webkit-progress-value {
+  background: var(--accent);
+  transition: width 120ms ease-out;
+}
+
+.import-progress::-moz-progress-bar {
+  background: var(--accent);
 }
 
 .import-results {

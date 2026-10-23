@@ -17,5 +17,10 @@
     "forceConsistentCasingInFileNames": true,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  // La UI de navegador usa DOM y se compila aparte (tsconfig.ui.json): sus
+  // ficheros no pueden pasar por la configuración del servidor, que no tiene
+  // lib DOM. Los que sí son puros (batch, bank-import, recents) se incluyen al
+  // importarlos desde `src/client/index.ts`.
+  "exclude": ["src/ui/browser"]
 }
