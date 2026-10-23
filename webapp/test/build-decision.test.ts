@@ -228,6 +228,14 @@ test('start.bat decide con el script, limpia y solo entonces compila', async (t)
   // Modo sin servidor: lo usa el job de CI de Windows.
   assert.match(bat, /if defined FXB_SKIP_SERVER goto build_only/);
 
+  // Un fallo no puede cerrar la ventana con el mensaje dentro: se pausa, salvo
+  // en CI o en el modo sin servidor, donde nadie puede contestar.
+  const pauseAt = bat.indexOf(':maybe_pause');
+  assert.ok(pauseAt !== -1, 'start.bat no pausa ante un fallo');
+  assert.ok(bat.lastIndexOf('call :maybe_pause') > pauseAt, 'la pausa no se llama');
+  assert.match(bat, /if defined CI exit \/b 0/);
+  assert.match(bat, /if defined FXB_NO_BROWSER exit \/b 0/);
+
   // La comprobación de huérfanos es del script al que llama el .bat.
   assert.match(bat, /huerfanos/);
   const script = await readFile(SCRIPT, 'utf8');

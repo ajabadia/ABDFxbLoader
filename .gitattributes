@@ -1,5 +1,9 @@
 * text=auto eol=lf
 
+# Los batch de Windows se ejecutan con cmd.exe, que interpreta mal algunas
+# construcciones (bloques `if`, líneas `rem`) si el fichero llega solo con LF.
+*.bat text eol=crlf
+
 # Binarios de referencia: no deben sufrir conversión de fin de línea.
 *.dll binary
 *.exe binary

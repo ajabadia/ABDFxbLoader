@@ -8,12 +8,14 @@ rem
 rem  Uso:  start.bat [puerto]        (por defecto 3210)
 rem
 rem  1. Libera el puerto: cierra lo que este escuchando en el.
-rem  2. Instala dependencias y compila si el build falta, esta desactualizado o
-rem     le sobran archivos sin fuente (huerfanos: un .js de dist o public\js
-rem     cuyo .ts ya no existe). Al recompilar borra antes dist y public\js para
-rem     no arrastrar esas salidas.
-rem  3. Arranca el servidor en esta ventana (aqui quedan los logs).
+rem  2. Si el build no está al día, elimina las salidas ociosas y recompila.
+rem  3. Arranca el servidor en esta ventana. Su salida se guarda en start.log
 rem  4. Espera a que responda y abre la UI en el navegador.
+
+
+
+
+
 rem
 rem  FXB_NO_BROWSER=1 evita abrir el navegador (util para automatizar).
 rem  FXB_SKIP_SERVER=1 recorre compilacion y limpieza y sale sin arrancar el
@@ -22,6 +24,9 @@ rem ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 pushd "%ROOT%" || exit /b 1
+
+set "LOG=%ROOT%start.log"
+if defined FXB_SKIP_SERVER (type nul > "%LOG%") else (> "%LOG%" echo.)
 
 if "%~1"=="" goto env_port
 set "PORT=%~1"
@@ -126,7 +131,7 @@ popd
 if "%STATUS%"=="0" goto finish
 echo.
 echo El servidor termino con codigo %STATUS%.
-if not defined FXB_NO_BROWSER pause
+call :maybe_pause
 rem Sin este salto, el flujo caeria en :build_only y borraria el codigo de error.
 goto finish
 
@@ -137,6 +142,19 @@ goto finish
 :finish
 popd
 exit /b %STATUS%
+
+rem --- Espera una tecla ante un fallo antes de que la ventana se cierre. ------
+rem Si start.bat se abre con doble clic, cmd cierra la ventana al terminar y el
+rem mensaje de error se pierde. En CI y en los modos desatendidos
+rem (FXB_SKIP_SERVER de las pruebas, FXB_NO_BROWSER de la automatizacion) nadie
+rem puede contestar, asi que no se pausa.
+:maybe_pause
+if defined CI exit /b 0
+if defined FXB_SKIP_SERVER exit /b 0
+if defined FXB_NO_BROWSER exit /b 0
+echo.
+pause
+exit /b 0
 
 rem --- Cierra un PID que retiene el puerto, sin repetirlo ni tocar el 0. ------
 :kill_port
@@ -186,5 +204,6 @@ echo y cierra ese proceso, o lanza start.bat con otro puerto.
 goto fail
 
 :fail
+call :maybe_pause
 popd
 exit /b 1
