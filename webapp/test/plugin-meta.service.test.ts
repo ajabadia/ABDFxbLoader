@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { PluginMetaService } from '../src/plugin-meta/plugin-meta.service';
+import {
+  PluginMetaService,
+  commonFromVfxinfoFile,
+  readCommonFromVfxinfo,
+} from '../src/plugin-meta/plugin-meta.service';
 import {
   PluginMetaConflictError,
   PluginMetaInvalidError,
   PluginMetaPathError,
 } from '../src/plugin-meta/plugin-meta.types';
-import type { PluginMetaSnapshot } from '../src/plugin-meta/plugin-meta.types';
+import type { PluginMetaSnapshot, PluginMetaValue } from '../src/plugin-meta/plugin-meta.types';
 
 const service = new PluginMetaService();
 
@@ -446,5 +450,247 @@ test('rechaza rutas relativas y directorios inexistentes', async () => {
       extended: {},
     }),
     PluginMetaPathError,
+  );
+  await assert.rejects(service.read('   '), PluginMetaPathError, 'un pluginDir vacío no llega al disco');
+});
+
+test('un pluginDir absoluto que no existe se rechaza nombrando la ruta', async () => {
+  const missing = path.join(tmpdir(), `fxb-meta-no-existe-${process.pid}`);
+
+  await assert.rejects(service.read(missing), (error: unknown) => {
+    assert.ok(error instanceof PluginMetaPathError);
+    assert.match((error as Error).message, /el directorio no existe/);
+    return true;
+  });
+});
+
+test('escribir con una fecha esperada y sin archivo es conflicto, no creación', async (t) => {
+  const dir = await tempDir(t);
+
+  await assert.rejects(
+    service.write({ pluginDir: dir, expectedMtimeMs: Date.now(), common: { id: '1' }, extended: {} }),
+    (error: unknown) => {
+      assert.ok(error instanceof PluginMetaConflictError);
+      assert.equal((error as PluginMetaConflictError).current.exists, false);
+      assert.equal((error as PluginMetaConflictError).current.mtimeMs, null);
+      return true;
+    },
+  );
+
+  await assert.rejects(readFile(metaPath(dir), 'utf8'), { code: 'ENOENT' }, 'no se escribió nada');
+});
+
+test('rechaza un pluginDir que existe pero es un archivo', async (t) => {
+  const dir = await tempDir(t);
+  const file = path.join(dir, 'plugin.dll');
+  await writeFile(file, 'no es una carpeta');
+
+  await assert.rejects(service.read(file), (error: unknown) => {
+    assert.ok(error instanceof PluginMetaPathError);
+    assert.match((error as Error).message, /no es un directorio/);
+    return true;
+  });
+});
+
+/**
+ * Las dos funciones que traducen `vfxinfo.txt` a la parte común del meta: son
+ * la única vía por la que el JSON hereda lo que el plugin ya declaraba.
+ */
+test('commonFromVfxinfoFile se queda con las claves conocidas y con valor', () => {
+  const common = commonFromVfxinfoFile(
+    [
+      'name: SuperWave P8',
+      'vendor : VMachine Labs ',
+      'genre:',
+      ': sin clave',
+      'linea sin dos puntos',
+      'extra: no se admite',
+      'id: 1398231096',
+    ].join('\r\n'),
+  );
+
+  assert.deepEqual(common, { name: 'SuperWave P8', vendor: 'VMachine Labs', id: '1398231096' });
+});
+
+test('readCommonFromVfxinfo lee el vfxinfo del plugin y devuelve vacío si no existe', async (t) => {
+  const dir = await tempDir(t);
+
+  assert.deepEqual(await readCommonFromVfxinfo(dir), {});
+
+  await writeFile(path.join(dir, 'vfxinfo.txt'), 'name: Rhodes\r\nvendor: Yamaha\r\n', 'latin1');
+  assert.deepEqual(await readCommonFromVfxinfo(dir), { name: 'Rhodes', vendor: 'Yamaha' });
+});
+
+/**
+ * Cada forma que el esquema no admite, con el motivo exacto que recibe quien
+ * haya editado el `.meta.json` a mano.
+ */
+test('rechaza las formas de meta que el esquema no admite', async (t) => {
+  const dir = await tempDir(t);
+  const longText = 'x'.repeat(256);
+  const manyKeys = Object.fromEntries(
+    Array.from({ length: 129 }, (_, index) => [`k${index}`, index]),
+  );
+  const cases: Array<[string, unknown]> = [
+    ['el archivo propio debe ser un objeto JSON', []],
+    ['common debe ser un objeto, no un array', { common: [], extended: {} }],
+    ['el archivo propio debe incluir "extended" como objeto', { common: { id: '1' } }],
+    ['extended debe ser un objeto, no un array', { common: { id: '1' }, extended: [] }],
+    ['common.id: debe ser una cadena', { common: { id: 7 }, extended: {} }],
+    ['common: clave desconocida "extra"', { common: { extra: 'x' }, extended: {} }],
+    ['common.notes: 256 caracteres; el máximo es 255', { common: { notes: longText }, extended: {} }],
+    ['common.notes: no puede contener caracteres de control', { common: { notes: 'a\u0001b' }, extended: {} }],
+    ['extended: clave "9no" no válida', { common: {}, extended: { '9no': 1 } }],
+    ['extended: más de 128 claves', { common: {}, extended: manyKeys }],
+    ['extended.x: objeto con más de 128 propiedades', { common: {}, extended: { x: manyKeys } }],
+    ['extended.x: clave de objeto no válida "no vale"', { common: {}, extended: { x: { 'no vale': 1 } } }],
+    ['source: debe ser un objeto', { common: {}, extended: {}, source: [] }],
+    ['source: clave desconocida "otra"', { common: {}, extended: {}, source: { otra: true } }],
+    ['clave desconocida en el archivo propio: "extra"', { common: {}, extended: {}, extra: 1 }],
+  ];
+
+  for (const [message, payload] of cases) {
+    await writeFile(metaPath(dir), JSON.stringify(payload), 'utf8');
+    await assert.rejects(service.read(dir), (error: unknown) => {
+      assert.ok(error instanceof PluginMetaInvalidError, `debería rechazar ${JSON.stringify(payload)}`);
+      assert.ok(
+        (error as PluginMetaInvalidError).issues.includes(message),
+        `esperaba «${message}» y llegó «${(error as PluginMetaInvalidError).issues.join('; ')}»`,
+      );
+      return true;
+    });
+  }
+});
+
+test('la escritura rechaza lo que el esquema no admite en la entrada', async (t) => {
+  const dir = await tempDir(t);
+  const badExtended = (value: unknown): Readonly<Record<string, PluginMetaValue>> =>
+    value as Readonly<Record<string, PluginMetaValue>>;
+  const manyKeys = Object.fromEntries(
+    Array.from({ length: 129 }, (_, index) => [`k${index}`, index]),
+  );
+  const cases: Array<[string, () => Promise<unknown>]> = [
+    ['common.id: debe ser una cadena', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { id: 7 as unknown as string }, extended: {} })],
+    ['common: clave del cliente no admitida "extra"', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { extra: 'x' }, extended: {} })],
+    ['common.id: 256 caracteres; el máximo es 255', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { id: 'x'.repeat(256) }, extended: {} })],
+    ['common.name: no puede contener caracteres de control', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { name: 'a\u0000' }, extended: {} })],
+    ['extended.tags: los arrays no se permiten', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: {}, extended: badExtended({ tags: [1] }) })],
+    ['extended: más de 128 claves', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: {}, extended: badExtended(manyKeys) })],
+    ['extended.x: objeto con más de 128 propiedades', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: {}, extended: badExtended({ x: manyKeys }) })],
+    ['extended.x: clave de objeto no válida "no vale"', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: {}, extended: badExtended({ x: { 'no vale': 1 } }) })],
+    ['extended.raro: el valor tiene un tipo no soportado', () =>
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: {}, extended: badExtended({ raro: Symbol('x') }) })],
+  ];
+
+  for (const [message, run] of cases) {
+    await assert.rejects(run(), (error: unknown) => {
+      assert.ok(error instanceof PluginMetaInvalidError);
+      assert.ok(
+        (error as PluginMetaInvalidError).issues.includes(message),
+        `esperaba «${message}» y llegó «${(error as PluginMetaInvalidError).issues.join('; ')}»`,
+      );
+      return true;
+    });
+  }
+
+  await assert.rejects(
+    service.write({ pluginDir: dir, expectedMtimeMs: null, common: { id: '   ' }, extended: {} }),
+    /no puede estar vacío/,
+  );
+});
+
+test('extended.notes manda sobre common.notes al escribir', async (t) => {
+  const dir = await tempDir(t);
+  const first = await service.write({
+    pluginDir: dir,
+    expectedMtimeMs: null,
+    common: { id: '1', notes: 'del común' },
+    extended: {},
+  });
+  assert.equal(first.common.notes, 'del común');
+
+  const second = await service.write({
+    pluginDir: dir,
+    expectedMtimeMs: first.mtimeMs,
+    common: {},
+    extended: { notes: 'del extendido' },
+  });
+
+  assert.equal(second.common.notes, 'del extendido');
+});
+
+test('un error de lectura del meta que no es ENOENT se propaga', async (t) => {
+  const dir = await tempDir(t);
+  await mkdir(metaPath(dir));
+
+  await assert.rejects(service.read(dir), (error: NodeJS.ErrnoException) => {
+    assert.notEqual(error.code, 'ENOENT');
+    return true;
+  });
+});
+
+test('el conflicto devuelve lo que haya en disco aunque el archivo esté corrupto', async (t) => {
+  const dir = await tempDir(t);
+  await writeFile(metaPath(dir), '{ esto no es json', 'utf8');
+  const stats = await stat(metaPath(dir));
+
+  await assert.rejects(
+    service.write({
+      pluginDir: dir,
+      expectedMtimeMs: stats.mtimeMs - 12345,
+      common: { id: '2' },
+      extended: {},
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof PluginMetaConflictError);
+      const current = (error as PluginMetaConflictError).current;
+      assert.equal(current.exists, true);
+      assert.equal(current.common.id, '', 'sin JSON no se inventan valores');
+      assert.deepEqual(current.extended, {});
+      assert.equal(current.source, null);
+      assert.equal(current.updated, null);
+      return true;
+    },
+  );
+});
+
+test('el conflicto refleja source.vfxinfo del archivo en disco', async (t) => {
+  const dir = await tempDir(t);
+  await writeFile(
+    metaPath(dir),
+    JSON.stringify({
+      common: { id: '9', name: 'X' },
+      extended: { rating: 3 },
+      updated: '2026-10-22T10:00:00Z',
+      source: { vfxinfo: true },
+    }),
+    'utf8',
+  );
+  const stats = await stat(metaPath(dir));
+
+  await assert.rejects(
+    service.write({
+      pluginDir: dir,
+      expectedMtimeMs: stats.mtimeMs - 12345,
+      common: { id: '2' },
+      extended: {},
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof PluginMetaConflictError);
+      const current = (error as PluginMetaConflictError).current;
+      assert.equal(current.common.id, '9');
+      assert.deepEqual(current.extended, { rating: 3 });
+      assert.deepEqual(current.source, { vfxinfo: true });
+      assert.equal(current.updated, '2026-10-22T10:00:00Z');
+      return true;
+    },
   );
 });

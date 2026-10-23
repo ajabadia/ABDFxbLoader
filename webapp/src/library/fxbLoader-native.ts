@@ -114,15 +114,17 @@ export async function validateLoaderDllAsPe32I386(file: string): Promise<{
     return { valid: false, bitness: null, machine: null, issues };
   }
 
-  // La firma "PE\0\0" va a partir de 0x3C (desplazamiento de la cabecera PE)
-  // en el DWORD en el offset 0x3C de la cabecera DOS.
+  // `e_lfanew` (DWORD en 0x3C de la cabecera DOS) apunta a la firma "PE\0\0",
+  // así que la cabecera COFF empieza 4 bytes después de ese desplazamiento:
+  // la máquina está en `peHeader + 4`. Sumar 4 dos veces se comía la firma y
+  // leía como máquina el `TimeDateStamp`.
   const peOffset = buffer.readUInt32LE(0x3C);
   if (peOffset + 4 > buffer.length || peOffset < 0x40) {
     issues.push(`desplazamiento PE ${peOffset.toString(16)} fuera de rango`);
     return { valid: false, bitness: null, machine: null, issues };
   }
 
-  const peHeader = peOffset + 4;
+  const peHeader = peOffset;
   const machineRaw = buffer.readUInt16LE(peHeader + 4);
   const machine =
     machineRaw === 0x014c
@@ -138,8 +140,10 @@ export async function validateLoaderDllAsPe32I386(file: string): Promise<{
   const isAmd64 = machineRaw === 0x8664;
 
   // ELF magic no aplica aquí: todo entrante es PE/Windows. Solo doble
-  // comprobación para evitar que un archivo que no es PE pase como i386.
-  const dosSignature = buffer.readUInt32LE(0);
+  // comprobación para evitar que un archivo que no es PE pase como i386. «MZ»
+  // son dos bytes: leer 32 bits metía también el segundo campo de la cabecera
+  // DOS y la comparación no cuadraba con ninguna DLL real.
+  const dosSignature = buffer.readUInt16LE(0);
   const peSignature = buffer.readUInt32LE(peHeader);
 
   if (dosSignature !== 0x5a4d) {
