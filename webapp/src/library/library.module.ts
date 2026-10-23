@@ -10,3 +10,8 @@ import { LibraryService } from './library.service';
   exports: [LibraryService],
 })
 export class LibraryModule {}
+
+// Re-export del módulo nativo para que el código de la UI y los tests puedan
+// usar la puerta que reemplaza a `vst/fxbLoader.dll` sin importar el módulo
+// concreto.
+export * as fxbLoaderNativeModule from './fxbLoader-native';
