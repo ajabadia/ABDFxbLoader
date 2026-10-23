@@ -15,6 +15,7 @@ import {
   type FxbClient,
   type FxbConfigSnapshotResponse,
   type LibraryBankConvertResponse,
+  type LibraryBankDiscardBackupResponse,
   type LibraryBankRestoreResponse,
   type LibraryBanksImportResponse,
   type LibraryBanksListResponse,
@@ -22,6 +23,7 @@ import {
   type LibraryInstallResponse,
   type LibraryScanResponse,
 } from '../src/client';
+import type { BankImportStreamEvent } from '../src/client/bank-import-stream';
 import type { BatchStreamEvent } from '../src/client/batch-stream';
 import { buildBank } from './helpers/fxb-bank';
 
@@ -59,6 +61,17 @@ function typeChecks(client: FxbClient): void {
   });
   // @ts-expect-error `plugin` es obligatorio al restaurar
   void client.library.restoreDefaultBank({ libraryRoot: 'C:\\VFX\\Library' });
+  // Descartar el respaldo no elige orden ni banco: solo la biblioteca y el plugin.
+  void client.library.discardDefaultBankBackup({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'MySynth',
+  });
+  void client.library.discardDefaultBankBackup({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'MySynth',
+    // @ts-expect-error descartar el respaldo no admite `endianness`
+    endianness: 'big',
+  });
 }
 void typeChecks;
 
@@ -68,6 +81,12 @@ const WEBAPP = path.resolve(__dirname, '..', '..');
 function label(event: BatchStreamEvent): string {
   if (event.type === 'plugin') return `${event.name}:${event.status}`;
   if (event.type === 'step') return `${event.name}:${event.step}`;
+  return event.type;
+}
+
+/** Etiqueta compacta de un evento del import: `0:imported`, `1:rejected`… */
+function bankLabel(event: BankImportStreamEvent): string {
+  if (event.type === 'bank') return `${event.index}:${event.result.status}`;
   return event.type;
 }
 
@@ -254,6 +273,27 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   assert.equal(imported.reference.source, 'explicit');
   assert.equal(imported.results[0]?.bank?.uniqueId, 'MySy');
 
+  // La misma importación por NDJSON entrega el resultado en cuanto acaba el
+  // banco y resuelve con el cuerpo del evento `end`.
+  const importEvents: BankImportStreamEvent[] = [];
+  const streamedImport = await client.library.importBanksStream(
+    {
+      libraryRoot: data.root,
+      plugin: 'Synth',
+      sourcePaths: [data.bank],
+      expectedUniqueId: 'MySy',
+    },
+    { onEvent: (event) => importEvents.push(event) },
+  );
+  assert.deepEqual(
+    importEvents.map((event) =>
+      event.type === 'bank' ? `${event.result.fileName}:${event.result.status}` : event.type,
+    ),
+    ['start', 'Rhodes.fxb:overwritten', 'end'],
+  );
+  assert.equal(streamedImport.results[0]?.status, 'overwritten');
+  assert.equal(streamedImport.reference.source, 'explicit');
+
   const listed: LibraryBanksListResponse = await client.library.listBanks({
     libraryRoot: data.root,
     plugin: 'Synth',
@@ -365,6 +405,23 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   assert.equal(restoredAgain.changed, false);
   assert.equal(restoredAgain.backup.sha256, restored.backup.sha256);
 
+  // Descartar el respaldo deja el banco como está y ya no se puede restaurar.
+  const discarded: LibraryBankDiscardBackupResponse =
+    await client.library.discardDefaultBankBackup({
+      libraryRoot: data.root,
+      plugin: 'Synth',
+    });
+  assert.equal(discarded.fileName, 'Rhodes.fxb');
+  assert.equal(discarded.discarded.fileName, 'Rhodes.fxb.orig');
+  assert.equal(discarded.discarded.sha256, converted.source.sha256);
+
+  const afterDiscard = await client.library.listBanks({
+    libraryRoot: data.root,
+    plugin: 'Synth',
+  });
+  assert.equal(afterDiscard.defaultBackup, null);
+  assert.equal(afterDiscard.config.config.defaultFxbName, 'Rhodes.fxb');
+
   await assert.rejects(
     client.config.write({
       pluginDir: snapshot.configPath.replace(/[\\/]fxbLoader\.config$/, ''),
@@ -469,6 +526,80 @@ test('batchStream entrega cada evento según llega, sin esperar al final', async
   assert.deepEqual(seen, ['start', 'Synth:running', 'end']);
   assert.equal(result.succeeded, 1);
   assert.equal(result.failed, 0);
+});
+
+test('importBanksStream entrega cada banco según llega, sin esperar al final', async () => {
+  const stream = controlledStream();
+  const client = createFxbClient({ baseUrl: 'http://127.0.0.1:1', fetch: stream.fetch });
+
+  const seen: string[] = [];
+  let finished = false;
+  const pending = client.library.importBanksStream(
+    {
+      libraryRoot: 'C:\\VFX\\Library',
+      plugin: 'Synth',
+      sourcePaths: ['C:\\Banks\\First.fxb', 'C:\\Banks\\Second.fxb'],
+    },
+    { onEvent: (event) => seen.push(bankLabel(event)) },
+  );
+  void pending.then(
+    () => {
+      finished = true;
+    },
+    () => {
+      finished = true;
+    },
+  );
+
+  stream.push(
+    '{"type":"start","total":2,"sourcePaths":["C:/Banks/First.fxb","C:/Banks/Second.fxb"]}\n' +
+      '{"type":"bank","index":0,"total":2,"result":{"source":"C:/Banks/First.fxb",' +
+      '"fileName":"First.fxb","target":"C:/VFX/Library/presets/First.fxb",' +
+      '"status":"imported","compatibility":"compatible","reason":null,"issues":[],"warnings":[],"bank":null}}\n',
+  );
+  await tick();
+  assert.deepEqual(seen, ['start', '0:imported'], 'el primer banco se entrega con el flujo abierto');
+  assert.equal(finished, false, 'la promesa no se resuelve hasta el evento end');
+
+  stream.push(
+    '{"type":"bank","index":1,"total":2,"result":{"source":"C:/Banks/Second.fxb",' +
+      '"fileName":"Second.fxb","target":"C:/VFX/Library/presets/Second.fxb",' +
+      '"status":"rejected","compatibility":"incompatible","reason":"uniqueID distinto",' +
+      '"issues":[],"warnings":[],"bank":null}}\n' +
+      '{"type":"end","result":{"plugin":null,"presetsDir":"",' +
+      '"reference":{"source":"none","uniqueId":null,"uniqueIdValue":null,"fxVersion":null,"file":null},' +
+      '"results":[{"source":"C:/Banks/First.fxb","fileName":"First.fxb",' +
+      '"target":"C:/VFX/Library/presets/First.fxb","status":"imported",' +
+      '"compatibility":"compatible","reason":null,"issues":[],"warnings":[],"bank":null},' +
+      '{"source":"C:/Banks/Second.fxb","fileName":"Second.fxb",' +
+      '"target":"C:/VFX/Library/presets/Second.fxb","status":"rejected",' +
+      '"compatibility":"incompatible","reason":"uniqueID distinto","issues":[],"warnings":[],"bank":null}]}}\n',
+  );
+  stream.close();
+
+  const result = await pending;
+  assert.deepEqual(seen, ['start', '0:imported', '1:rejected', 'end']);
+  assert.equal(result.results.length, 2);
+  assert.equal(result.results[1]?.status, 'rejected');
+});
+
+test('importBanksStream falla si el flujo se corta sin evento end', async () => {
+  const stream = controlledStream();
+  const client = createFxbClient({ baseUrl: 'http://127.0.0.1:1', fetch: stream.fetch });
+
+  const pending = client.library.importBanksStream({
+    libraryRoot: 'C:\\VFX\\Library',
+    plugin: 'Synth',
+    sourcePaths: ['C:\\Banks\\First.fxb'],
+  });
+  stream.push('{"type":"start","total":1,"sourcePaths":["C:/Banks/First.fxb"]}\n');
+  stream.close();
+
+  await assert.rejects(pending, (error: unknown) => {
+    assert.equal(isFxbApiError(error), true);
+    assert.match((error as FxbApiError).message, /sin evento end/);
+    return true;
+  });
 });
 
 test('batchStream falla si el flujo se corta sin evento end', async () => {

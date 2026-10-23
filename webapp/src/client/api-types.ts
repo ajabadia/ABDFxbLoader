@@ -124,6 +124,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/banks/import/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Importa bancos .fxb informando del progreso por archivo
+         * @description El mismo cuerpo que `POST /library/banks/import`, pero la respuesta es NDJSON: `start` con el total, un `bank` con el resultado de cada archivo (importado o rechazado) y `end` con el cuerpo completo. Así la barra avanza banco a banco. La petición se valida entera antes del primer byte: un 400/404 sigue siendo JSON. Si todos los bancos se rechazan, el flujo termina con `end` y la vista cuenta los `rejected`.
+         */
+        post: operations["LibraryController_importBanksStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/banks/export": {
         parameters: {
             query?: never;
@@ -178,6 +198,26 @@ export interface paths {
          * @description Devuelve el `.fxb` que `fxbLoader.config` marca como predeterminado al contenido de `<banco>.orig`, que dejó `banks/convert`, en su misma ruta y con su mismo nombre. El respaldo **solo se lee**: no se renombra ni se reescribe, así que la restauración se puede repetir y el original sigue disponible. Antes de escribir se reparsea el respaldo, y si el banco ya es byte a byte el respaldo no se escribe nada (`changed: false`).
          */
         post: operations["LibraryController_restoreDefaultBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/banks/discard-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Envía el respaldo .orig del banco por defecto a la papelera
+         * @description Mueve `<banco>.orig`, la copia que dejó `banks/convert`, a la papelera del sistema (Papelera de reciclaje en Windows) sin tocar el `.fxb` que `fxbLoader.config` marca como predeterminado. El respaldo deja de estar en la carpeta del plugin, pero puede recuperarse desde la papelera: la respuesta dice dónde y cómo. El respaldo no se valida antes de moverlo (descartar uno corrupto es uno de los motivos para hacerlo); se lee solo para devolver su nombre, tamaño y SHA-256.
+         */
+        post: operations["LibraryController_discardDefaultBankBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -258,6 +298,46 @@ export interface paths {
          * @description El mismo lote que `POST /library/batch`, pero la respuesta es NDJSON (una línea JSON por evento) escrita según avanza el servidor: `start` con el total y el orden, dos `plugin` por plugin (`running` y luego el estado final), un `step` por cada paso interno (respaldo, copia del DLL, parcheo de `dll_name`, config y `presets`) y `end` con el resultado completo. Así la vista sabe qué plugin y qué paso se están ejecutando sin esperar al final. La petición se valida entera antes del primer byte: un 400/422 sigue siendo una respuesta JSON normal.
          */
         post: operations["LibraryController_batchStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abre un diálogo nativo para elegir una carpeta o archivos
+         * @description Lo usa la vista para no tener que pegar rutas a mano. El diálogo lo abre el servidor en la máquina donde corre (PowerShell + `System.Windows.Forms`), porque el navegador no expone rutas absolutas. La petición queda abierta hasta que la persona elige o cancela; cancelar devuelve `paths: []`.
+         */
+        post: operations["SystemController_pick"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Comprueba si las rutas recordadas siguen en el disco
+         * @description La vista guarda las últimas carpetas y archivos usados en `localStorage`, y pide aquí cuáles siguen existiendo para no ofrecer sugerencias caducadas. Una ruta que falta **no es un error**: llega con `exists: false` y la vista la descarta de su historial.
+         */
+        post: operations["SystemPathsController_check"];
         delete?: never;
         options?: never;
         head?: never;
@@ -954,6 +1034,49 @@ export interface components {
              */
             changed: boolean;
         };
+        LibraryBankDiscardBackupRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+        };
+        TrashInfoDto: {
+            /**
+             * @description Nombre de la papelera del sistema: la de reciclaje en Windows, la del escritorio en Linux y macOS.
+             * @example Papelera de reciclaje de Windows
+             */
+            label: string;
+            /**
+             * @description Carpeta donde quedó el archivo, o `null` si el sistema no expone una ruta (Windows).
+             * @example null
+             */
+            path: string | null;
+            /**
+             * @description Qué hacer para recuperar el archivo desde la papelera.
+             * @example Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su carpeta.
+             */
+            hint: string;
+        };
+        LibraryBankDiscardBackupResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /**
+             * @description Banco por defecto tomado de `fxbLoader.config` (`defaultFxbName`). No se modifica: solo se borra su respaldo.
+             * @example Warm Rhodes.fxb
+             */
+            fileName: string;
+            /** @description Respaldo `<banco>.orig` que se envió a la papelera: nombre, ruta original, tamaño y SHA-256 que tenía. Ya no está en la carpeta del plugin, pero sigue recuperable desde la papelera. */
+            discarded: components["schemas"]["BankBackupFileDto"];
+            /** @description Papelera donde quedó el respaldo y cómo recuperarlo. */
+            trash: components["schemas"]["TrashInfoDto"];
+        };
         LibraryBankInspectRequestDto: {
             /**
              * @description Ruta absoluta del `.fxb` a inspeccionar. Solo se lee: no se copia ni se modifica.
@@ -1154,6 +1277,86 @@ export interface components {
             failed: number;
             /** @description Resultado de cada plugin, en el orden pedido. */
             results: components["schemas"]["LibraryBatchPluginResultDto"][];
+        };
+        SystemPickErrorDto: {
+            /**
+             * @description Motivo por el que no se abrió el diálogo.
+             * @example Ya hay un diálogo abierto; ciérralo antes de abrir otro
+             */
+            message: string;
+        };
+        SystemPickRequestDto: {
+            /**
+             * @description Qué se elige: una carpeta (`folder`), un archivo (`file`) o varios (`files`). Los archivos se eligen en el disco del servidor, que es el de esta máquina.
+             * @example folder
+             * @enum {string}
+             */
+            kind: "folder" | "file" | "files";
+            /**
+             * @description Título de la ventana del diálogo; como máximo 80 caracteres.
+             * @example Elige la carpeta de la librería VFX
+             */
+            title?: string;
+            /**
+             * @description Extensiones sin punto para el filtro de los diálogos de archivo (`fxb` muestra `*.fxb`); se ignoran al elegir una carpeta.
+             * @example [
+             *       "fxb"
+             *     ]
+             */
+            extensions?: string[];
+            /**
+             * @description Carpeta donde abrir el diálogo. Si no existe se ignora y se abre en la última que recuerde Windows.
+             * @example C:\Bancos
+             */
+            initialDir?: string;
+        };
+        SystemPickResponseDto: {
+            /**
+             * @description Rutas absolutas elegidas, en el orden del diálogo. Vacío si se canceló: cancelar no es un error y la vista no cambia nada.
+             * @example [
+             *       "C:\\VFX\\Library"
+             *     ]
+             */
+            paths: string[];
+        };
+        SystemPathsErrorDto: {
+            /**
+             * @description Motivo por el que no se comprobó ninguna ruta.
+             * @example paths debe ser una lista de rutas absolutas: "plugs"
+             */
+            message: string;
+        };
+        SystemPathsRequestDto: {
+            /**
+             * @description Rutas absolutas a comprobar en el disco del servidor, en cualquier orden. Como máximo 32; una lista vacía responde `results: []`.
+             * @example [
+             *       "C:\\VFX\\Library",
+             *       "C:\\fxbLoader\\vst\\fxbLoader.dll",
+             *       "C:\\Bancos\\Borrado.fxb"
+             *     ]
+             */
+            paths: string[];
+        };
+        SystemPathStateDto: {
+            /**
+             * @description La ruta tal como se pidió (sin espacios alrededor).
+             * @example C:\VFX\Library
+             */
+            path: string;
+            /**
+             * @description Si la ruta está en el disco. `false` también cuando no se puede leer (permisos), que para la vista es lo mismo: la sugerencia ya no sirve.
+             * @example true
+             */
+            exists: boolean;
+            /**
+             * @description Si lo que hay es una carpeta. Solo tiene sentido con `exists: true`; con una ruta que falta es `false`.
+             * @example true
+             */
+            isDirectory: boolean;
+        };
+        SystemPathsResponseDto: {
+            /** @description Un elemento por ruta pedida, en el mismo orden. */
+            results: components["schemas"]["SystemPathStateDto"][];
         };
     };
     responses: never;
@@ -1708,6 +1911,64 @@ export interface operations {
             };
         };
     };
+    LibraryController_importBanksStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBanksImportRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Un evento JSON por línea: `start`, un `bank` por archivo en el orden recibido y `end` con el mismo cuerpo que `POST /library/banks/import`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {"type":"start","total":2,"sourcePaths":["C:\\Banks\\Rhodes.fxb","C:\\Banks\\Strings.fxb"]}
+                     *     {"type":"bank","index":0,"total":2,"result":{"source":"C:\\Banks\\Rhodes.fxb","fileName":"Rhodes.fxb","target":"C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb","status":"imported","compatibility":"compatible","warnings":[],"bank":{"kind":"FxBk","endianness":"little","byteSize":208,"version":1,"uniqueId":"MySy","uniqueIdValue":1299796857,"fxVersion":1000,"numPrograms":1,"currentProgram":null,"chunkSize":null}}}
+                     *     {"type":"bank","index":1,"total":2,"result":{"source":"C:\\Banks\\Strings.fxb","fileName":"Strings.fxb","target":"C:\\VFX\\Library\\plugs\\MySynth\\presets\\Strings.fxb","status":"overwritten","compatibility":"compatible","warnings":[],"bank":{"kind":"FxBk","endianness":"little","byteSize":328,"version":1,"uniqueId":"MySy","uniqueIdValue":1299796857,"fxVersion":1000,"numPrograms":3,"currentProgram":null,"chunkSize":null}}}
+                     *     {"type":"end","result":{"plugin":{"name":"MySynth","path":"C:\\VFX\\Library\\plugs\\MySynth","installed":true,"hasVfxinfo":true,"pluginName":"MySynth.dll","warnings":[],"compatible":true,"compatibilityIssues":[]},"presetsDir":"C:\\VFX\\Library\\plugs\\MySynth\\presets","reference":{"source":"explicit","uniqueId":"MySy","uniqueIdValue":1299796857,"fxVersion":1000,"file":null},"results":[{"source":"C:\\Banks\\Rhodes.fxb","fileName":"Rhodes.fxb","target":"C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb","status":"imported","compatibility":"compatible","warnings":[],"bank":{"kind":"FxBk","endianness":"little","byteSize":208,"version":1,"uniqueId":"MySy","uniqueIdValue":1299796857,"fxVersion":1000,"numPrograms":1,"currentProgram":null,"chunkSize":null}},{"source":"C:\\Banks\\Strings.fxb","fileName":"Strings.fxb","target":"C:\\VFX\\Library\\plugs\\MySynth\\presets\\Strings.fxb","status":"overwritten","compatibility":"compatible","warnings":[],"bank":{"kind":"FxBk","endianness":"little","byteSize":328,"version":1,"uniqueId":"MySy","uniqueIdValue":1299796857,"fxVersion":1000,"numPrograms":3,"currentProgram":null,"chunkSize":null}}]}}
+                     */
+                    "application/x-ndjson": string;
+                };
+            };
+            /** @description Petición mal formada: rutas no absolutas, más de 50 bancos o `expectedUniqueId` inválido. Se rechaza antes de escribir ningún evento. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "la ruta debe ser absoluta: \"Banks/Rhodes.fxb\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`; tampoco se escribe ningún evento. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
     LibraryController_exportBank: {
         parameters: {
             query?: never;
@@ -2046,6 +2307,108 @@ export interface operations {
             };
         };
     };
+    LibraryController_discardDefaultBankBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankDiscardBackupRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Respaldo movido a la papelera. El banco por defecto sigue igual y el `.orig` puede recuperarse desde ahí. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "installed": true,
+                     *         "hasVfxinfo": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "fileName": "Warm Rhodes.fxb",
+                     *       "discarded": {
+                     *         "fileName": "Warm Rhodes.fxb.orig",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb.orig",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+                     *       },
+                     *       "trash": {
+                     *         "label": "Papelera de reciclaje de Windows",
+                     *         "path": null,
+                     *         "hint": "Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su carpeta."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankDiscardBackupResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` o `plugin` inválidos, o un `defaultFxbName` con separadores de ruta o sin `.fxb`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no tiene `defaultFxbName` configurado, o no hay `<banco>.orig` que descartar. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description No se pudo mover el respaldo a la papelera; el archivo queda intacto en su sitio. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no se pudo enviar Warm Rhodes.fxb.orig a la papelera: la Papelera de reciclaje terminó con 1"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
     LibraryController_inspectBank: {
         parameters: {
             query?: never;
@@ -2276,6 +2639,100 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    SystemController_pick: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemPickRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Rutas absolutas elegidas, o `paths: []` si se canceló el diálogo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemPickResponseDto"];
+                };
+            };
+            /** @description `kind` fuera de la lista, título de más de 80 caracteres, extensión con punto o `initialDir` que no es una ruta absoluta. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemPickErrorDto"];
+                };
+            };
+            /** @description Ya hay un diálogo abierto (solo puede haber uno a la vez). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "Ya hay un diálogo abierto; ciérralo antes de abrir otro"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SystemPickErrorDto"];
+                };
+            };
+            /** @description El servidor no corre en Windows, así que no puede abrir el diálogo nativo. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "El diálogo nativo solo está disponible en Windows"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SystemPickErrorDto"];
+                };
+            };
+        };
+    };
+    SystemPathsController_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemPathsRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Un resultado por ruta pedida, en el mismo orden. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemPathsResponseDto"];
+                };
+            };
+            /** @description `paths` no es una lista de cadenas, supera las 32 entradas o trae una ruta relativa. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemPathsErrorDto"];
                 };
             };
         };

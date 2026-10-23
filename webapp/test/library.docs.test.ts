@@ -13,6 +13,7 @@ import {
   LIBRARY_BANKS_LIST_EXAMPLE,
   LIBRARY_BATCH_DRY_RUN_EXAMPLE,
   LIBRARY_BATCH_EXAMPLE,
+  LIBRARY_DISCARD_BACKUP_EXAMPLE,
   LIBRARY_EXPORT_EXAMPLE,
   LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
   LIBRARY_IMPORT_EXAMPLE,
@@ -264,6 +265,24 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
     .expect(200);
   assertSameKeys(restoredAgain.body, LIBRARY_RESTORE_UNCHANGED_EXAMPLE, 'banks/restore 200 repetido');
   assert.equal(restoredAgain.body.changed, false);
+
+  // Descartar el respaldo: el banco queda igual y el `.orig` va a la papelera.
+  const discardedBody = await http()
+    .post('/library/banks/discard-backup')
+    .send({ libraryRoot: data.root, plugin: 'Synth' })
+    .expect(200);
+  assertSameKeys(discardedBody.body, LIBRARY_DISCARD_BACKUP_EXAMPLE, 'banks/discard-backup 200');
+  assertSameKeys(
+    discardedBody.body.discarded,
+    LIBRARY_DISCARD_BACKUP_EXAMPLE.discarded,
+    'banks/discard-backup: respaldo',
+  );
+  assertSameKeys(
+    discardedBody.body.trash,
+    LIBRARY_DISCARD_BACKUP_EXAMPLE.trash,
+    'banks/discard-backup: papelera',
+  );
+  assert.match(discardedBody.body.trash.hint, /recuperarlo|Restaurar|Volver a poner/);
 
   const foreign = path.join(data.banks, 'Otro.fxb');
   await writeFile(foreign, buildBank({ uniqueId: 'OtSy', programs: 1 }));

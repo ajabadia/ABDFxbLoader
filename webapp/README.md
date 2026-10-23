@@ -160,8 +160,9 @@ coinciden con la tabla que imprime `npm run test:coverage`.
 
 Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
 
-1. escribir la carpeta de la librería (la que contiene `plugs\`) y pulsar
-   **Escanear**;
+1. elegir la carpeta de la librería (la que contiene `plugs\`) con **Elegir
+   carpeta…**, que abre el diálogo del sistema, o escribirla a mano, y pulsar
+   **Escanear** (el diálogo ya escanea al elegir);
 2. ver cada plugin con su estado, compatibilidad con el cargador de 32 bits,
    `pluginName` y si tiene `vfxinfo.txt`; el escaneo valida que el
    `fxbLoader.dll` sea un **PE32 i386** y lee la arquitectura del binario
@@ -178,20 +179,46 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    **progreso de todas acumulado en la misma barra**: «Instalando 501 de 501»
    sigue contando aunque cambie la petición. Mientras dura, la vista pinta el
    **progreso en caliente** —una barra, «Instalando 2 de 5: Bass…», una línea
-   con el paso interno en curso («paso 2 de 5 · copiando fxbLoader.dll») y la
-   fila del plugin resaltada— porque el servidor escribe un evento NDJSON por
-   cada plugin, cada paso y cada cierre. Al terminar muestra el resumen
+   con el paso interno en curso («paso 2 de 5 · copiando fxbLoader.dll»), la
+   fila del plugin resaltada y un **reloj** («12,4 s transcurridos · ~18 s
+   restantes · 0,3 s en el paso actual»)— porque el servidor escribe un evento
+   NDJSON por cada plugin, cada paso y cada cierre. El reloj se mide en la
+   vista, así que incluye la red y el salto entre trozos, cronometra cada paso
+   por separado y estima lo que falta con la media de los plugins ya resueltos
+   (mientras no haya ninguno, dice que está calculando en vez de inventarse un
+   número). Al terminar muestra el resumen
    (`N de M`, cuántos fallaron) y un desplegable con el error de cada plugin
    fallido, cada uno con su botón **Reintentar** (que usa los endpoints
-   individuales y no repite el lote entero). **Cancelar** aparece solo
+   individuales y no repite el lote entero). **Reintentar fallidos (N)**, en la
+   fila de acciones del lote, reintenta **todos** los pendientes en orden, cada
+   uno con su acción y sin detenerse en el primero que vuelva a fallar. Mientras
+   dura reutiliza la misma barra, la misma línea de paso y el mismo reloj del
+   lote: «paso 2 de 3 · reintentando Rhodes», con el tiempo de cada reintento y
+   la estimación de los que quedan. Al terminar refresca el escaneo una sola vez
+   y deja en la lista solo los que sigan fallando. **Cancelar** aparece solo
    mientras corre el lote y aborta la petición en curso con `AbortController`:
    el servidor termina el plugin que tenía entre manos y no empieza otro, y el
    resumen separa lo confirmado (`N de M`) de los plugins que quedaron sin
-   confirmar;
+   confirmar. Entonces aparece **Reanudar N sin confirmar**, que vuelve a
+   mandar el lote con **solo** esos plugins, en el mismo orden y con la misma
+   acción, sin repetir los que ya respondieron; la lista se contrasta con el
+   escaneo posterior, así que el plugin que el servidor terminó después de
+   cancelar no se toca otra vez (reinstalarlo daría un 409) y el botón
+   desaparece si ya no queda nada por hacer. Los fallos del intento anterior
+   siguen en su desplegable con su **Reintentar** individual y con
+   **Reintentar fallidos (N)** para probarlos todos de nuevo;
 5. **Bancos** abre la vista del plugin: sus `.fxb` con tipo, programas,
    `uniqueID` y `fxVersion`; un formulario para importar rutas absolutas de
-   `.fxb` (una por línea, admite las comillas de «copiar como ruta») con el
-   resultado por archivo; **Exportar un banco en otro orden de bytes**, que
+   `.fxb` (una por línea, admite las comillas de «copiar como ruta»), con un
+   botón **Añadir archivos…** que abre el diálogo del sistema y **suma** los
+   `.fxb` elegidos al cuadro de texto sin borrar lo escrito ni repetir rutas, con el
+   resultado por archivo —el servidor responde NDJSON (`POST
+   /library/banks/import/stream`), así que la barra avanza en cuanto se resuelve
+   cada banco, también dentro del trozo, y no al cerrarlo; por encima de 50
+   rutas la vista las manda en peticiones de 50 y va acumulando el resultado de
+   cada archivo en la misma lista, con una barra de progreso que cuenta los
+   archivos resueltos sobre el total del cuadro de texto y el avance
+   «Importando 50 de 120 archivo(s)…»—; **Exportar un banco en otro orden de bytes**, que
    convierte un banco importado a `little`/`big` y lo guarda al lado como
    `banco-le.fxb`/`banco-be.fxb` sin tocar el original (para los bancos legacy
    que guardó un plugin de Windows); **Convertir orden de bytes**, junto al
@@ -200,15 +227,42 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    confirmación, porque sustituye el archivo que carga la DLL); **Restaurar
    original**, que devuelve ese banco al contenido de su `.orig` sin pisar el
    respaldo —el botón solo se habilita si la lista anuncia que existe, y también
-   pide confirmación, porque reemplaza el banco que carga la DLL—; y el selector de
-   banco por defecto, que guarda `defaultFxbName` y «cargar al abrir el plugin»
-   en `fxbLoader.config`. Si la DLL reescribe el archivo entre medias, el 409
-   refresca el snapshot y pide volver a guardar en vez de pisar los cambios.
+   pide confirmación, porque reemplaza el banco que carga la DLL—; **Descartar
+   respaldo**, que envía ese `.orig` a la Papelera de reciclaje sin tocar el
+   banco (pide confirmación y al terminar dice dónde recuperarlo; también se
+   deshabilita si no hay respaldo); y el selector de banco por defecto, que guarda `defaultFxbName` y
+   «cargar al abrir el plugin» en `fxbLoader.config`. Si la DLL reescribe el
+   archivo entre medias, el 409 refresca el snapshot y pide volver a guardar en
+   vez de pisar los cambios.
 
-La carpeta y la ruta opcional del DLL se guardan en `localStorage`. En
-**Opciones avanzadas** se puede indicar otro `fxbLoader.dll`; vacío usa el que
-resuelve el servidor. No hay autenticación: la UI y la API solo escuchan en
-`127.0.0.1`.
+La carpeta y la ruta opcional del DLL se guardan en `localStorage`. Además se
+recuerdan las **últimas ocho rutas usadas** de cada tipo —carpetas de librería,
+DLL y bancos— en `fxbLoader.recentLibraryRoots`, `fxbLoader.recentDlls` y
+`fxbLoader.recentBanks`: lo más reciente primero, sin duplicados aunque cambien
+mayúsculas o la barra final. Los dos campos de texto ofrecen ese historial con
+un `<datalist>` nativo, y en **Importar bancos .fxb** las rutas recientes
+aparecen como botones que suman el banco al cuadro de texto sin borrar lo
+escrito. Cada chip lleva además una **×** que olvida solo ese banco, y al final
+de la fila **Olvidar** vacía todos los bancos recientes —deja intactos el
+historial de carpetas y DLL y la lista escrita— y desaparece con ellos. Al cargar la vista se comprueba con `POST /system/paths` que esas
+rutas sigan existiendo: las que ya no están en el disco —o que ahora son del
+otro tipo, una carpeta donde se esperaba un `.fxb`— se descartan del historial
+y de `localStorage`, así que ni las sugerencias ni los botones ofrecen rutas
+muertas. En **Opciones avanzadas**, **Vaciar historial de rutas** olvida las tres
+listas y borra sus claves de `localStorage` —pide confirmación, no toca lo
+escrito en los campos y queda deshabilitado cuando no hay historial—. También se
+puede indicar otro `fxbLoader.dll` con **Elegir DLL…** (rellena la ruta y vuelve
+a escanear para validarla) o escribiéndola; vacío usa el que resuelve el
+servidor. No hay autenticación: la UI y la API solo escuchan en `127.0.0.1`.
+
+Los tres botones llaman a `POST /system/pick`, que abre el diálogo **en el
+servidor** (PowerShell + `System.Windows.Forms`): el navegador no puede devolver
+rutas absolutas, así que el diálogo nativo es la forma de elegir sin pegar
+rutas. La petición queda abierta hasta que la persona acepta o cancela; cancelar
+devuelve `paths: []` y la vista no cambia nada. Solo hay un diálogo a la vez
+(**409** si se pide otro) y fuera de Windows responde **501**. Los botones se
+deshabilitan mientras hay una petición en curso y al abrir el de los bancos se
+propone la carpeta del último `.fxb` de la lista.
 
 Los estáticos viven en [public/](public/index.html) y se sirven con
 `app.useStaticAssets` desde [app.setup.ts](src/app.setup.ts). `GET /` devuelve
@@ -218,7 +272,7 @@ sobre los estáticos.
 La UI está escrita en TypeScript y usa el cliente tipado de
 [src/client](src/client/index.ts). `index.html` carga un único módulo ESM,
 `/js/ui/browser/main.js`; el resto del grafo (`/js/ui/batch.js`,
-`/js/client/fxb-client.js`) llega por `import` nativo. El build es un solo
+`/js/ui/bank-import.js`, `/js/client/fxb-client.js`) llega por `import` nativo. El build es un solo
 `tsc -p tsconfig.ui.json` (`npm run build:ui`) que emite a `public/js/`, sin
 bundler ni dependencias nuevas; `npm run build` y `npm test` lo ejecutan antes
 de servir o probar la página.
@@ -231,7 +285,7 @@ La orquestación del lote vive en el servidor
 emite cada evento según avanza (`start`, `plugin` con `running` y el estado
 final, `step` por paso interno, `end`); la vista solo llama a
 `client.library.batchStream` y traduce ese flujo con
-[applyBatchEvent/progressLabel/stepLabel/failuresOf/summarize de src/ui/batch.ts](src/ui/batch.ts),
+[applyBatchEvent/progressLabel/stepLabel/retryProgress/failuresOf/summarize de src/ui/batch.ts](src/ui/batch.ts),
 que no toca el DOM ni conoce `fetch` y se prueba con datos simples en
 [test/batch.test.ts](test/batch.test.ts). Cuando la lista pasa del tope por
 petición, `runBatchInChunks` la parte con `splitBatch` y suma el progreso de
@@ -254,7 +308,30 @@ escribe la vista con el HTML (incluida la plantilla de filas), y
 `styles.css` con ese mismo matcher: si un selector no coincide con ningún
 elemento del HTML, ni depende de un nombre que cree el JS, ni pinta una fila de
 la plantilla, la regla se reporta como muerta con su línea. Hoy no hay ninguna;
-el test está para que renombrar un id o una clase no deje CSS huérfano.
+el test está para que renombrar un id o una clase no deje CSS huérfano. En el
+sentido contrario, [test/ui.markup.test.ts](test/ui.markup.test.ts) recorre los
+ids, clases, atributos `data-*` y atributos ARIA de `index.html` (plantilla de
+filas incluida) y falla si no los usa nadie: un id vale si lo pinta el CSS, lo
+busca la vista o lo referencia otro atributo del propio HTML (`for`,
+`aria-labelledby`, `href="#…"`); una clase, si tiene regla o si la vista la
+escribe con `classList`/`className`/`setAttribute`; y un `data-*` vale si el CSS
+o un selector de la vista lo exigen con ese valor (`[data-field="name"]`) o si
+la vista lee el atributo entero con `dataset` —una escritura como
+`dataset.blocked = …` no cuenta, porque no prueba que ese atributo del HTML se
+consulte—, así que un `data-field` o un `data-action` de la plantilla que la
+vista dejó de leer se reporta como muerto.
+
+Los ARIA se separan por lo que los consume. Un `role`, un nombre accesible
+(`aria-label`, `aria-labelledby`), una descripción, una live region, una
+relación o una propiedad fija los consume el árbol de accesibilidad: la
+declaración estática ya es su uso. Los estados que la interfaz tiene que
+mantener al día (`aria-busy`, `aria-checked`, `aria-expanded`, `aria-pressed` y
+`aria-selected`) sí se auditan: valen si el CSS o la vista los consultan o
+actualizan con `getAttribute`/`setAttribute`/`removeAttribute`, y el valor del
+selector tiene que coincidir con el declarado, igual que en `data-*`. Un estado
+que solo aparece en el HTML queda congelado y se reporta como muerto. Hoy no hay
+ninguno suelto; el único id que no toca la vista es `#banks-title`, que existe
+solo para el `aria-labelledby` de `#banks` y así está anotado en el HTML.
 
 ## Documentación OpenAPI
 
@@ -353,10 +430,15 @@ api.library.install({ libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' })
   falla si deja de coincidir con el documento generado.
 - [fxb-client.ts](src/client/fxb-client.ts) es el envoltorio de `fetch`:
   `library.scan | install | uninstall | batch | batchStream | listBanks |
-  importBanks | exportBank | inspectBank` y `config.read | write`.
-- `library.batchStream` lee el NDJSON con su propio lector de flujo: entrega
-  cada evento a `onEvent` en cuanto llega (sin esperar al final) y resuelve con
-  el `result` del evento `end`; si el flujo se corta sin `end`, lanza.
+  importBanks | importBanksStream | exportBank | inspectBank` y `config.read |
+  write`.
+- `library.batchStream` e `library.importBanksStream` leen el NDJSON con su
+  propio lector de flujo: entregan cada evento a `onEvent` en cuanto llega (sin
+  esperar al final) y resuelven con el `result` del evento `end`; si el flujo se
+  corta sin `end`, lanzan.
+- [bank-import-stream.ts](src/client/bank-import-stream.ts) tiene los tipos de
+  los eventos de la importación (`start`, `bank` y `end`);
+  [bank-limits.ts](src/client/bank-limits.ts), el tope de bancos por petición.
 - [batch-stream.ts](src/client/batch-stream.ts) tiene los tipos de esos eventos.
   Vive con el cliente y no con el servicio para que el build del navegador no
   arrastre el código del servidor (`Buffer`, sistema de archivos).
@@ -671,7 +753,12 @@ Copia los `.fxb` a `<plugin>\<programDirName>\` (por defecto `presets\`),
 creando la carpeta si hace falta, con la misma escritura atómica que el resto.
 Cada archivo se valida por separado y la respuesta trae `results` con
 `status` (`imported`, `overwritten`, `rejected`), `compatibility`, el `bank`
-parseado y los motivos del rechazo.
+parseado y los motivos del rechazo. Un **422** significa que **todos** los
+bancos del lote se rechazaron; el cuerpo sigue trayendo `results` con el motivo
+de cada uno. Mandar la lista entera en una petición (hasta 50) es más rápido y
+da el mismo resultado por archivo que una petición por banco, que además
+convierte cada rechazo en el 422 de esa petición: ver **Lote o peticiones
+sueltas** más abajo, con las cifras de las dos estrategias.
 
 **Validación de formato** (cabecera VST2 que comprueba `fxHeader::check`):
 `chunkMagic` `CcnK`, `byteSize` contra el tamaño real, `fxMagic` `FxBk` o
@@ -693,13 +780,21 @@ comprueban la cabecera de 160 bytes e importan los archivos reales byte a byte.
 El banco con programas `FPCh` (`massive-fpch-bank.fxb`) se ensambla con dos
 programas reales de Massive —un host que guarda un banco de un plugin con
 programas chunk escribe esa misma cabecera y copia los chunks tal cual—.
-**Todos** los fixtures declaran en `manifest.json` un bloque `programs` con el
-número de programas y, en cada uno, el tamaño que dice ocupar
-(`byteSize = 48 + 4 × numParams` en los `FxCk`, `byteSize = 52 + chunkSize` en
-los `FPCh`) además de la suma de `byteSize` y el rango de parámetros o chunks.
-Ese bloque **no se escribe a mano**: [`derive-programs.mjs`](test/fixtures/fxb/derive-programs.mjs)
-lo deriva de los bytes de cada `.fxb` y un test exige que `manifest.json`
-coincida con lo generado, así que el manifiesto no puede desviarse del binario.
+**Todos** los fixtures declaran en `manifest.json`, además de su `size` y su
+`sha256`, un bloque `programs` con el número de programas y, en cada uno, el
+tamaño que dice ocupar (`byteSize = 48 + 4 × numParams` en los `FxCk`,
+`byteSize = 52 + chunkSize` en los `FPCh`) además de la suma de `byteSize` y el
+rango de parámetros o chunks. Esos tres campos **no se escriben a mano**:
+[`derive-manifest.mjs`](test/fixtures/fxb/derive-manifest.mjs) deriva de los
+bytes de cada `.fxb` el tamaño, el SHA-256 y el bloque `programs`, y un test
+exige que `manifest.json` coincida con lo generado, así que el manifiesto no
+puede desviarse del binario. Para añadir un fixture solo hacen falta `file`,
+`source` y `expected`: `derive-manifest.mjs --write` inserta `size`, `sha256` y
+`programs` en la entrada si aún no están, sin ningún número provisional. La
+tabla de ese README también se genera:
+[`render-readme-table.mjs`](test/fixtures/fxb/render-readme-table.mjs) toma el
+orden, el plugin y el propósito del manifiesto y el formato y el tamaño reales
+de cada `.fxb`, y `--check` falla si la tabla se desvía de los archivos.
 Los tests recorren los tamaños declarados con bytes reales, comprueban que
 cubren el archivo exacto y que un `numParams`, un `chunkSize` o un `byteSize`
 manipulados se rechazan.
@@ -732,6 +827,52 @@ Para leer cifras comparables, ejecuta solo los tests de rendimiento:
 npm run test:perf   # parser y importación, un archivo a la vez
 ```
 
+**Lote o peticiones sueltas** con los nueve bancos reales: el mismo archivo mide
+una petición con los nueve frente a una petición por banco, sobre una biblioteca
+nueva en cada muestra y en el mismo orden (2 de calentamiento y 11 muestras por
+estrategia, mediana). En dos ejecuciones con `npm run test:perf`, el lote único
+tardó **19–23 ms** y las nueve peticiones **66–80 ms**: **3,4–3,5×** más, unos
+**5–6 ms por petición de más** (validación de rutas, lectura de
+`fxbLoader.config`, búsqueda de la referencia del destino y el JSON de ida y
+vuelta). La copia de los bancos cuesta lo mismo en los dos casos, así que la
+diferencia es el coste fijo de cada petición.
+
+Las dos estrategias dan **el mismo resultado por archivo**: en los nueve
+fixtures —de cinco plugins distintos— se importan los dos bancos de Massive
+(`NiMa`, que fijan la referencia) y se rechazan los otros siete por
+incompatibilidad, igual y en el mismo orden con una petición que con nueve. Lo
+que cambia es el HTTP: el lote único responde **un 200** con los nueve
+resultados, mientras que las peticiones sueltas producen **2×200 y 7×422**
+(«Ningún banco se pudo importar»), porque cada rechazo deja a su petición sin
+ninguna importación. Un cliente que corte en el primer 4xx dejaría de procesar la
+lista en el primer banco de otro plugin, aunque el servidor sepa explicar el
+motivo de cada uno.
+
+Por eso la vista manda **una sola petición con toda la lista** mientras quepa en
+el tope de 50 bancos por petición (`MAX_BANKS_PER_REQUEST`): es más rápida, el
+resultado por banco es el mismo y un rechazo no cancela el resto. Esa petición
+usa `POST /library/banks/import/stream`, así que dentro del trozo la barra
+avanza con cada evento `bank` en vez de esperar al cierre. Por encima de 50 la
+lista se trocea en peticiones de 50 y el resultado de todas se acumula en una
+sola lista, en el orden del cuadro de texto; un trozo con todos los bancos
+rechazados termina su NDJSON con `end` y los motivos de cada archivo, sin
+impedir el trozo siguiente, que es justo lo que pasa al mezclar bancos de varios
+plugins. Si un trozo falla por otro motivo, la importación se corta y lo ya
+copiado se conserva a la vista.
+
+Mientras dura, la vista pinta una **barra de progreso** junto al formulario, con
+el mismo aspecto que la del lote de plugins: `max` es el total de rutas del
+cuadro de texto —no el del trozo en curso— y `value` los archivos que ya tienen
+resultado, así que el avance se acumula entre peticiones y no reinicia en cada
+una. El estado la acompaña con «Importando 50 de 120 archivo(s)…» y, al cerrar
+el último trozo, la barra se oculta y queda el resumen (`N importado(s), M
+rechazado(s).`). Partir la lista tiene además sentido si un proxy corta
+peticiones largas. Las cifras son de un equipo de desarrollo: sirven para
+comparar las dos estrategias de HTTP, no como presupuesto de otra máquina, y se
+reproducen con `npm run test:perf`. El flujo añade una línea por banco; la
+medición compara el endpoint sin flujo, que sigue dando el mismo resultado por
+archivo.
+
 **Compatibilidad** con el plugin, por orden:
 
 1. `expectedUniqueId` / `expectedFxVersion` explícitos (4 caracteres tipo
@@ -759,6 +900,42 @@ inexistente, **422** si todos fueron rechazados (el cuerpo incluye `results`).
 El banco importado **no se aplica** al plugin: eso lo hace `fxbLoader.dll` al
 abrir el plugin. Aquí solo se valida y se deja disponible en el listbox que
 lee la DLL.
+
+### `POST /library/banks/import/stream`
+
+El mismo cuerpo, el mismo tope de 50 bancos y las mismas validaciones que
+`POST /library/banks/import`, pero la respuesta es **NDJSON**
+(`application/x-ndjson`, una línea JSON por evento) que el servidor escribe
+**según procesa cada archivo**. Es lo que usa la vista para mover la barra
+banco a banco.
+
+```
+{"type":"start","total":2,"sourcePaths":["C:\\Banks\\Rhodes.fxb","C:\\Banks\\Strings.fxb"]}
+{"type":"bank","index":0,"total":2,"result":{"source":"C:\\Banks\\Rhodes.fxb","fileName":"Rhodes.fxb","target":"…\\presets\\Rhodes.fxb","status":"imported","compatibility":"compatible","reason":null,"issues":[],"warnings":[],"bank":{…}}}
+{"type":"bank","index":1,"total":2,"result":{"source":"C:\\Banks\\Strings.fxb","fileName":"Strings.fxb","target":"…\\presets\\Strings.fxb","status":"rejected","compatibility":"incompatible","reason":"uniqueID distinto del plugin","issues":[],"warnings":[],"bank":{…}}}
+{"type":"end","result":{"plugin":{…},"presetsDir":"…\\presets","reference":{…},"results":[…]}}
+```
+
+- `start` sale **después** de validar la petición entera (raíz, plugin, rutas,
+  tope y referencias), así que un **400**/**404** sigue siendo una respuesta
+  JSON normal: no hay eventos a medias.
+- `bank` sale una vez por archivo, **también cuando se rechaza**, con el mismo
+  `result` que aparecería en `results` del endpoint normal. `index` es la
+  posición 0-based dentro de la petición.
+- `end` lleva el mismo `result` que devolvería `POST /library/banks/import`.
+  Si **todos** los bancos se rechazan, el flujo termina con **200** y `end` en
+  vez de un 422: una vez enviado `start` el código ya no se puede cambiar, y la
+  vista cuenta los `rejected` de cada evento. El 422 queda para el endpoint sin
+  flujo, donde la respuesta entera se decide antes de escribir.
+- Si el cliente corta la conexión (por ejemplo al cerrar la pestaña), el
+  servidor termina el archivo en curso y no empieza otro; el flujo se cierra sin
+  `end`, que el cliente interpreta como corte.
+- La respuesta va con `cache-control: no-store`, sin `content-length` y con
+  `x-accel-buffering: no`, para que ningún proxy acumule la respuesta.
+
+El contrato de los eventos está en
+[bank-import-stream.ts](src/client/bank-import-stream.ts) y lo comparten el
+servidor y el cliente.
 
 ### `POST /library/banks/convert`
 
@@ -831,6 +1008,47 @@ tiene banco por defecto o el banco nunca se convirtió, así que no hay `.orig`)
 y **422** (el respaldo está vacío, supera el tamaño máximo o no es un `.fxb`
 válido).
 
+### `POST /library/banks/discard-backup`
+
+Envía el respaldo `<banco>.fxb.orig` del banco por defecto a la papelera sin
+tocar el `.fxb`. Es la vuelta atrás de `banks/convert`: el `.orig` sale de la
+carpeta del plugin y `banks/restore` deja de encontrarlo (409), pero el archivo
+no se destruye: queda en la Papelera de reciclaje y se puede recuperar. El
+cuerpo solo lleva la librería y el plugin.
+
+```json
+{
+  "libraryRoot": "C:\\VFX\\Library",
+  "plugin": "MySynth"
+}
+```
+
+El contenido del respaldo **no se valida** antes de moverlo: descartar un
+`.orig` corrupto o ajeno es uno de los motivos para hacerlo. Se lee solo para
+devolver qué salió de la carpeta, con `fileName`, `path` (ruta original), `size`
+y `sha256` en `discarded`; el `fileName` del banco por defecto queda como
+estaba. La respuesta añade `trash` con:
+
+- `label`: la papelera del sistema (`Papelera de reciclaje de Windows`, o
+  `Papelera` en Linux/macOS);
+- `path`: la carpeta donde quedó el archivo, o `null` en Windows, que no expone
+  una ruta a su Papelera de reciclaje;
+- `hint`: cómo recuperarlo (por ejemplo, abrir la Papelera de reciclaje y pulsar
+  «Restaurar», o la carpeta de la papelera XDG).
+
+En Windows se usa la Papelera de reciclaje real
+(`Microsoft.VisualBasic.FileIO.FileSystem::DeleteFile` con
+`RecycleOption.SendToRecycleBin`); en Linux se respeta la especificación XDG
+(`~/.local/share/Trash`, con su archivo `.trashinfo` para poder restaurarlo) y
+en macOS se mueve a `~/.Trash`. La vista pide confirmación con el nombre y el
+tamaño del archivo, deshabilita el botón si la lista no anuncia respaldo
+(`defaultBackup: null`) y, al terminar, muestra la papelera y cómo recuperarlo.
+
+Códigos: **200**, **400** (`libraryRoot` inválido o un `defaultFxbName` con
+separadores o sin `.fxb`), **404** (plugin inexistente), **409** (sin banco por
+defecto o sin `.orig` que descartar) y **422** (no se pudo mover a la papelera;
+el `.orig` queda intacto en su sitio).
+
 ### `POST /library/banks/export`
 
 Convierte un banco **ya importado** al orden de bytes pedido. Es para los
@@ -889,6 +1107,81 @@ con `valid: false` y los motivos en `issues`; una ruta inválida es **400**, un
 plugin inexistente **404** y un `programDirName` roto **422**. No crea
 `presets\` si no existe y el origen queda intacto.
 
+## Diálogo nativo
+
+### `POST /system/pick`
+
+Abre un diálogo del sistema en la máquina donde corre el servidor y devuelve las
+rutas absolutas elegidas. Lo usan los botones **Elegir carpeta…**, **Elegir
+DLL…** y **Añadir archivos…** de la vista.
+
+```json
+{
+  "kind": "files",
+  "title": "Elige los bancos .fxb para importar",
+  "extensions": ["fxb"],
+  "initialDir": "C:\\Bancos"
+}
+```
+
+- `kind`: `folder` (carpeta), `file` (un archivo) o `files` (varios, con Ctrl o
+  Mayús).
+- `title`: opcional, hasta 80 caracteres; vacío usa uno por defecto.
+- `extensions`: opcional, hasta 5, **sin punto** (`fxb`, no `.fxb`); se ignoran
+  al elegir carpeta.
+- `initialDir`: opcional, ruta absoluta de Windows (`C:\…` o `\\servidor\…`)
+  donde abrir el diálogo. Si ya no existe se ignora, igual que en el diálogo de
+  Windows.
+
+Devuelve `{ "paths": [...] }` en el orden del diálogo. Cancelar **no es un
+error**: responde **200** con `paths: []` y la vista no modifica ningún campo.
+Un `kind` desconocido, un título largo, una extensión con punto o un
+`initialDir` relativo son **400**; dos diálogos a la vez, **409**; y un servidor
+que no corre en Windows (no hay `System.Windows.Forms`), **501**.
+
+El diálogo se abre con `powershell.exe -NoProfile -STA` y las rutas vuelven en
+base64 por `stdout`, para que acentos y espacios no dependan de la página de
+códigos de la consola. La petición HTTP queda abierta mientras el diálogo está
+visible; el navegador no puede cerrarlo, así que hay uno como máximo por
+servidor.
+
+### `POST /system/paths`
+
+Dice cuáles de las rutas recordadas por la vista siguen en el disco. El
+navegador no puede consultarlo, así que lo pregunta al servidor, que ve el mismo
+disco: es lo que permite descartar del historial una carpeta renombrada, un
+`.fxb` borrado o un DLL desinstalado.
+
+```json
+{
+  "paths": [
+    "C:\\VFX\\Library",
+    "C:\\fxbLoader\\vst\\fxbLoader.dll",
+    "C:\\Bancos\\Borrado.fxb"
+  ]
+}
+```
+
+- `paths`: hasta 32 rutas absolutas; una lista vacía responde `results: []`.
+
+Devuelve un elemento por ruta, **en el mismo orden**:
+
+```json
+{
+  "results": [
+    { "path": "C:\\VFX\\Library", "exists": true, "isDirectory": true },
+    { "path": "C:\\fxbLoader\\vst\\fxbLoader.dll", "exists": true, "isDirectory": false },
+    { "path": "C:\\Bancos\\Borrado.fxb", "exists": false, "isDirectory": false }
+  ]
+}
+```
+
+Una ruta que falta **no es un error**: llega con `exists: false` e
+`isDirectory: false` y la vista la borra de su historial. `isDirectory` solo
+tiene sentido cuando la ruta existe. Una entrada que no es texto, más de 32
+rutas o una ruta relativa son **400**; una ruta sin permisos de lectura cuenta
+como inexistente, no como fallo de la petición.
+
 ## Diferencias deliberadas con el binario
 
 - Si `vfxinfo.txt` no tiene ninguna línea `dll_name`, el original escribe un
@@ -928,7 +1221,9 @@ public/                        UI estática (index.html, styles.css; js/ es buil
 src/app.setup.ts               resolución y montaje de public/
 src/ui/browser/                vista de la UI (DOM + cliente tipado)
 src/ui/batch.ts                progreso y resultado del lote para la vista
+src/ui/picker.ts               carpetas de partida y suma de rutas del diálogo nativo
 src/common/atomic-file.ts      temporales + fsync + rename compartidos
+src/common/trash.ts            envía archivos a la papelera (reciclaje, XDG, ~/.Trash)
 src/fxb-config/
   fxb-config.constants.ts      límites y literales del binario
   fxb-config.types.ts          contrato, snapshot y errores de dominio
@@ -942,8 +1237,17 @@ src/swagger.ts                 documento OpenAPI (/docs y openapi.json)
 src/openapi.ts                 script que escribe openapi.json
 src/client/
   api-types.ts                 tipos generados desde openapi.json (npm run client)
-  fxb-client.ts                cliente fetch tipado (library + config)
+  fxb-client.ts                cliente fetch tipado (library + config + system)
   index.ts                     punto de entrada del cliente
+src/system/
+  picker.types.ts              entrada validada y errores del diálogo
+  picker.service.ts            PowerShell + System.Windows.Forms (uno a la vez)
+  picker.controller.ts         POST /system/pick + validación
+  picker.dto.ts                esquemas y ejemplos de Swagger
+  paths.service.ts             comprobación de rutas recordadas (fs.stat)
+  paths.controller.ts          POST /system/paths + validación
+  paths.dto.ts                 esquemas y ejemplos de Swagger
+  system.module.ts
 src/library/
   vfxinfo.ts                   análisis y parcheo de vfxinfo.txt
   pe.ts                        lectura de cabeceras PE32/PE32+
@@ -962,27 +1266,36 @@ test/
   library.service.test.ts      escaneo, compatibilidad, instalación, desinstalación
   library.controller.test.ts   mapeo de errores del controlador
   fxb-bank.test.ts             parser .fxb y compatibilidad
+  bank-import.test.ts          importación de bancos por banco y troceada (acumulado y corte)
+  banks.import.stream.test.ts  importación NDJSON (eventos por archivo, 200 y validaciones)
   fxb-bank.fixtures.test.ts    parser e importación con bancos .fxb reales
+  fixtures.readme.test.ts      tabla del README generada desde el manifiesto y los .fxb
   banks.service.test.ts        importación, referencias y rechazos
   banks.http.test.ts           importación por HTTP
   banks.inspect.test.ts        inspección sin copia y comparación con el plugin
   http.integration.test.ts     Nest completo + supertest (200/400/409)
   openapi.test.ts              esquemas, ejemplos y sincronía de openapi.json
+  trash.test.ts                papelera de reciclaje (Windows) y XDG (~/.local/share/Trash)
   library.docs.test.ts         ejemplos de /library contra respuestas reales
   client.test.ts               tipos generados y cliente contra el servidor real
+  system.picker.test.ts        validación, exclusión mutua y mapeo de errores del diálogo
+  system.paths.test.ts         validación, stat y respuesta de POST /system/paths
+  picker.test.ts               carpeta de partida y suma de rutas de la vista
+  recents.test.ts              historial de rutas: orden, duplicados, datos corruptos y poda
   ui.test.ts                   estáticos, ids y selectores de la UI contra index.html
   ui.dom.test.ts               parser de HTML y matcher de selectores de ese test
   ui.styles.test.ts            audita styles.css contra index.html (reglas muertas)
-  helpers/css.ts               parser de reglas CSS y auditoría de selectores
+  ui.markup.test.ts            audita index.html al revés (ids, clases, data-* y ARIA sin uso)
+  helpers/css.ts               parser de CSS, auditoría de selectores y del marcado
   vfx-library.integration.test.ts  DLL real + copia de librería VFX
   synth-bank.fixture.test.ts   importa el banco real de OB-Xd en la librería de prueba
   build-decision.test.ts        decisión de compilación de start.bat (fechas, huérfanos y limpieza)
   library.batch.stream.test.ts  progreso del lote (intercalado y NDJSON por HTTP)
   fxb-bank.performance.test.ts tiempo del parser con los bancos reales de MauSynth y OB-Xd
-  banks.import.performance.test.ts  importación completa (disco + parseo + copia) frente al parser
+  banks.import.performance.test.ts  importación completa frente al parser; una petición frente a nueve
   helpers/timing.ts            medición de muestras (mediana, p95, operaciones/s)
   fixtures/vfx-library/        librería de prueba (plugins stub)
-  fixtures/fxb/                bancos .fxb reales, manifest de hashes y derive-programs.mjs
+  fixtures/fxb/                bancos .fxb reales, manifest derivado, derive-manifest.mjs y tabla del README
   e2e/browser.test.ts          escaneo + instalación + bancos en Chromium (npm run test:e2e)
   helpers/fxb-bank.ts          constructor de .fxb para los tests
   helpers/ui-dom.ts            parser HTML y matcher de los selectores escritos a mano
@@ -1000,7 +1313,13 @@ plugins, 0 instalados), **instala** `OB-Xd` (comprueba el badge, el resumen y
 que el `fxbLoader.dll` copiado tiene el SHA-256 del repositorio), abre
 **Bancos**, **importa** el banco real `wam-obxd-factory.fxb` y lo deja como banco
 por defecto (verifica el `.fxb` copiado y las claves de `fxbLoader.config` en
-disco). En el lote comprueba también que la vista pinta los pasos internos que
+disco). También comprueba que la carpeta escaneada aparece en el `<datalist>` de
+la librería y que el banco importado queda como botón reciente: al pulsarlo con
+el cuadro vacío, la vista vuelve a escribir su ruta. Después pulsa **Olvidar**
+en esa fila y comprueba que solo se van los bancos recientes: el banco sigue en
+el cuadro, la carpeta en su `<datalist>` y solo `fxbLoader.recentBanks` se
+borra. En el lote comprueba
+también que la vista pinta los pasos internos que
 llegan por el flujo («paso 2 de 5 · copiando fxbLoader.dll»): como los eventos
 de un plugin llegan dentro de la misma tarea, los recoge con un
 `MutationObserver` en vez de leer el texto al final. Al final exige que la
@@ -1013,6 +1332,56 @@ por encima de 500, los trozos en orden) y que, mientras la segunda está en vuel
 la barra siga en «Instalando 501 de 501» con `max` del lote completo y un solo
 `<progress>` en la página.
 
+El tercero cubre **cancelar y reanudar**: deja la primera petición del lote en
+vuelo (la responde la prueba, no el instalador real), pulsa **Cancelar**, y
+exige que el resumen separe lo confirmado de lo pendiente y que aparezca
+**Reanudar 2 sin confirmar**. El escaneo posterior dice que Alpha sí terminó, así
+que al pulsar el botón la vista manda **solo** `Beta` y `Gamma`, en el orden del
+lote; al completarse, el botón desaparece. También exige que la página no haya
+lanzado errores de JavaScript.
+
+El cuarto importa **51 bancos reales** (copias del de OB-Xd) contra el servidor
+instalado y exige que la vista mande dos peticiones de 50 y 1, que la lista de
+resultados tenga 51 filas sin ningún rechazo y que la tabla del plugin acabe con
+los 51 bancos. Otro test importa **tres bancos reales en un solo flujo** y
+registra cada valor que la vista asigna al `<progress>`: la barra debe pasar por
+1, 2 y 3 antes del `end`, no saltar del 0 al total al cerrar la petición. El
+quinto simula con Playwright las respuestas del import: el
+primer trozo contesta un NDJSON con **50 eventos `bank` rechazados y su `end`**
+(no un 422, porque el flujo ya empezó) y el segundo lo mismo con un importado, y
+la vista debe seguir con el segundo trozo, acumular los 50 rechazos y el
+importado y terminar en «1 importado(s), 50 rechazado(s).». La segunda respuesta
+se retiene
+para mirar la barra a mitad: con el último archivo aún en vuelo debe mostrar
+`value` 50 sobre `max` 51, el estado «Importando 50 de 51 archivo(s)…» y, al
+cerrar el import, ocultarse.
+
+El sexto cubre **Reintentar fallidos**: simula un lote en el que fallan dos de
+tres plugins, comprueba que el botón aparece con la cuenta, que los reintenta en
+el orden del lote y que, si uno vuelve a fallar, se queda en la lista mientras
+el otro sale. Retiene la primera respuesta para mirar el progreso a mitad: la
+barra muestra `value` 0 sobre `max` 2, el paso dice «paso 1 de 2 · reintentando
+…» y el reloj ya cuenta el tiempo del reintento. El escaneo posterior es el del
+servidor real.
+
+El séptimo cubre los botones del diálogo (`POST /system/pick`): intercepta esa
+petición con Playwright —el navegador de prueba no puede pulsar un diálogo de
+Windows— y comprueba el contrato de la vista: **Elegir carpeta…** rellena el
+campo y escanea, **Elegir DLL…** propone la carpeta de la ruta escrita, rellena
+el campo y vuelve a escanear para validarlo, y **Añadir archivos…** suma los
+bancos elegidos a la lista sin borrar lo escrito ni repetir rutas. También exige
+que la petición lleve el `kind`, el título, las extensiones y la `initialDir`
+que espera el servidor, y que la página no lance errores de JavaScript.
+
+El último test cubre el **historial de rutas**: siembra `localStorage` con una carpeta
+viva y otra renombrada, un DLL y un banco borrados, y exige que al cargar solo
+quede la carpeta que sigue existiendo, que el historial podado se guarde y que
+**Vaciar historial de rutas** (en Opciones avanzadas) pida confirmación
+—cancelarla lo conserva— y, al aceptarla, deje los `<datalist>`, los botones de
+bancos y las tres claves vacíos sin tocar lo escrito en los campos. El de la
+importación por encima del tope comprueba la **×** de un chip: deja los otros
+siete y borra el banco elegido también de `localStorage`.
+
 ```bash
 cd webapp
 npx playwright install chromium   # una vez, o --with-deps chromium en Linux
@@ -1020,9 +1389,9 @@ npm run test:e2e
 ```
 
 Queda fuera de `npm test` y de la cobertura porque necesita el navegador; el
-build (`npm run build`) es parte del script. Si algo falla, guarda
-`test-results/e2e-failure.png` y escribe los logs del servidor, y CI publica esa
-carpeta como artefacto.
+build (`npm run build`) es parte del script. Si algo falla, guarda una captura en
+`test-results/` y escribe los logs del servidor, y CI publica esa carpeta como
+artefacto.
 
 ## Test con la DLL real
 

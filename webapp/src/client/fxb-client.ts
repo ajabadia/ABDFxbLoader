@@ -1,4 +1,8 @@
 import type { paths } from './api-types';
+import type {
+  BankImportStreamEvent,
+  BankImportStreamResult,
+} from './bank-import-stream';
 import type { BatchStreamEvent, BatchStreamResult } from './batch-stream';
 
 /**
@@ -52,9 +56,15 @@ export type LibraryBanksListResponse = SuccessBody<'/library/banks/list', 'post'
 export type LibraryBanksImportResponse = SuccessBody<'/library/banks/import', 'post'>;
 export type LibraryBankConvertResponse = SuccessBody<'/library/banks/convert', 'post'>;
 export type LibraryBankRestoreResponse = SuccessBody<'/library/banks/restore', 'post'>;
+export type LibraryBankDiscardBackupResponse = SuccessBody<
+  '/library/banks/discard-backup',
+  'post'
+>;
 export type LibraryBankExportResponse = SuccessBody<'/library/banks/export', 'post'>;
 export type LibraryBankInspectResponse = SuccessBody<'/library/banks/inspect', 'post'>;
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
+export type SystemPickResponse = SuccessBody<'/system/pick', 'post'>;
+export type SystemPathsResponse = SuccessBody<'/system/paths', 'post'>;
 
 /** Adaptador de `fetch`; permite inyectar uno instrumentado en tests o en la UI. */
 export type FxbFetch = typeof globalThis.fetch;
@@ -96,6 +106,13 @@ export interface BatchStreamHandlers {
   signal?: AbortSignal;
 }
 
+export interface BankImportStreamHandlers {
+  /** Se llama con cada evento de `POST /library/banks/import/stream`, según llega. */
+  onEvent?: (event: BankImportStreamEvent) => void;
+  /** Corta la importación desde el cliente. */
+  signal?: AbortSignal;
+}
+
 export interface FxbClient {
   readonly library: {
     /** Enumera `plugs\` y marca los plugins con `fxbLoader.config`. */
@@ -132,6 +149,15 @@ export interface FxbClient {
       body: RequestBody<'/library/banks/import', 'post'>,
     ): Promise<SuccessBody<'/library/banks/import', 'post'>>;
     /**
+     * La misma importación, leyendo el progreso NDJSON: `onEvent` recibe el
+     * resultado de cada banco en cuanto se procesa y la promesa se resuelve con
+     * el resultado `end`.
+     */
+    importBanksStream(
+      body: RequestBody<'/library/banks/import/stream', 'post'>,
+      handlers?: BankImportStreamHandlers,
+    ): Promise<BankImportStreamResult>;
+    /**
      * Convierte **en el sitio** el banco por defecto del plugin, guardando una
      * copia del original como `<banco>.orig` antes de reescribirlo.
      */
@@ -145,6 +171,13 @@ export interface FxbClient {
     restoreDefaultBank(
       body: RequestBody<'/library/banks/restore', 'post'>,
     ): Promise<SuccessBody<'/library/banks/restore', 'post'>>;
+    /**
+     * Borra el respaldo `<banco>.orig` del banco por defecto. Irreversible: el
+     * banco no cambia, pero después ya no se puede restaurar el original.
+     */
+    discardDefaultBankBackup(
+      body: RequestBody<'/library/banks/discard-backup', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/discard-backup', 'post'>>;
     /** Exporta un banco importado en big-endian o little-endian, sin tocar el original. */
     exportBank(
       body: RequestBody<'/library/banks/export', 'post'>,
@@ -163,6 +196,24 @@ export interface FxbClient {
     write(
       body: RequestBody<'/fxb-config', 'put'>,
     ): Promise<SuccessBody<'/fxb-config', 'put'>>;
+  };
+  readonly system: {
+    /**
+     * Abre un diálogo nativo en la máquina del servidor y devuelve las rutas
+     * absolutas elegidas (`paths: []` si se cancela). La promesa no se resuelve
+     * hasta que el diálogo se cierra.
+     */
+    pick(
+      body: RequestBody<'/system/pick', 'post'>,
+    ): Promise<SuccessBody<'/system/pick', 'post'>>;
+    /**
+     * Dice cuáles de las rutas siguen en el disco y si son carpetas, para que
+     * la vista descarte de su historial las que ya no están. Una ruta que falta
+     * llega con `exists: false`, no como error.
+     */
+    paths(
+      body: RequestBody<'/system/paths', 'post'>,
+    ): Promise<SuccessBody<'/system/paths', 'post'>>;
   };
 }
 
@@ -294,6 +345,84 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
     return state.result;
   }
 
+  /**
+   * Importación de bancos en NDJSON: cada línea se entrega en cuanto llega y
+   * el resultado es el del evento `end`. Mismo tratamiento de errores que el
+   * lote: antes del primer evento, un 400/404 llega como JSON normal.
+   */
+  async function streamBankImport(
+    body: unknown,
+    handlers: BankImportStreamHandlers,
+  ): Promise<BankImportStreamResult> {
+    const response = await doFetch(`${baseUrl}/library/banks/import/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/x-ndjson',
+        ...extraHeaders,
+      },
+      body: JSON.stringify(body),
+      ...(handlers.signal === undefined ? {} : { signal: handlers.signal }),
+    });
+
+    if (!response.ok) {
+      const payload = parsePayload(await response.text());
+      const fallback = `${response.status} ${response.statusText}`.trim();
+      throw new FxbApiError(response.status, payload, messageFrom(payload) ?? fallback);
+    }
+    if (response.body === null) {
+      throw new FxbApiError(response.status, null, 'la respuesta de la importación no tiene cuerpo');
+    }
+
+    const state: { result: BankImportStreamResult | null } = { result: null };
+    const handleLine = (line: string): void => {
+      if (line.trim() === '') return;
+      let event: BankImportStreamEvent;
+      try {
+        event = JSON.parse(line) as BankImportStreamEvent;
+      } catch {
+        throw new FxbApiError(
+          response.status,
+          line,
+          'el servidor envió un evento NDJSON inválido en la importación',
+        );
+      }
+      handlers.onEvent?.(event);
+      if (event.type === 'end') state.result = event.result;
+    };
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let newline = buffer.indexOf('\n');
+        while (newline !== -1) {
+          handleLine(buffer.slice(0, newline));
+          buffer = buffer.slice(newline + 1);
+          newline = buffer.indexOf('\n');
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    buffer += decoder.decode();
+    handleLine(buffer);
+
+    if (state.result === null) {
+      throw new FxbApiError(
+        response.status,
+        null,
+        'la importación terminó sin evento end: el servidor cortó la respuesta',
+      );
+    }
+    return state.result;
+  }
+
   return {
     library: {
       scan: (body) =>
@@ -319,6 +448,7 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/banks/import', body) as Promise<
           SuccessBody<'/library/banks/import', 'post'>
         >,
+      importBanksStream: (body, handlers = {}) => streamBankImport(body, handlers),
       convertDefaultBank: (body) =>
         request('POST', '/library/banks/convert', body) as Promise<
           SuccessBody<'/library/banks/convert', 'post'>
@@ -326,6 +456,10 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
       restoreDefaultBank: (body) =>
         request('POST', '/library/banks/restore', body) as Promise<
           SuccessBody<'/library/banks/restore', 'post'>
+        >,
+      discardDefaultBankBackup: (body) =>
+        request('POST', '/library/banks/discard-backup', body) as Promise<
+          SuccessBody<'/library/banks/discard-backup', 'post'>
         >,
       exportBank: (body) =>
         request('POST', '/library/banks/export', body) as Promise<
@@ -341,6 +475,12 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/fxb-config/read', body) as Promise<SuccessBody<'/fxb-config/read', 'post'>>,
       write: (body) =>
         request('PUT', '/fxb-config', body) as Promise<SuccessBody<'/fxb-config', 'put'>>,
+    },
+    system: {
+      pick: (body) =>
+        request('POST', '/system/pick', body) as Promise<SuccessBody<'/system/pick', 'post'>>,
+      paths: (body) =>
+        request('POST', '/system/paths', body) as Promise<SuccessBody<'/system/paths', 'post'>>,
     },
   };
 }
