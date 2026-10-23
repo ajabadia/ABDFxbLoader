@@ -1218,9 +1218,16 @@ como inexistente, no como fallo de la petición.
 
 ```
 public/                        UI estática (index.html, styles.css; js/ es build)
+src/main.ts                    arranque: Nest en loopback, estáticos y /docs
+src/app.module.ts              módulos: fxb-config, library, plugin-meta y system
 src/app.setup.ts               resolución y montaje de public/
-src/ui/browser/                vista de la UI (DOM + cliente tipado)
+src/ui/browser/
+  main.ts                      UI web: DOM, cliente tipado y estado de la vista
+  api.ts                       fetch contra el propio origen, sin URL base
+  dom.ts                       helpers de DOM que fallan si el HTML no coincide
 src/ui/batch.ts                progreso y resultado del lote para la vista
+src/ui/bank-import.ts          progreso banco a banco de la importación
+src/ui/recents.ts              historial de rutas recientes de los <datalist>
 src/ui/picker.ts               carpetas de partida y suma de rutas del diálogo nativo
 src/common/atomic-file.ts      temporales + fsync + rename compartidos
 src/common/trash.ts            envía archivos a la papelera (reciclaje, XDG, ~/.Trash)
@@ -1233,11 +1240,15 @@ src/fxb-config/
   fxb-config.controller.ts     REST + decoradores OpenAPI
   fxb-config.dto.ts            esquemas y ejemplos de Swagger
   fxb-config.module.ts
+  index.ts                     barril del módulo
 src/swagger.ts                 documento OpenAPI (/docs y openapi.json)
 src/openapi.ts                 script que escribe openapi.json
 src/client/
   api-types.ts                 tipos generados desde openapi.json (npm run client)
   fxb-client.ts                cliente fetch tipado (library + config + system)
+  batch-stream.ts              contrato NDJSON del progreso del lote
+  bank-import-stream.ts        contrato NDJSON del progreso de bancos
+  bank-limits.ts               tope de rutas por petición de importación
   index.ts                     punto de entrada del cliente
 src/system/
   picker.types.ts              entrada validada y errores del diálogo
@@ -1252,17 +1263,26 @@ src/library/
   vfxinfo.ts                   análisis y parcheo de vfxinfo.txt
   pe.ts                        lectura de cabeceras PE32/PE32+
   loader-dll.ts                resolución del fxbLoader.dll por defecto
+  fxbLoader-native.ts          puerta que sustituye a la DLL (PE32 y fxbLoader.config)
   fxb-bank.ts                  parser y validación de .fxb (VST2)
   library.types.ts             modelo, peticiones y errores
   library.service.ts           scan / install / uninstall / importBanks
   library.controller.ts        REST + decoradores OpenAPI
   library.dto.ts               esquemas y ejemplos de Swagger
   library.module.ts
+  index.ts                     barril del módulo
+src/plugin-meta/
+  plugin-meta.types.ts         modelo y errores de fxbLoader.meta.json
+  plugin-meta.service.ts       lectura, fusión y escritura atómica del meta
+  plugin-meta.controller.ts    GET y POST /plugins/:id/meta; el módulo no lo registra
+  plugin-meta.module.ts
+  index.ts                     barril del módulo
 test/
   fxb-config.test.ts           vectores de la especificación
   fxb-config.service.test.ts   conflictos, atomicidad, CP-1252
   vfxinfo.test.ts              parser de vfxinfo.txt
   pe.test.ts                   arquitecturas PE32/PE32+ y errores de cabecera
+  fxb-loader-native.test.ts    puerta nativa: cabeceras PE sintéticas y fxbLoader.config
   library.service.test.ts      escaneo, compatibilidad, instalación, desinstalación
   library.controller.test.ts   mapeo de errores del controlador
   fxb-bank.test.ts             parser .fxb y compatibilidad
@@ -1273,29 +1293,41 @@ test/
   banks.service.test.ts        importación, referencias y rechazos
   banks.http.test.ts           importación por HTTP
   banks.inspect.test.ts        inspección sin copia y comparación con el plugin
+  banks.list.test.ts           listado de bancos del plugin con su configuración
   http.integration.test.ts     Nest completo + supertest (200/400/409)
   openapi.test.ts              esquemas, ejemplos y sincronía de openapi.json
+  openapi.examples.test.ts     cada ejemplo del documento contra su esquema
+  coverage-html.test.ts        convierte lcov.info en el informe HTML de coverage/
   trash.test.ts                papelera de reciclaje (Windows) y XDG (~/.local/share/Trash)
   library.docs.test.ts         ejemplos de /library contra respuestas reales
   client.test.ts               tipos generados y cliente contra el servidor real
   system.picker.test.ts        validación, exclusión mutua y mapeo de errores del diálogo
   system.paths.test.ts         validación, stat y respuesta de POST /system/paths
+  plugin-meta.service.test.ts  meta del plugin: validación, fusión y conflictos de mtime
   picker.test.ts               carpeta de partida y suma de rutas de la vista
   recents.test.ts              historial de rutas: orden, duplicados, datos corruptos y poda
+  batch.test.ts                cliente del lote: troceo, cancelación y reanudación
   ui.test.ts                   estáticos, ids y selectores de la UI contra index.html
   ui.dom.test.ts               parser de HTML y matcher de selectores de ese test
   ui.styles.test.ts            audita styles.css contra index.html (reglas muertas)
   ui.markup.test.ts            audita index.html al revés (ids, clases, data-* y ARIA sin uso)
   helpers/css.ts               parser de CSS, auditoría de selectores y del marcado
+  helpers/openapi-examples.ts  valida cada ejemplo del documento contra su esquema
   vfx-library.integration.test.ts  DLL real + copia de librería VFX
   synth-bank.fixture.test.ts   importa el banco real de OB-Xd en la librería de prueba
   build-decision.test.ts        decisión de compilación de start.bat (fechas, huérfanos y limpieza)
+  workflow.test.ts             el workflow de CI compila, prueba, publica cobertura y corre start.bat
   library.batch.stream.test.ts  progreso del lote (intercalado y NDJSON por HTTP)
+  library.batch.test.ts        POST /library/batch por HTTP: orden, force, dryRun y desinstalación
   fxb-bank.performance.test.ts tiempo del parser con los bancos reales de MauSynth y OB-Xd
   banks.import.performance.test.ts  importación completa frente al parser; una petición frente a nueve
   helpers/timing.ts            medición de muestras (mediana, p95, operaciones/s)
   fixtures/vfx-library/        librería de prueba (plugins stub)
-  fixtures/fxb/                bancos .fxb reales, manifest derivado, derive-manifest.mjs y tabla del README
+  fixtures/fxb/                bancos .fxb reales y su manifiesto derivado
+    derive-manifest.mjs        deriva size, sha256 y programas de cada .fxb
+    render-readme-table.mjs    escribe y comprueba la tabla de fixtures del README
+    make-little-endian.mjs     genera el banco con los enteros invertidos
+    make-fpch-bank.mjs         ensambla un banco desde programas FPCh reales
   e2e/browser.test.ts          escaneo + instalación + bancos en Chromium (npm run test:e2e)
   helpers/fxb-bank.ts          constructor de .fxb para los tests
   helpers/ui-dom.ts            parser HTML y matcher de los selectores escritos a mano
