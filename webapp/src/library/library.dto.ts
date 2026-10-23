@@ -266,6 +266,24 @@ export const LIBRARY_IMPORT_EXAMPLE = {
   ],
 };
 
+/**
+ * `POST /library/banks/import/stream`: los mismos resultados que
+ * `LIBRARY_IMPORT_EXAMPLE`, una línea JSON por evento. El `end` llega también
+ * cuando todos los bancos se rechazan; la vista cuenta los `rejected`.
+ */
+export const LIBRARY_BANKS_IMPORT_STREAM_EXAMPLE = [
+  {
+    type: 'start',
+    total: 2,
+    sourcePaths: ['C:\\Banks\\Rhodes.fxb', 'C:\\Banks\\Strings.fxb'],
+  },
+  { type: 'bank', index: 0, total: 2, result: LIBRARY_IMPORT_EXAMPLE.results[0] },
+  { type: 'bank', index: 1, total: 2, result: LIBRARY_IMPORT_EXAMPLE.results[1] },
+  { type: 'end', result: LIBRARY_IMPORT_EXAMPLE },
+]
+  .map((event) => JSON.stringify(event))
+  .join('\n');
+
 export class LoaderDllDto {
   @ApiProperty({ description: 'Ruta del `fxbLoader.dll` validado.', example: REPO_DLL })
   path!: string;
@@ -1039,6 +1057,34 @@ export class BankBackupSummaryDto {
   size!: number;
 }
 
+/** Papelera a la que se envió el respaldo y cómo recuperarlo. */
+export class TrashInfoDto {
+  @ApiProperty({
+    description:
+      'Nombre de la papelera del sistema: la de reciclaje en Windows, la del escritorio en ' +
+      'Linux y macOS.',
+    example: 'Papelera de reciclaje de Windows',
+  })
+  label!: string;
+
+  @ApiProperty({
+    description:
+      'Carpeta donde quedó el archivo, o `null` si el sistema no expone una ruta (Windows).',
+    type: String,
+    nullable: true,
+    example: null,
+  })
+  path!: string | null;
+
+  @ApiProperty({
+    description: 'Qué hacer para recuperar el archivo desde la papelera.',
+    example:
+      'Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su ' +
+      'carpeta.',
+  })
+  hint!: string;
+}
+
 /** Copia byte a byte del banco antes de convertirlo en el sitio. */
 export class BankBackupFileDto {
   @ApiProperty({ example: 'Warm Rhodes.fxb.orig' })
@@ -1155,6 +1201,45 @@ export class LibraryBankRestoreResponseDto {
     example: true,
   })
   changed!: boolean;
+}
+
+export class LibraryBankDiscardBackupRequestDto {
+  @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
+  libraryRoot!: string;
+
+  @ApiProperty({ description: 'Nombre de la carpeta del plugin dentro de `plugs\\`.', example: 'MySynth' })
+  plugin!: string;
+}
+
+export class LibraryBankDiscardBackupResponseDto {
+  @ApiProperty({ type: () => PluginEntryDto })
+  plugin!: PluginEntryDto;
+
+  @ApiProperty({ example: PRESETS_DIR })
+  presetsDir!: string;
+
+  @ApiProperty({
+    description:
+      'Banco por defecto tomado de `fxbLoader.config` (`defaultFxbName`). No se modifica: ' +
+      'solo se borra su respaldo.',
+    example: 'Warm Rhodes.fxb',
+  })
+  fileName!: string;
+
+  @ApiProperty({
+    description:
+      'Respaldo `<banco>.orig` que se envió a la papelera: nombre, ruta original, tamaño y ' +
+      'SHA-256 que tenía. Ya no está en la carpeta del plugin, pero sigue recuperable desde ' +
+      'la papelera.',
+    type: () => BankBackupFileDto,
+  })
+  discarded!: BankBackupFileDto;
+
+  @ApiProperty({
+    description: 'Papelera donde quedó el respaldo y cómo recuperarlo.',
+    type: () => TrashInfoDto,
+  })
+  trash!: TrashInfoDto;
 }
 
 export class LibraryBanksListResponseDto {
@@ -1554,6 +1639,38 @@ export const LIBRARY_RESTORE_NO_BACKUP_EXAMPLE = {
 export const LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE = {
   message: 'el respaldo Warm Rhodes.fxb.orig no es un .fxb válido: archivo de 12 bytes; ' +
     'un .fxb necesita al menos 156',
+};
+
+/** Respaldo en la papelera: el banco sigue en su sitio y el `.orig` es recuperable. */
+export const LIBRARY_DISCARD_BACKUP_EXAMPLE = {
+  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  presetsDir: PRESETS_DIR,
+  fileName: 'Warm Rhodes.fxb',
+  discarded: {
+    fileName: 'Warm Rhodes.fxb.orig',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Warm Rhodes.fxb.orig',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+  },
+  trash: {
+    label: 'Papelera de reciclaje de Windows',
+    path: null,
+    hint:
+      'Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su ' +
+      'carpeta.',
+  },
+};
+
+export const LIBRARY_DISCARD_NO_BACKUP_EXAMPLE = {
+  message:
+    'no hay respaldo Warm Rhodes.fxb.orig en la carpeta del plugin; no queda nada que ' +
+    'descartar',
+};
+
+export const LIBRARY_DISCARD_TRASH_ERROR_EXAMPLE = {
+  message:
+    'no se pudo enviar Warm Rhodes.fxb.orig a la papelera: la Papelera de reciclaje ' +
+    'terminó con 1',
 };
 
 export const LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE = {

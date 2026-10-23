@@ -10,7 +10,12 @@ import { AppModule } from '../src/app.module';
 import { parseFxbBank } from '../src/library/fxb-bank';
 import { LibraryService } from '../src/library/library.service';
 import type { BankImportInput, BankImportResponse } from '../src/library/library.types';
-import { describeTiming, measureAsync, measureSync } from './helpers/timing';
+import {
+  describeTiming,
+  measureAsync,
+  measureSync,
+  timingFromSamples,
+} from './helpers/timing';
 
 /**
  * Tiempo de una **importación completa**, no solo del parser: lo que se mide es
@@ -50,6 +55,36 @@ const IMPORT_WARMUP = 5;
 const IMPORT_ITERATIONS = 40;
 
 /**
+ * Los nueve bancos reales del manifiesto, en el orden de la tabla del README.
+ * La comparación de una petición frente a nueve usa esta lista completa: no se
+ * elige un subconjunto de plugin compatible, porque lo que se quiere medir es
+ * exactamente lo que haría la UI con la lista entera en el portapapeles.
+ */
+const REAL_BANKS = [
+  'massive-test-bank.FXB',
+  'massive-fpch-bank.fxb',
+  'rea-comp.FXB',
+  'nanohost-reeq-opaque-5100.fxb',
+  'wavosaur-reeq-3set.fxb',
+  'wavosaur-reeq-3set-le.fxb',
+  'wavosaur-reeq-4500.fxb',
+  'wam-obxd-factory.fxb',
+  'mausynth-az-bank.fxb',
+];
+
+/** Calentamiento y muestras de la comparación por lotes: cada una toca disco. */
+const BATCH_WARMUP = 2;
+const BATCH_ITERATIONS = 11;
+
+/**
+ * Techos absolutos de la comparación, por lote y mediana. Son holgados a
+ * propósito: el objetivo es detectar un salto de orden, no un récord, y en
+ * `npm test` este archivo compite por el disco con el resto.
+ */
+const ONE_REQUEST_BUDGET_MS = 1500;
+const NINE_REQUESTS_BUDGET_MS = 2500;
+
+/**
  * Techos amplios, por operación y mediana: buscan un salto de orden, no un
  * récord. `npm test` ejecuta los archivos en paralelo, así que la importación
  * compite por el disco con el resto de tests; para leer cifras comparables hay
@@ -77,20 +112,38 @@ after(async () => {
 });
 
 /** Plugin mínimo: la importación de bancos no abre el DLL ni el cargador. */
-async function makeLibrary(t: TestContext): Promise<{ root: string; plugin: string }> {
-  const root = await mkdtemp(path.join(tmpdir(), 'fxb-import-perf-'));
-  t.after(async () => {
-    await rm(root, { recursive: true, force: true });
-  });
-
+async function createLibrary(root: string): Promise<void> {
   const pluginDir = path.join(root, 'plugs', 'Synth');
   await mkdir(pluginDir, { recursive: true });
   await writeFile(
     path.join(pluginDir, 'vfxinfo.txt'),
     Buffer.from('name: Synth\r\ndll_name: Synth/Synth.dll\r\n', 'latin1'),
   );
+}
 
+async function makeLibrary(t: TestContext): Promise<{ root: string; plugin: string }> {
+  const root = await mkdtemp(path.join(tmpdir(), 'fxb-import-perf-'));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  await createLibrary(root);
   return { root, plugin: 'Synth' };
+}
+
+/**
+ * Biblioteca nueva para una muestra de la comparación por lotes. Se crea y se
+ * borra fuera del reloj: si se reutilizara, la segunda importación encontraría
+ * los bancos ya copiados y mediría una sobrescritura (y la referencia de
+ * compatibilidad cambiaría), no la importación completa.
+ */
+async function withFreshLibrary<T>(run: (root: string) => Promise<T>): Promise<T> {
+  const root = await mkdtemp(path.join(tmpdir(), 'fxb-batch-perf-'));
+  try {
+    await createLibrary(root);
+    return await run(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 function sha256(buffer: Buffer): string {
@@ -211,4 +264,134 @@ test('la importación por HTTP tarda milisegundos y el parser microsegundos', as
       `${bank.label}: la copia dejó de coincidir tras las importaciones medidas`,
     );
   }
+});
+
+interface BatchSample {
+  /** Tiempo de las peticiones, sin contar crear ni borrar la biblioteca. */
+  ms: number;
+  /** Código HTTP de cada petición, en orden. */
+  statuses: number[];
+  /** `archivo:estado` de cada banco, en el orden en que respondió el servidor. */
+  outcomes: string[];
+}
+
+/**
+ * Envía los lotes indicados en serie, sobre una biblioteca nueva, y mide solo
+ * las peticiones: cada muestra incluye la ida y vuelta HTTP y el JSON, que es
+ * justo lo que se paga una vez por petición.
+ *
+ * Un 422 no es un fallo del test: es la respuesta documentada cuando **todos**
+ * los bancos de una petición se rechazan, y trae el resultado de cada uno igual
+ * que un 200. Aparece al trocear la lista, porque cada petición suelta de un
+ * banco incompatible se queda sin ninguna importación.
+ */
+async function timeImports(importUrl: string, batches: string[][]): Promise<BatchSample> {
+  return withFreshLibrary(async (root) => {
+    const started = process.hrtime.bigint();
+    const statuses: number[] = [];
+    const outcomes: string[] = [];
+
+    for (const sourcePaths of batches) {
+      const response = await fetch(importUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ libraryRoot: root, plugin: 'Synth', sourcePaths, overwrite: true }),
+      });
+      const payload = (await response.json()) as BankImportResponse;
+      assert.ok(
+        response.status === 200 || response.status === 422,
+        `la importación respondió ${response.status}: ${JSON.stringify(payload)}`,
+      );
+      statuses.push(response.status);
+      outcomes.push(...payload.results.map((result) => `${result.fileName}:${result.status}`));
+    }
+
+    return { ms: Number(process.hrtime.bigint() - started) / 1e6, statuses, outcomes };
+  });
+}
+
+/**
+ * Una petición con los nueve bancos frente a nueve peticiones de uno, en el
+ * mismo orden y con la misma biblioteca de partida. Además de cronometrar,
+ * comprueba que el resultado por archivo es idéntico: la compatibilidad se
+ * decide banco a banco (referencia explícita, banco ya presente o primer banco
+ * del lote), así que trocear la lista no debe cambiar qué se importa y qué se
+ * rechaza.
+ *
+ * Los nueve fixtures son de cinco plugins distintos, así que solo se copian los
+ * que comparten `uniqueID` con el primero y el resto se rechaza por
+ * incompatibilidad, exactamente igual en las dos estrategias. La diferencia que
+ * mide el test es el coste fijo de cada petición (validación de rutas, lectura
+ * de la configuración, referencia del destino y JSON), no la copia de los
+ * bancos, que es la misma en ambos casos.
+ */
+test('los nueve bancos reales: una petición frente a nueve', async (t) => {
+  const importUrl = `${baseUrl}/library/banks/import`;
+  const sources = REAL_BANKS.map((file) => path.join(FIXTURES, file));
+  const oneRequest = [sources];
+  const nineRequests = sources.map((source) => [source]);
+
+  // Fuera del reloj: comprobar que las dos estrategias hacen el mismo trabajo.
+  const firstOne = await timeImports(importUrl, oneRequest);
+  const firstNine = await timeImports(importUrl, nineRequests);
+  assert.deepEqual(
+    firstNine.outcomes,
+    firstOne.outcomes,
+    'trocear la lista no debe cambiar el resultado por banco',
+  );
+  assert.deepEqual(firstOne.statuses, [200], 'el lote único contesta una sola vez');
+  assert.equal(firstNine.statuses.length, REAL_BANKS.length, 'una petición por banco');
+  assert.equal(firstNine.statuses[0], 200, 'el primer banco importa en una biblioteca vacía');
+  assert.equal(firstOne.outcomes.length, REAL_BANKS.length, 'cada banco debe tener su resultado');
+  assert.ok(
+    firstOne.outcomes.some((outcome) => outcome.endsWith(':imported')),
+    `el lote debe importar algún banco de verdad: ${firstOne.outcomes.join(', ')}`,
+  );
+
+  for (let index = 0; index < BATCH_WARMUP; index += 1) {
+    await timeImports(importUrl, oneRequest);
+    await timeImports(importUrl, nineRequests);
+  }
+
+  const oneSamples: number[] = [];
+  const nineSamples: number[] = [];
+  for (let index = 0; index < BATCH_ITERATIONS; index += 1) {
+    oneSamples.push((await timeImports(importUrl, oneRequest)).ms);
+    nineSamples.push((await timeImports(importUrl, nineRequests)).ms);
+  }
+
+  const one = timingFromSamples(oneSamples);
+  const nine = timingFromSamples(nineSamples);
+  const imported = firstOne.outcomes.filter((outcome) => outcome.endsWith(':imported')).length;
+  const rejected = firstOne.outcomes.length - imported;
+  const factor = nine.medianMs / Math.max(one.medianMs, 1e-6);
+  const perRequest = (nine.medianMs - one.medianMs) / REAL_BANKS.length;
+
+  const refused = firstNine.statuses.filter((status) => status === 422).length;
+  t.diagnostic(
+    `nueve bancos reales → ${imported} importado(s) y ${rejected} rechazado(s) por compatibilidad, ` +
+      'con la misma decisión en una petición que en nueve',
+  );
+  t.diagnostic(
+    `el lote único responde 200 una vez; las nueve peticiones dan ` +
+      `${firstNine.statuses.filter((status) => status === 200).length}×200 y ${refused}×422 ` +
+      '(peticiones en las que se rechazó su único banco)',
+  );
+  t.diagnostic(`una petición con los nueve ${describeTiming(one, 'lotes/s')}`);
+  t.diagnostic(`nueve peticiones de uno ${describeTiming(nine, 'lotes/s')}`);
+  t.diagnostic(
+    `nueve peticiones cuestan ${factor.toFixed(2)}× el lote único: ` +
+      `~${perRequest.toFixed(2)} ms por petición de más (validación de rutas, ` +
+      'configuración del plugin, referencia del destino y JSON)',
+  );
+
+  assert.ok(
+    one.medianMs < ONE_REQUEST_BUDGET_MS,
+    `el lote único tardó ${one.medianMs.toFixed(3)} ms de mediana, presupuesto ${ONE_REQUEST_BUDGET_MS} ms`,
+  );
+  assert.ok(
+    nine.medianMs < NINE_REQUESTS_BUDGET_MS,
+    `las nueve peticiones tardaron ${nine.medianMs.toFixed(3)} ms de mediana, ` +
+      `presupuesto ${NINE_REQUESTS_BUDGET_MS} ms`,
+  );
 });

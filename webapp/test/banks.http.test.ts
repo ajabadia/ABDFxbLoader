@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -482,6 +483,60 @@ test('POST /library/banks/restore responde 400, 404, 409 y 422 con motivos claro
     original,
     'un rechazo no toca el banco',
   );
+});
+
+test('POST /library/banks/discard-backup borra el .orig y responde 400, 404 y 409', async (t) => {
+  const fixtureData = await fixture(t);
+  const source = await bank(fixtureData, 'Warm Rhodes.fxb', { endianness: 'little' });
+  const original = await readFile(source);
+  await http()
+    .post('/library/banks/import')
+    .send({ libraryRoot: fixtureData.root, plugin: 'Synth', sourcePaths: [source] })
+    .expect(200);
+  await setDefault(fixtureData, 'Warm Rhodes.fxb');
+
+  const request = { libraryRoot: fixtureData.root, plugin: 'Synth' };
+  await http().post('/library/banks/convert').send(request).expect(200);
+
+  const bankPath = path.join(fixtureData.presetsDir, 'Warm Rhodes.fxb');
+  const backupPath = `${bankPath}.orig`;
+  const converted = await readFile(bankPath);
+
+  const response = await http().post('/library/banks/discard-backup').send(request).expect(200);
+  assert.equal(response.body.fileName, 'Warm Rhodes.fxb');
+  assert.equal(response.body.discarded.fileName, 'Warm Rhodes.fxb.orig');
+  assert.equal(response.body.discarded.path, backupPath);
+  assert.equal(response.body.discarded.size, original.length);
+  assert.equal(
+    response.body.discarded.sha256,
+    createHash('sha256').update(original).digest('hex'),
+  );
+  assert.deepEqual(Object.keys(response.body.trash).sort(), ['hint', 'label', 'path']);
+  assert.match(String(response.body.trash.label), /Papelera/);
+  assert.match(String(response.body.trash.hint), /recuperarlo|Restaurar|Volver a poner/);
+
+  // El respaldo sale de la carpeta del plugin y el banco sigue convertido.
+  assert.deepEqual(await readdir(fixtureData.presetsDir), ['Warm Rhodes.fxb']);
+  assert.deepEqual(await readFile(bankPath), converted, 'descartar no toca el banco');
+  const listed = await http().post('/library/banks/list').send(request).expect(200);
+  assert.equal(listed.body.defaultBackup, null);
+
+  // 409: ya no queda respaldo que descartar.
+  const missing = await http().post('/library/banks/discard-backup').send(request).expect(409);
+  assert.match(String(missing.body.message), /no hay respaldo Warm Rhodes\.fxb\.orig/);
+
+  // 400: petición sin `libraryRoot` y nombre de banco inseguro.
+  await http().post('/library/banks/discard-backup').send({ plugin: 'Synth' }).expect(400);
+  await setDefault(fixtureData, '..\\Warm Rhodes.fxb');
+  const traversal = await http().post('/library/banks/discard-backup').send(request).expect(400);
+  assert.match(String(traversal.body.message), /separadores de ruta/);
+
+  // 404: el plugin no existe.
+  await setDefault(fixtureData, 'Warm Rhodes.fxb');
+  await http()
+    .post('/library/banks/discard-backup')
+    .send({ ...request, plugin: 'Nope' })
+    .expect(404);
 });
 
 test('POST /library/banks/export responde 400 y 422 con motivos claros', async (t) => {

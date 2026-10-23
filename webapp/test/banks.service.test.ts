@@ -670,6 +670,64 @@ test('restaura el banco por defecto desde el .orig sin pisar el respaldo', async
   assert.deepEqual(await readFile(backupPath), original);
 });
 
+test('descarta el .orig del banco por defecto sin tocar el banco', async (t) => {
+  const fixtureData = await fixture(t);
+  const original = buildBank({ endianness: 'little', programs: 2 });
+  await importedBank(fixtureData, 'Warm Rhodes.fxb', original);
+  await setDefaultBank(fixtureData, 'Warm Rhodes.fxb');
+
+  const base = { libraryRoot: fixtureData.root, plugin: 'Synth' };
+  const converted = await service.convertDefaultBank(base);
+  const bankPath = path.join(fixtureData.presetsDir, 'Warm Rhodes.fxb');
+  const backupPath = `${bankPath}.orig`;
+  const convertedBytes = await readFile(bankPath);
+
+  // El respaldo de otro banco no es el del banco por defecto: no se toca.
+  const foreignBackup = path.join(fixtureData.presetsDir, 'Otro.fxb.orig');
+  await writeFile(foreignBackup, original);
+
+  const result = await service.discardDefaultBankBackup(base);
+
+  assert.equal(result.fileName, 'Warm Rhodes.fxb');
+  assert.equal(result.presetsDir, fixtureData.presetsDir);
+  assert.equal(result.plugin.name, 'Synth');
+  assert.deepEqual(result.discarded, {
+    fileName: 'Warm Rhodes.fxb.orig',
+    path: backupPath,
+    size: original.length,
+    sha256: converted.source.sha256,
+  });
+  // El respaldo no se destruye: queda en la papelera del sistema.
+  assert.notEqual(result.trash.label, '');
+  assert.match(result.trash.hint, /recuperarlo|Restaurar|Volver a poner/);
+  if (process.platform === 'win32') {
+    assert.equal(result.trash.path, null, 'Windows no expone una ruta a su Papelera de reciclaje');
+  } else {
+    assert.equal(typeof result.trash.path, 'string');
+  }
+
+  // Se borró el respaldo correcto; el banco sigue convertido, byte a byte.
+  assert.deepEqual((await readdir(fixtureData.presetsDir)).sort(), [
+    'Otro.fxb.orig',
+    'Warm Rhodes.fxb',
+  ]);
+  assert.deepEqual(await readFile(bankPath), convertedBytes);
+  assert.equal((await service.listBanks(base)).defaultBackup, null);
+
+  // La configuración no cambia: la DLL sigue cargando el mismo nombre.
+  assert.equal(
+    (await configService.read(fixtureData.pluginDir)).config.defaultFxbName,
+    'Warm Rhodes.fxb',
+  );
+
+  // Descartarlo otra vez no es un éxito silencioso: ya no hay nada que borrar.
+  await assert.rejects(service.discardDefaultBankBackup(base), PluginStateError);
+  assert.deepEqual(await readdir(fixtureData.presetsDir), [
+    'Otro.fxb.orig',
+    'Warm Rhodes.fxb',
+  ]);
+});
+
 test('listBanks anuncia el respaldo del banco por defecto sin abrirlo', async (t) => {
   const fixtureData = await fixture(t);
   const original = buildBank({ endianness: 'little' });
@@ -727,6 +785,39 @@ test('rechaza restaurar sin banco por defecto, sin respaldo o con un respaldo ro
 
   await assert.rejects(
     service.restoreDefaultBank({ ...base, plugin: 'Nope' }),
+    /no existe el plugin/,
+  );
+});
+
+test('rechaza descartar sin banco por defecto, sin respaldo o con un nombre inseguro', async (t) => {
+  const fixtureData = await fixture(t);
+  const original = buildBank({ endianness: 'little' });
+  const bankPath = await importedBank(fixtureData, 'Legacy.fxb', original);
+  const base = { libraryRoot: fixtureData.root, plugin: 'Synth' };
+
+  // Sin fxbLoader.config no hay banco por defecto cuyo respaldo descartar.
+  await assert.rejects(service.discardDefaultBankBackup(base), /no tiene un banco por defecto/);
+
+  // Con banco configurado pero sin `.orig`, el mensaje dice qué falta.
+  await setDefaultBank(fixtureData, 'Legacy.fxb');
+  await assert.rejects(service.discardDefaultBankBackup(base), PluginStateError);
+  await assert.rejects(service.discardDefaultBankBackup(base), /no hay respaldo Legacy\.fxb\.orig/);
+
+  // Nombre inseguro o sin `.fxb`: se rechaza antes de tocar el disco.
+  await setDefaultBank(fixtureData, '..\\Legacy.fxb');
+  await assert.rejects(service.discardDefaultBankBackup(base), LibraryPathError);
+  await setDefaultBank(fixtureData, 'Legacy.txt');
+  await assert.rejects(service.discardDefaultBankBackup(base), /debe terminar en \.fxb/);
+
+  // Un respaldo vacío o corrupto sí se puede descartar: no se valida al borrar.
+  await setDefaultBank(fixtureData, 'Legacy.fxb');
+  await writeFile(`${bankPath}.orig`, Buffer.alloc(0));
+  const discarded = await service.discardDefaultBankBackup(base);
+  assert.equal(discarded.discarded.size, 0);
+  assert.deepEqual(await readFile(bankPath), original, 'descartar no toca el banco');
+
+  await assert.rejects(
+    service.discardDefaultBankBackup({ ...base, plugin: 'Nope' }),
     /no existe el plugin/,
   );
 });

@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { promises as fs, type Stats } from 'node:fs';
 import * as path from 'node:path';
+import { MAX_BANKS_PER_REQUEST } from '../client/bank-limits';
+import type { BankImportStreamEvent } from '../client/bank-import-stream';
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import { copyFileAtomic, writeFileAtomic } from '../common/atomic-file';
+import { moveToTrash, type TrashInfo } from '../common/trash';
 import { FXB_CONFIG_FILENAME } from '../fxb-config/fxb-config.constants';
 import { FxbConfigService } from '../fxb-config/fxb-config.service';
 import type { FxbConfigSnapshot } from '../fxb-config/fxb-config.types';
@@ -40,6 +43,8 @@ import type {
   BankBackupSummary,
   BankConvertInput,
   BankConvertResult,
+  BankDiscardBackupInput,
+  BankDiscardBackupResult,
   BankExportFile,
   BankExportInput,
   BankExportResult,
@@ -69,12 +74,15 @@ import type {
   UninstallResult,
 } from './library.types';
 
+// El tope vive en `client/bank-limits` para que la vista trocee con el mismo
+// número que valida el servidor; se reexporta aquí porque el DTO y los tests lo
+// importan del servicio.
+export { MAX_BANKS_PER_REQUEST };
+
 /** Carpeta que contiene un subdirectorio por plugin. */
 const PLUGS_DIRNAME = 'plugs';
 /** Subcarpeta de bancos que crea el instalador original. */
 const PRESETS_DIRNAME = 'presets';
-/** Tope de archivos por petición de importación. */
-export const MAX_BANKS_PER_REQUEST = 50;
 /** Cuántos bancos existentes se inspeccionan para inferir compatibilidad. */
 const MAX_REFERENCE_SCAN = 100;
 
@@ -539,8 +547,19 @@ export class LibraryService {
    * `expectedUniqueId`/`expectedFxVersion`, de un banco ya presente en el
    * destino (solo al añadir un archivo nuevo) o del primer banco del lote.
    * Sin ninguna referencia el banco se importa como `unverified`.
+   *
+   * `emit` recibe `start` después de validar la petición, un `bank` con el
+   * resultado de cada archivo —también los rechazados— y `end` con el cuerpo
+   * completo. El endpoint normal lo deja en un noop; el NDJSON lo reenvía tal
+   * cual para que la barra avance banco a banco. `shouldStop` se consulta antes
+   * de cada archivo: si el cliente cerró la respuesta, se termina el que ya
+   * está en curso y no se empieza otro.
    */
-  async importBanks(input: BankImportInput): Promise<BankImportResponse> {
+  async importBanks(
+    input: BankImportInput,
+    emit: (event: BankImportStreamEvent) => void = () => undefined,
+    shouldStop: () => boolean = () => false,
+  ): Promise<BankImportResponse> {
     const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
     const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
 
@@ -558,12 +577,21 @@ export class LibraryService {
     let existingReference: BankReference | null | undefined;
     const overwrite = input.overwrite !== false;
     const results: BankImportResult[] = [];
+    const total = sources.length;
 
-    for (const source of sources) {
+    // Mientras no se escriba el primer evento, un fallo de validación sigue
+    // siendo un 400/404 JSON normal. `start` sale ya con la petición validada.
+    emit({ type: 'start', total, sourcePaths: [...input.sourcePaths] });
+
+    for (const [index, source] of sources.entries()) {
+      if (shouldStop()) break;
+
       const fileName = path.basename(source);
       const target = path.join(presetsDir, fileName);
-      const push = (result: Omit<BankImportResult, 'source' | 'fileName' | 'target'>): void => {
-        results.push({ source, fileName, target, ...result });
+      const push = (fields: Omit<BankImportResult, 'source' | 'fileName' | 'target'>): void => {
+        const result = { source, fileName, target, ...fields };
+        results.push(result);
+        emit({ type: 'bank', index, total, result });
       };
 
       if (!/\.fxb$/i.test(fileName)) {
@@ -693,12 +721,14 @@ export class LibraryService {
       }
     }
 
-    return {
+    const response: BankImportResponse = {
       plugin: await this.describe(plugsPath, input.plugin),
       presetsDir,
       reference,
       results,
     };
+    emit({ type: 'end', result: response });
+    return response;
   }
 
   /**
@@ -982,6 +1012,51 @@ export class LibraryService {
       backup,
       changed: true,
     };
+  }
+
+  /**
+   * Envía el respaldo `<banco>.orig` del banco por defecto a la papelera.
+   *
+   * El original que dejó `convertDefaultBank` deja de estar en la carpeta del
+   * plugin (la papelera lo conserva para poder recuperarlo). El `.fxb` actual no
+   * se toca, solo pierde su copia de seguridad. El contenido del respaldo **no
+   * se valida** antes de moverlo, porque descartar un `.orig` corrupto o ajeno
+   * es justo uno de los motivos para hacerlo; se lee solo para devolver qué se
+   * descartó (nombre, ruta, tamaño y hash) y dónde se puede recuperar. Sin
+   * respaldo se responde como en `restoreDefaultBank`: 409, no un éxito
+   * silencioso.
+   */
+  async discardDefaultBankBackup(
+    input: BankDiscardBackupInput,
+  ): Promise<BankDiscardBackupResult> {
+    const { plugsPath, presetsDir, fileName, sourcePath } = await this.resolveDefaultBankFile(
+      input,
+      'descartar el respaldo del banco por defecto',
+    );
+
+    const backupPath = `${sourcePath}${BANK_BACKUP_SUFFIX}`;
+    const backupStats = await statOrNull(backupPath);
+    if (backupStats === null || !backupStats.isFile()) {
+      throw new PluginStateError(
+        `no hay respaldo ${path.basename(backupPath)} en la carpeta del plugin; ` +
+          'no queda nada que descartar',
+      );
+    }
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    const discarded = await this.backupFile(backupPath);
+
+    let trash: TrashInfo;
+    try {
+      trash = await moveToTrash(backupPath);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new LibraryOperationError(
+        `no se pudo enviar ${path.basename(backupPath)} a la papelera: ${reason}`,
+      );
+    }
+
+    return { plugin, presetsDir, fileName, discarded, trash };
   }
 
   /**

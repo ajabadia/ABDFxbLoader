@@ -1,3 +1,4 @@
+import type { TrashInfo } from '../common/trash';
 import type { FxbConfigSnapshot } from '../fxb-config/fxb-config.types';
 import type { BankCompatibility, BankReference, FxbBankInfo, FxbEndianness } from './fxb-bank';
 
@@ -360,6 +361,28 @@ export interface BankRestoreResult {
   backup: BankBackupFile;
   /** `false` si el banco ya era byte a byte el respaldo (no se escribió nada). */
   changed: boolean;
+}
+
+export interface BankDiscardBackupInput {
+  libraryRoot: string;
+  plugin: string;
+}
+
+/**
+ * Resultado de enviar el respaldo `<banco>.orig` del banco por defecto a la
+ * papelera. El banco en sí no se toca: lo único que cambia es que el respaldo
+ * ya no está en la carpeta del plugin, aunque sigue recuperable desde la
+ * papelera del sistema.
+ */
+export interface BankDiscardBackupResult {
+  plugin: PluginEntry;
+  presetsDir: string;
+  /** Banco por defecto tomado de `fxbLoader.config` (`defaultFxbName`). */
+  fileName: string;
+  /** Respaldo que se envió a la papelera, con el tamaño y el hash que tenía. */
+  discarded: BankBackupFile;
+  /** Papelera donde quedó y cómo recuperarlo. */
+  trash: TrashInfo;
 }
 
 export class LibraryPathError extends Error {

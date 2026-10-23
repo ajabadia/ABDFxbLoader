@@ -35,9 +35,13 @@ import {
   LIBRARY_BATCH_PLUGINS_ERROR_EXAMPLE,
   LIBRARY_BATCH_STREAM_EXAMPLE,
   LIBRARY_BATCH_TOO_MANY_ERROR_EXAMPLE,
+  LIBRARY_BANKS_IMPORT_STREAM_EXAMPLE,
   LIBRARY_CONVERT_EXAMPLE,
   LIBRARY_CONVERT_MISSING_BANK_EXAMPLE,
   LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
+  LIBRARY_DISCARD_BACKUP_EXAMPLE,
+  LIBRARY_DISCARD_NO_BACKUP_EXAMPLE,
+  LIBRARY_DISCARD_TRASH_ERROR_EXAMPLE,
   LIBRARY_DLL_ERROR_EXAMPLE,
   LIBRARY_EXPORT_EXAMPLE,
   LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
@@ -67,6 +71,8 @@ import {
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
   LibraryBankConvertRequestDto,
   LibraryBankConvertResponseDto,
+  LibraryBankDiscardBackupRequestDto,
+  LibraryBankDiscardBackupResponseDto,
   LibraryBankExportRequestDto,
   LibraryBankExportResponseDto,
   LibraryBankInspectRequestDto,
@@ -90,6 +96,7 @@ import {
 } from './library.dto';
 import { defaultLoaderDllPath } from './loader-dll';
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
+import type { BankImportStreamEvent } from '../client/bank-import-stream';
 import { LibraryService } from './library.service';
 import {
   LibraryOperationError,
@@ -99,6 +106,7 @@ import {
 } from './library.types';
 import type {
   BankConvertInput,
+  BankDiscardBackupInput,
   BankExportInput,
   BankImportInput,
   BankInspectInput,
@@ -176,6 +184,26 @@ function readBankReference(body: Record<string, unknown>): {
     ...(expectedFxVersion === undefined
       ? {}
       : { expectedFxVersion: expectedFxVersion as number }),
+  };
+}
+
+/** Cuerpo de `POST /library/banks/import` y de su variante NDJSON. */
+function readBankImportInput(body: Record<string, unknown>): BankImportInput {
+  const sourcePaths = body['sourcePaths'];
+  if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+    throw new BadRequestException('sourcePaths debe ser un array con al menos una ruta');
+  }
+  if (!sourcePaths.every((value) => typeof value === 'string' && value.trim() !== '')) {
+    throw new BadRequestException('sourcePaths debe contener cadenas no vacías');
+  }
+
+  const overwrite = optionalBoolean(body, 'overwrite');
+  return {
+    libraryRoot: requireString(body, 'libraryRoot'),
+    plugin: requireString(body, 'plugin'),
+    sourcePaths: sourcePaths as string[],
+    ...readBankReference(body),
+    ...(overwrite === undefined ? {} : { overwrite }),
   };
 }
 
@@ -537,24 +565,7 @@ export class LibraryController {
     example: LIBRARY_IMPORT_REJECTED_EXAMPLE,
   })
   async importBanks(@Body() body: unknown) {
-    const record = asRecord(body);
-
-    const sourcePaths = record['sourcePaths'];
-    if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
-      throw new BadRequestException('sourcePaths debe ser un array con al menos una ruta');
-    }
-    if (!sourcePaths.every((value) => typeof value === 'string' && value.trim() !== '')) {
-      throw new BadRequestException('sourcePaths debe contener cadenas no vacías');
-    }
-
-    const overwrite = optionalBoolean(record, 'overwrite');
-    const input: BankImportInput = {
-      libraryRoot: requireString(record, 'libraryRoot'),
-      plugin: requireString(record, 'plugin'),
-      sourcePaths: sourcePaths as string[],
-      ...readBankReference(record),
-      ...(overwrite === undefined ? {} : { overwrite }),
-    };
+    const input = readBankImportInput(asRecord(body));
 
     try {
       const result = await this.service.importBanks(input);
@@ -568,6 +579,97 @@ export class LibraryController {
     } catch (error) {
       mapDomainError(error);
     }
+  }
+
+  @Post('banks/import/stream')
+  @ApiOperation({
+    summary: 'Importa bancos .fxb informando del progreso por archivo',
+    description:
+      'El mismo cuerpo que `POST /library/banks/import`, pero la respuesta es NDJSON: `start` ' +
+      'con el total, un `bank` con el resultado de cada archivo (importado o rechazado) y `end` ' +
+      'con el cuerpo completo. Así la barra avanza banco a banco. La petición se valida entera ' +
+      'antes del primer byte: un 400/404 sigue siendo JSON. Si todos los bancos se rechazan, el ' +
+      'flujo termina con `end` y la vista cuenta los `rejected`.',
+  })
+  @ApiBody({
+    type: LibraryBanksImportRequestDto,
+    examples: {
+      lote: {
+        summary: 'Dos bancos con uniqueID explícito',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          sourcePaths: ['C:\\Banks\\Rhodes.fxb', 'C:\\Banks\\Strings.fxb'],
+          expectedUniqueId: 'MySy',
+          expectedFxVersion: 1000,
+        },
+      },
+      sinReferencia: {
+        summary: 'Sin referencia: se importa como unverified',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          sourcePaths: ['C:\\Banks\\Rhodes.fxb'],
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Un evento JSON por línea: `start`, un `bank` por archivo en el orden recibido y `end` ' +
+      'con el mismo cuerpo que `POST /library/banks/import`.',
+    content: {
+      'application/x-ndjson': {
+        schema: { type: 'string' },
+        example: LIBRARY_BANKS_IMPORT_STREAM_EXAMPLE,
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Petición mal formada: rutas no absolutas, más de 50 bancos o `expectedUniqueId` inválido. ' +
+      'Se rechaza antes de escribir ningún evento.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: { message: 'la ruta debe ser absoluta: "Banks/Rhodes.fxb"' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`; tampoco se escribe ningún evento.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  async importBanksStream(@Body() body: unknown, @Res() response: Response): Promise<void> {
+    const input = readBankImportInput(asRecord(body));
+    let started = false;
+    let closed = false;
+    response.on('close', () => {
+      closed = true;
+    });
+
+    /** Primera escritura = cabeceras de la respuesta en streaming. */
+    const write = (event: BankImportStreamEvent): void => {
+      if (closed) return;
+      if (!started) {
+        started = true;
+        response.status(HttpStatus.OK);
+        response.setHeader('content-type', 'application/x-ndjson; charset=utf-8');
+        response.setHeader('cache-control', 'no-store');
+        // Un proxy intermedio no debe acumular la respuesta entera.
+        response.setHeader('x-accel-buffering', 'no');
+      }
+      response.write(`${JSON.stringify(event)}\n`);
+    };
+
+    try {
+      await this.service.importBanks(input, write, () => closed);
+    } catch (error) {
+      if (!started) mapDomainError(error);
+      // Ya hay eventos enviados: no se puede cambiar el código de estado. Se
+      // corta el flujo sin `end`, que es lo que el cliente interpreta como fallo.
+      response.destroy();
+      throw error;
+    }
+
+    if (!closed) response.end();
   }
 
   @Post('banks/export')
@@ -849,6 +951,80 @@ export class LibraryController {
     };
     try {
       return await this.service.restoreDefaultBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/discard-backup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Envía el respaldo .orig del banco por defecto a la papelera',
+    description:
+      'Mueve `<banco>.orig`, la copia que dejó `banks/convert`, a la papelera del sistema ' +
+      '(Papelera de reciclaje en Windows) sin tocar el `.fxb` que `fxbLoader.config` marca ' +
+      'como predeterminado. El respaldo deja de estar en la carpeta del plugin, pero puede ' +
+      'recuperarse desde la papelera: la respuesta dice dónde y cómo. El respaldo no se ' +
+      'valida antes de moverlo (descartar uno corrupto es uno de los motivos para hacerlo); ' +
+      'se lee solo para devolver su nombre, tamaño y SHA-256.',
+  })
+  @ApiBody({
+    type: LibraryBankDiscardBackupRequestDto,
+    examples: {
+      descartar: {
+        summary: 'Borrar el respaldo del banco por defecto',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Respaldo movido a la papelera. El banco por defecto sigue igual y el `.orig` puede ' +
+      'recuperarse desde ahí.',
+    type: LibraryBankDiscardBackupResponseDto,
+    example: LIBRARY_DISCARD_BACKUP_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`libraryRoot` o `plugin` inválidos, o un `defaultFxbName` con separadores de ruta o ' +
+      'sin `.fxb`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description:
+      'El plugin no tiene `defaultFxbName` configurado, o no hay `<banco>.orig` que descartar.',
+    type: LibraryErrorDto,
+    examples: {
+      sinDefecto: {
+        summary: 'Sin banco por defecto',
+        value: LIBRARY_CONVERT_NO_DEFAULT_EXAMPLE,
+      },
+      sinRespaldo: {
+        summary: 'No hay respaldo .orig',
+        value: LIBRARY_DISCARD_NO_BACKUP_EXAMPLE,
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'No se pudo mover el respaldo a la papelera; el archivo queda intacto en su sitio.',
+    type: LibraryErrorDto,
+    example: LIBRARY_DISCARD_TRASH_ERROR_EXAMPLE,
+  })
+  async discardDefaultBankBackup(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankDiscardBackupInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+    };
+    try {
+      return await this.service.discardDefaultBankBackup(input);
     } catch (error) {
       mapDomainError(error);
     }

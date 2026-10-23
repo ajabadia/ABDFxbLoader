@@ -388,3 +388,25 @@ test('PUT /fxb-config responde 200, 409 con mtime obsoleto y 400 con config invÃ
     .expect(400);
   assert.equal(Array.isArray(invalid.body.issues), true);
 });
+
+test('POST /system/paths dice quÃ© rutas recordadas siguen en el disco', async (t) => {
+  const lib = await makeLibrary(t);
+  const missing = path.join(lib.root, 'plugs', 'Borrado.fxb');
+
+  const response = await http()
+    .post('/system/paths')
+    .send({ paths: [lib.root, `  ${lib.dllSource}  `, missing] })
+    .expect(200);
+
+  // Un elemento por ruta, en el orden pedido y sin los espacios del campo.
+  assert.deepEqual(response.body, {
+    results: [
+      { path: lib.root, exists: true, isDirectory: true },
+      { path: lib.dllSource, exists: true, isDirectory: false },
+      { path: missing, exists: false, isDirectory: false },
+    ],
+  });
+
+  await http().post('/system/paths').send({ paths: [] }).expect(200, { results: [] });
+  await http().post('/system/paths').send({ paths: ['plugs'] }).expect(400);
+});

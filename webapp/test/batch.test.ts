@@ -2,15 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   applyBatchEvent,
+  BatchClock,
   cancelledSummary,
   failuresOf,
+  formatDuration,
   initialProgress,
   mergeProgress,
   progressLabel,
+  resumablePlugins,
+  resumeLabel,
+  retryProgress,
   runBatchInChunks,
   splitBatch,
   stepLabel,
   summarize,
+  timingLabel,
   type BatchAction,
   type BatchFailure,
   type BatchResponse,
@@ -407,6 +413,39 @@ test('mergeProgress suma las peticiones anteriores en una sola cuenta', () => {
   assert.equal(stepLabel(merged), 'paso 3 de 5 · parcheando dll_name', 'el paso sigue al lote');
 });
 
+test('retryProgress reutiliza barra, paso y reloj para cada fallo reintentado', () => {
+  const failures: BatchFailure[] = [
+    { plugin: { name: 'Alpha' }, action: 'install', message: 'falló' },
+    { plugin: { name: 'Beta' }, action: 'uninstall', message: 'falló' },
+    { plugin: { name: 'Gamma' }, action: 'install', message: 'falló' },
+  ];
+  const progress = retryProgress(failures[1]!, 1, failures.length, 1);
+
+  assert.deepEqual(progress, {
+    action: 'uninstall',
+    total: 3,
+    current: 'Beta',
+    index: 1,
+    done: 1,
+    failed: 1,
+    finished: false,
+    step: null,
+    stepIndex: 1,
+    steps: 3,
+    stepText: 'paso 2 de 3 · reintentando Beta',
+  });
+  assert.equal(stepLabel(progress), 'paso 2 de 3 · reintentando Beta');
+
+  const clock = new BatchClock(0);
+  clock.startStep(500);
+  const timing = clock.snapshot(progress, 900);
+  assert.equal(timing.stepElapsedMs, 400, 'el paso del reintento también se cronometra');
+  assert.equal(
+    timingLabel(timing, progress),
+    '0,9 s transcurridos · calculando el tiempo restante… · 1 fallo(s) detrás del actual · 0,4 s en el paso actual',
+  );
+});
+
 test('mergeProgress solo da el lote por terminado en la última petición', () => {
   const totals: BatchTotals = { action: 'uninstall', total: 6, done: 3, failed: 0 };
   const lastChunk = {
@@ -448,6 +487,7 @@ test('el lote se envía troceado y la barra sigue la cuenta global', async () =>
   assert.equal(run.succeeded, names.length);
   assert.equal(run.failed, 0);
   assert.equal(run.unreported, 0);
+  assert.deepEqual(run.pending, [], 'un lote completo no deja nada por reanudar');
   assert.equal(run.results.length, names.length);
 
   // La segunda petición no reinicia el texto: sigue contando desde el principio.
@@ -473,6 +513,11 @@ test('si una petición falla, el lote se corta y conserva lo confirmado', async 
   assert.equal(run.succeeded, MAX_PLUGINS_PER_BATCH - 2);
   assert.equal(run.failed, 2);
   assert.equal(run.unreported, 2, 'los plugins de la petición cortada quedan sin confirmar');
+  assert.deepEqual(
+    run.pending,
+    names.slice(MAX_PLUGINS_PER_BATCH),
+    'los pendientes son los de la petición que no llegó a responder, en orden',
+  );
 
   const failures = failuresOf(run);
   assert.deepEqual(
@@ -524,6 +569,11 @@ test('cancelar corta la petición y conserva los plugins ya confirmados', async 
   assert.equal(run.succeeded, 1);
   assert.equal(run.failed, 0);
   assert.equal(run.unreported, 2, 'Beta estaba en curso y Gamma ni empezó');
+  assert.deepEqual(
+    run.pending,
+    ['Beta', 'Gamma'],
+    'Beta quedó en curso y Gamma no llegó a enviarse, en el orden del lote',
+  );
   assert.equal(cancelledSummary(run), 'Lote cancelado: 1 de 3 instalado(s); 2 sin confirmar.');
 });
 
@@ -571,6 +621,7 @@ test('cancelar entre peticiones no envía la siguiente', async () => {
   assert.equal(run.results.length, MAX_PLUGINS_PER_BATCH);
   assert.equal(run.succeeded, MAX_PLUGINS_PER_BATCH);
   assert.equal(run.unreported, 2);
+  assert.deepEqual(run.pending, names.slice(MAX_PLUGINS_PER_BATCH));
 });
 
 test('un lote cancelado resume lo confirmado y los fallos', () => {
@@ -584,6 +635,20 @@ test('un lote cancelado resume lo confirmado y los fallos', () => {
   );
 });
 
+test('el último plugin del trozo no cuenta uno de más', () => {
+  const progress: BatchProgress = {
+    ...initialProgress('install', 3),
+    done: 3,
+    finished: false,
+  };
+
+  assert.equal(
+    progressLabel(progress),
+    'Instalando 3 de 3…',
+    'entre el último `plugin` y `end` no existe un cuarto plugin',
+  );
+});
+
 test('un lote vacío no manda ninguna petición', async () => {
   const { send, requests } = fakeSender('uninstall');
 
@@ -594,6 +659,163 @@ test('un lote vacío no manda ninguna petición', async () => {
   assert.equal(run.requests, 0);
   assert.equal(run.unreported, 0);
   assert.equal(run.error, null);
+});
+
+/* ------------------------------------------------------------------ */
+/* Reloj del lote: transcurrido, paso en curso y estimación del resto  */
+/* ------------------------------------------------------------------ */
+
+/** Aplica el mismo evento al reloj y al progreso, como hace la vista. */
+function feed(
+  clock: BatchClock,
+  progress: BatchProgress,
+  event: BatchStreamEvent,
+  now: number,
+): BatchProgress {
+  clock.event(event, now);
+  return applyBatchEvent(progress, event);
+}
+
+function running(index: number, name: string, total = 4): BatchStreamEvent {
+  return { type: 'plugin', index, total, name, status: 'running', message: null };
+}
+
+function installed(index: number, name: string, total = 4): BatchStreamEvent {
+  return { type: 'plugin', index, total, name, status: 'installed', message: null };
+}
+
+function step(
+  index: number,
+  name: string,
+  stepIndex: number,
+  total = 4,
+): BatchStreamEvent {
+  return { type: 'step', index, total, name, step: 'copy', stepIndex, steps: 5 };
+}
+
+test('formatDuration redondea a décimas, segundos y minutos', () => {
+  assert.equal(formatDuration(0), '0,0 s');
+  assert.equal(formatDuration(420), '0,4 s');
+  assert.equal(formatDuration(1_240), '1,2 s');
+  assert.equal(formatDuration(9_960), '10,0 s');
+  assert.equal(formatDuration(12_400), '12 s');
+  assert.equal(formatDuration(59_600), '1 min');
+  assert.equal(formatDuration(65_000), '1 min 05 s');
+  assert.equal(formatDuration(3_600_000), '1 h');
+  assert.equal(formatDuration(3_726_000), '1 h 02 min');
+  assert.equal(formatDuration(-5), '0,0 s', 'un reloj hacia atrás no pinta negativos');
+});
+
+test('el reloj cuenta desde el arranque y no inventa el resto sin referencia', () => {
+  const clock = new BatchClock(1_000);
+  const progress = initialProgress('install', 3);
+
+  const timing = clock.snapshot(progress, 3_400);
+
+  assert.deepEqual(timing, { elapsedMs: 2_400, stepElapsedMs: null, remainingMs: null });
+  assert.equal(
+    timingLabel(timing, progress),
+    '2,4 s transcurridos · calculando el tiempo restante…',
+    'sin un plugin terminado no hay media con la que estimar',
+  );
+});
+
+test('cronometra cada paso y estima el resto con los plugins ya resueltos', () => {
+  const clock = new BatchClock(0);
+  let progress = initialProgress('install', 4);
+
+  progress = feed(
+    clock,
+    progress,
+    { type: 'start', action: 'install', dryRun: false, total: 4, plugins: ['A', 'B', 'C', 'D'] },
+    0,
+  );
+  progress = feed(clock, progress, running(0, 'A'), 100);
+  progress = feed(clock, progress, step(0, 'A', 1), 600);
+  assert.equal(
+    clock.snapshot(progress, 1_000).stepElapsedMs,
+    400,
+    'el paso se mide desde que empieza, no desde el plugin',
+  );
+
+  // El paso siguiente estrena su propio cronómetro.
+  progress = feed(clock, progress, step(0, 'A', 2), 900);
+  assert.equal(clock.snapshot(progress, 1_000).stepElapsedMs, 100);
+
+  progress = feed(clock, progress, installed(0, 'A'), 1_100);
+  const afterFirst = clock.snapshot(progress, 1_100);
+  assert.equal(afterFirst.stepElapsedMs, null, 'al cerrar el plugin no queda paso');
+  assert.equal(afterFirst.elapsedMs, 1_100);
+  assert.equal(afterFirst.remainingMs, 3_000, 'los tres plugins que aún no han empezado');
+
+  progress = feed(clock, progress, running(1, 'B'), 1_200);
+  const midway = clock.snapshot(progress, 1_500);
+  assert.equal(midway.remainingMs, 2_700, 'lo que le queda a B y los dos que vienen detrás');
+  assert.equal(timingLabel(midway, progress), '1,5 s transcurridos · ~2,7 s restantes');
+
+  progress = feed(clock, progress, installed(1, 'B'), 2_000);
+  assert.equal(clock.snapshot(progress, 2_000).remainingMs, 1_800, 'media de 0,9 s por plugin');
+
+  progress = feed(
+    clock,
+    progress,
+    {
+      type: 'end',
+      result: {
+        action: 'install',
+        dryRun: false,
+        total: 4,
+        succeeded: 4,
+        failed: 0,
+        results: [],
+      },
+    },
+    2_100,
+  );
+  assert.equal(clock.snapshot(progress, 2_200).remainingMs, 0, 'terminado no falta nada');
+});
+
+test('el tiempo de un plugin fallido también cuenta para la estimación', () => {
+  const clock = new BatchClock(0);
+  let progress = initialProgress('install', 2);
+
+  progress = feed(clock, progress, running(0, 'A', 2), 0);
+  progress = feed(
+    clock,
+    progress,
+    { type: 'plugin', index: 0, total: 2, name: 'A', status: 'failed', message: 'sin respaldo' },
+    400,
+  );
+
+  assert.equal(
+    clock.snapshot(progress, 400).remainingMs,
+    400,
+    'se esperó ese medio segundo, así que sirve de referencia',
+  );
+});
+
+test('el start de otra petición no reinicia el reloj del lote', () => {
+  const clock = new BatchClock(0);
+  let progress = initialProgress('install', 2);
+
+  progress = feed(
+    clock,
+    progress,
+    { type: 'start', action: 'install', dryRun: false, total: 2, plugins: ['A', 'B'] },
+    0,
+  );
+  progress = feed(clock, progress, running(0, 'A', 2), 100);
+  progress = feed(clock, progress, installed(0, 'A', 2), 600);
+
+  // El segundo trozo empieza con su propio `start`, pero el lote no se reinicia.
+  clock.event(
+    { type: 'start', action: 'install', dryRun: false, total: 1, plugins: ['B'] },
+    800,
+  );
+  const timing = clock.snapshot(progress, 900);
+
+  assert.equal(timing.elapsedMs, 900, 'el tiempo se cuenta desde el principio del lote');
+  assert.equal(timing.remainingMs, 500, 'la media de A sigue valiendo para B');
 });
 
 test('summarize describe el lote completo y el parcial', () => {
@@ -613,4 +835,91 @@ test('summarize describe el lote completo y el parcial', () => {
     summarize({ action: 'install', total: 0, succeeded: 0, failed: 0 }),
     '0 plugin(s) instalado(s).',
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* Reanudar solo los plugins que quedaron sin confirmar                */
+/* ------------------------------------------------------------------ */
+
+test('resumablePlugins deja solo los que aún necesitan la acción', () => {
+  const scanned = [
+    { name: 'A', installed: true, compatible: true },
+    { name: 'B', installed: false, compatible: true },
+    { name: 'C', installed: false, compatible: false },
+    { name: 'D', installed: false, compatible: null },
+    { name: 'E', installed: true, compatible: true },
+  ];
+  const pending = ['A', 'B', 'C', 'D', 'E'];
+
+  assert.deepEqual(
+    resumablePlugins(pending, scanned, 'install'),
+    ['B'],
+    'instalar solo reanuda lo que no está instalado y es compatible',
+  );
+  assert.deepEqual(
+    resumablePlugins(pending, scanned, 'uninstall'),
+    ['A', 'E'],
+    'desinstalar solo reanuda lo que sigue instalado',
+  );
+  assert.deepEqual(
+    resumablePlugins(['Z'], scanned, 'install'),
+    [],
+    'un plugin que ya no está en el escaneo no se reanuda',
+  );
+  assert.deepEqual(resumablePlugins([], scanned, 'uninstall'), []);
+});
+
+test('resumeLabel nombra cuántos quedan sin confirmar', () => {
+  assert.equal(resumeLabel(1), 'Reanudar 1 sin confirmar');
+  assert.equal(resumeLabel(12), 'Reanudar 12 sin confirmar');
+});
+
+test('reanudar un lote cancelado solo envía los plugins sin confirmar', async () => {
+  const controller = new AbortController();
+  const names = ['Alpha', 'Beta', 'Gamma'];
+  const requests: string[][] = [];
+
+  const send: BatchSender = async (plugins, onEvent) => {
+    requests.push([...plugins]);
+    onEvent({
+      type: 'start',
+      action: 'install',
+      dryRun: false,
+      total: plugins.length,
+      plugins: [...plugins],
+    });
+    onEvent({
+      type: 'plugin',
+      index: 0,
+      total: plugins.length,
+      name: plugins[0]!,
+      status: 'running',
+      message: null,
+    });
+    // Se corta antes de que Alpha avise su estado final.
+    controller.abort();
+    throw new Error('petición abortada');
+  };
+
+  const first = await runBatchInChunks({
+    action: 'install',
+    plugins: names,
+    send,
+    signal: controller.signal,
+  });
+  assert.deepEqual(first.pending, names, 'ninguno llegó a confirmarse');
+  assert.equal(first.unreported, 3);
+
+  // Reanudar arranca con una señal nueva, como hace la vista.
+  const retry = fakeSender('install');
+  const second = await runBatchInChunks({
+    action: first.action,
+    plugins: first.pending,
+    send: retry.send,
+  });
+
+  assert.deepEqual(retry.requests, [names], 'solo los pendientes, en el mismo orden');
+  assert.equal(second.succeeded, 3);
+  assert.deepEqual(second.pending, [], 'después de reanudar no queda nada pendiente');
+  assert.equal(second.unreported, 0);
 });
