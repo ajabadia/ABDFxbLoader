@@ -109,6 +109,10 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       'library',
       'Escaneo de la librería, instalación y desinstalación del cargador e importación de bancos',
     )
+    .addTag(
+      'system',
+      'Diálogos nativos y comprobación de rutas de la máquina donde corre el servidor',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
