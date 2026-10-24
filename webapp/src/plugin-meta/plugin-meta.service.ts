@@ -5,6 +5,7 @@ import { writeFileAtomic } from '../common/atomic-file';
 import { readVfxinfo, VFXINFO_FILENAME } from '../library/vfxinfo';
 import type {
   PluginMetaCommon,
+  PluginMetaCommonInput,
   PluginMetaSnapshot,
   PluginMetaValue,
 } from './plugin-meta.types';
@@ -67,12 +68,11 @@ function commonFromExistingRecord(
   return out;
 }
 
-function validateInputCommonShape(input: Record<string, string>): void {
-  for (const key of Object.keys(input)) {
+function validateInputCommonShape(input: PluginMetaCommonInput): void {
+  for (const [key, value] of Object.entries(input)) {
     if (!COMMON_KEYS.has(key as keyof PluginMetaCommon)) {
       throw new PluginMetaInvalidError([`common: clave del cliente no admitida "${key}"`]);
     }
-    const value = input[key];
     if (typeof value !== 'string') {
       throw new PluginMetaInvalidError([`common.${key}: debe ser una cadena`]);
     }
@@ -85,8 +85,10 @@ function validateInputCommonShape(input: Record<string, string>): void {
   }
 }
 
-function commonFromInput(input: Record<string, string>): PluginMetaCommon {
-  const out: PluginMetaCommon = copyCommonDefaults();
+function commonFromInput(input: PluginMetaCommonInput): Partial<PluginMetaCommon> {
+  // Solo las claves enviadas: devolver el objeto completo con vacíos pisaría en
+  // la fusión los valores que ya estaban en disco.
+  const out: Partial<PluginMetaCommon> = {};
 
   for (const key of COMMON_KEY_ARRAY) {
     if (input[key] !== undefined) {
@@ -445,13 +447,13 @@ export class PluginMetaService {
   async write(input: {
     pluginDir: string;
     expectedMtimeMs: number | null;
-    common: Readonly<Record<string, string>>;
+    common: PluginMetaCommonInput;
     extended: Readonly<Record<string, PluginMetaValue>>;
   }): Promise<PluginMetaSnapshot> {
     const dir = await resolvePluginDir(input.pluginDir);
     const file = path.join(dir, META_FILENAME);
 
-    const writeCommon: PluginMetaCommon = commonFromInput(input.common);
+    const writeCommon: Partial<PluginMetaCommon> = commonFromInput(input.common);
     validateInputCommonShape(input.common);
     // Solo se rechaza lo que el cliente envía explícitamente vacío: omitir un
     // campo es válido y se resuelve con lo que ya hubiera en disco.

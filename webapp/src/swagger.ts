@@ -110,6 +110,10 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       'Escaneo de la librería, instalación y desinstalación del cargador e importación de bancos',
     )
     .addTag(
+      'plugin-meta',
+      'Metadatos propios del plugin en `fxbLoader.meta.json`, aparte del `vfxinfo.txt`',
+    )
+    .addTag(
       'system',
       'Diálogos nativos y comprobación de rutas de la máquina donde corre el servidor',
     )

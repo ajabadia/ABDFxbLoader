@@ -42,6 +42,12 @@ import {
   LIBRARY_UNINSTALL_EXAMPLE,
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
 } from '../src/library/library.dto';
+import {
+  PLUGIN_META_CONFLICT_EXAMPLE,
+  PLUGIN_META_PATH_ERROR_EXAMPLE,
+  PLUGIN_META_SNAPSHOT_EXAMPLE,
+  PLUGIN_META_VALIDATION_ERROR_EXAMPLE,
+} from '../src/plugin-meta/plugin-meta.dto';
 import { SYSTEM_PATHS_MIXED_EXAMPLE } from '../src/system/paths.dto';
 import { MAX_PLUGINS_PER_BATCH } from '../src/client/batch-stream';
 import { MAX_BANKS_PER_REQUEST } from '../src/library/library.service';
@@ -92,6 +98,7 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/install',
     '/library/scan',
     '/library/uninstall',
+    '/plugins/{id}/meta',
     '/system/paths',
     '/system/pick',
   ]);
@@ -158,6 +165,57 @@ test('PUT /fxb-config documenta 200, 400 y 409 con ejemplos', () => {
     (conflict['schema'] as { $ref: string }).$ref,
     '#/components/schemas/FxbConfigConflictErrorDto',
   );
+});
+
+test('GET y POST /plugins/{id}/meta documentan 200, 400 y 409 con ejemplos', () => {
+  const read = responses('/plugins/{id}/meta', 'get');
+  assert.deepEqual(Object.keys(read).sort(), ['200', '400']);
+  assert.equal(document.paths['/plugins/{id}/meta']?.get?.tags?.[0], 'plugin-meta');
+  assert.deepEqual(jsonBody(read['200'])['example'], PLUGIN_META_SNAPSHOT_EXAMPLE);
+
+  // El 400 del GET cubre tanto la ruta como un archivo que no cumple el formato.
+  const readBad = jsonBody(read['400']);
+  assert.deepEqual(Object.keys(readBad['examples'] as object).sort(), [
+    'archivoInvalido',
+    'falta',
+    'rutaInvalida',
+  ]);
+  const readSchema = readBad['schema'] as { anyOf?: { $ref: string }[] };
+  assert.deepEqual(
+    readSchema.anyOf?.map((branch) => branch.$ref),
+    [
+      '#/components/schemas/PluginMetaPathErrorDto',
+      '#/components/schemas/PluginMetaValidationErrorDto',
+    ],
+  );
+
+  const body = requestContent('/plugins/{id}/meta', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/PluginMetaWriteRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['archivoNuevo', 'cambioParcial']);
+
+  const write = responses('/plugins/{id}/meta', 'post');
+  assert.deepEqual(Object.keys(write).sort(), ['200', '400', '409']);
+  assert.deepEqual(jsonBody(write['200'])['example'], PLUGIN_META_SNAPSHOT_EXAMPLE);
+
+  const writeBad = jsonBody(write['400'])['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(writeBad).sort(), ['rutaInvalida', 'validacion']);
+  assert.deepEqual(writeBad['validacion']!.value, PLUGIN_META_VALIDATION_ERROR_EXAMPLE);
+  assert.match(
+    String((writeBad['rutaInvalida']!.value as { message: string }).message),
+    /ruta absoluta/,
+  );
+
+  const conflict = jsonBody(write['409']);
+  assert.deepEqual(conflict['example'], PLUGIN_META_CONFLICT_EXAMPLE);
+  assert.equal(
+    (conflict['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/PluginMetaConflictErrorDto',
+  );
+
+  // Los dos ejemplos de ruta del GET son el mismo error, con el parámetro ausente
+  // o con una ruta que no existe.
+  const readExamples = readBad['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(readExamples['rutaInvalida']!.value, PLUGIN_META_PATH_ERROR_EXAMPLE);
 });
 
 test('los esquemas referenciados existen y documentan las cuatro claves', () => {

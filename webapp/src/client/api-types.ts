@@ -304,6 +304,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plugins/{id}/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lee fxbLoader.meta.json de un plugin
+         * @description Si el archivo no existe devuelve `exists: false` con los campos comunes vacíos, sin crear nada. El directorio se toma de `dir`; `id` solo identifica al plugin en el catálogo.
+         */
+        get: operations["PluginMetaController_readMeta"];
+        put?: never;
+        /**
+         * Escribe fxbLoader.meta.json de forma atómica
+         * @description Fusiona `common` y `extended` con lo que haya en disco y exige que `expectedMtimeMs` siga siendo el vigente. Un `null` en `extended` borra la clave.
+         */
+        post: operations["PluginMetaController_upsertMeta"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/pick": {
         parameters: {
             query?: never;
@@ -1277,6 +1301,176 @@ export interface components {
             failed: number;
             /** @description Resultado de cada plugin, en el orden pedido. */
             results: components["schemas"]["LibraryBatchPluginResultDto"][];
+        };
+        PluginMetaPathErrorDto: {
+            /**
+             * @description Explicación del problema de ruta.
+             * @example el directorio no existe: C:\VFX\plugs\NoExiste
+             */
+            message: string;
+        };
+        PluginMetaValidationErrorDto: {
+            /** @example Metadatos no válidos */
+            message: string;
+            /**
+             * @description Reglas incumplidas: tipos, claves desconocidas y límites del formato.
+             * @example [
+             *       "common.id: no puede estar vacío"
+             *     ]
+             */
+            issues: string[];
+        };
+        PluginMetaCommonDto: {
+            /**
+             * @description Identidad del plugin en el catálogo (el `id` de `vfxinfo.txt`).
+             * @example MySy
+             */
+            id: string;
+            /**
+             * @description Nombre legible del plugin.
+             * @example MySynth
+             */
+            name: string;
+            /**
+             * @description Fabricante.
+             * @example ABD Synths
+             */
+            vendor: string;
+            /**
+             * @description URL del fabricante, si aparece.
+             * @example https://example.invalid/abd
+             */
+            vendor_url: string;
+            /**
+             * @description Género o categoría.
+             * @example Synth
+             */
+            genre: string;
+            /**
+             * @description Abreviatura del nombre del plugin.
+             * @example MySy
+             */
+            name_abbreviation: string;
+            /**
+             * @description Notas libres del plugin.
+             * @example Rhodes edición 2026
+             */
+            notes: string;
+            /**
+             * @description Fecha de creación declarada por el plugin (ISO date).
+             * @example 2026-01-15
+             */
+            created: string;
+        };
+        PluginMetaSourceDto: {
+            /**
+             * @description `true` si los campos comunes se leyeron de `vfxinfo.txt` en la última lectura. Este archivo lo escribe la app, así que hoy siempre es `false`.
+             * @example false
+             */
+            vfxinfo?: boolean;
+        };
+        PluginMetaSnapshotDto: {
+            /**
+             * @description Ruta absoluta de `fxbLoader.meta.json`.
+             * @example C:\VFX\plugs\MySynth\fxbLoader.meta.json
+             */
+            metaPath: string;
+            /**
+             * @description `false` si el archivo no existe; entonces `common` va vacío y `mtimeMs` es `null`.
+             * @example true
+             */
+            exists: boolean;
+            /**
+             * @description `mtimeMs` vigente, o `null` si el archivo no existe. Es el testigo optimista.
+             * @example 1760000000000.123
+             */
+            mtimeMs: number | null;
+            /**
+             * @description Tamaño en bytes.
+             * @example 214
+             */
+            size: number;
+            common: components["schemas"]["PluginMetaCommonDto"];
+            /**
+             * @description Campos propios del plugin: claves `[A-Za-z][A-Za-z0-9_:-]{0,63}` (máximo 128) y valores escalares u objetos planos, sin arrays.
+             * @example {
+             *       "category": "electric-piano",
+             *       "tags": {
+             *         "family": "keys"
+             *       }
+             *     }
+             */
+            extended: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Origen del catálogo en la última escritura, o `null` si el archivo no lo declara.
+             * @example {
+             *       "vfxinfo": false
+             *     }
+             */
+            source: components["schemas"]["PluginMetaSourceDto"] | null;
+            /**
+             * @description Marca ISO-8601 en UTC de la última escritura hecha por la app, o `null` si el archivo no la trae.
+             * @example 2026-10-24T09:12:03Z
+             */
+            updated: string | null;
+        };
+        PluginMetaCommonPatchDto: {
+            /**
+             * @description Omitir un campo conserva el valor que ya haya en disco.
+             * @example MySy
+             */
+            id?: string;
+            /** @example MySynth */
+            name?: string;
+            /** @example ABD Synths */
+            vendor?: string;
+            /** @example https://example.invalid/abd */
+            vendor_url?: string;
+            /** @example Synth */
+            genre?: string;
+            /** @example MySy */
+            name_abbreviation?: string;
+            /** @example Rhodes edición 2026 */
+            notes?: string;
+            /** @example 2026-01-15 */
+            created?: string;
+        };
+        PluginMetaWriteRequestDto: {
+            /**
+             * @description Directorio absoluto del plugin.
+             * @example C:\VFX\plugs\MySynth
+             */
+            pluginDir: string;
+            /**
+             * @description `mtimeMs` leído por el cliente, o `null` si el archivo no existía. Si ya no coincide con el disco, la escritura se rechaza con 409.
+             * @example 1760000000000.123
+             */
+            expectedMtimeMs: number | null;
+            /**
+             * @description Solo las claves a cambiar; el resto se conserva de disco.
+             * @example {
+             *       "name": "MySynth 2",
+             *       "vendor": "ABD Synths"
+             *     }
+             */
+            common?: components["schemas"]["PluginMetaCommonPatchDto"];
+            /**
+             * @description Campos propios a añadir o reemplazar. Un `null` borra la clave; lo que no se envía se conserva de disco.
+             * @example {
+             *       "category": "electric-piano"
+             *     }
+             */
+            extended?: {
+                [key: string]: unknown;
+            };
+        };
+        PluginMetaConflictErrorDto: {
+            /** @example El archivo propio cambió en disco desde la última lectura */
+            message: string;
+            /** @description Estado vigente en disco, para reintentar con el `mtimeMs` correcto. */
+            current: components["schemas"]["PluginMetaSnapshotDto"];
         };
         SystemPickErrorDto: {
             /**
@@ -2639,6 +2833,173 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    PluginMetaController_readMeta: {
+        parameters: {
+            query: {
+                /** @description Directorio absoluto del plugin. */
+                dir: unknown;
+            };
+            header?: never;
+            path: {
+                /** @description Identificador del plugin en el catálogo. No altera qué archivo se lee. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot del archivo propio y su `mtimeMs` para el control optimista. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "metaPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.meta.json",
+                     *       "exists": true,
+                     *       "mtimeMs": 1760000000000.123,
+                     *       "size": 214,
+                     *       "common": {
+                     *         "id": "MySy",
+                     *         "name": "MySynth",
+                     *         "vendor": "ABD Synths",
+                     *         "vendor_url": "https://example.invalid/abd",
+                     *         "genre": "Synth",
+                     *         "name_abbreviation": "MySy",
+                     *         "notes": "Rhodes edición 2026",
+                     *         "created": "2026-01-15"
+                     *       },
+                     *       "extended": {
+                     *         "category": "electric-piano",
+                     *         "tags": {
+                     *           "family": "keys"
+                     *         }
+                     *       },
+                     *       "source": {
+                     *         "vfxinfo": false
+                     *       },
+                     *       "updated": "2026-10-24T09:12:03Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PluginMetaSnapshotDto"];
+                };
+            };
+            /** @description `dir` ausente, relativo, inexistente o que no es un directorio, o un archivo propio que no cumple el formato. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginMetaPathErrorDto"] | components["schemas"]["PluginMetaValidationErrorDto"];
+                };
+            };
+        };
+    };
+    PluginMetaController_upsertMeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identificador del plugin en el catálogo. No altera qué archivo se escribe. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginMetaWriteRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Metadatos escritos y snapshot resultante. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "metaPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.meta.json",
+                     *       "exists": true,
+                     *       "mtimeMs": 1760000000000.123,
+                     *       "size": 214,
+                     *       "common": {
+                     *         "id": "MySy",
+                     *         "name": "MySynth",
+                     *         "vendor": "ABD Synths",
+                     *         "vendor_url": "https://example.invalid/abd",
+                     *         "genre": "Synth",
+                     *         "name_abbreviation": "MySy",
+                     *         "notes": "Rhodes edición 2026",
+                     *         "created": "2026-01-15"
+                     *       },
+                     *       "extended": {
+                     *         "category": "electric-piano",
+                     *         "tags": {
+                     *           "family": "keys"
+                     *         }
+                     *       },
+                     *       "source": {
+                     *         "vfxinfo": false
+                     *       },
+                     *       "updated": "2026-10-24T09:12:03Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PluginMetaSnapshotDto"];
+                };
+            };
+            /** @description Ruta inválida o valores que el formato no admite (claves desconocidas, más de 255 caracteres, controles, arrays en `extended`, `id` o `name` vacíos). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginMetaPathErrorDto"] | components["schemas"]["PluginMetaValidationErrorDto"];
+                };
+            };
+            /** @description El `mtimeMs` enviado ya no es el vigente (por ejemplo, porque otra pestaña o la propia app escribieron el meta). No se escribe nada. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "El archivo propio cambió en disco desde la última lectura",
+                     *       "current": {
+                     *         "metaPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.meta.json",
+                     *         "exists": true,
+                     *         "mtimeMs": 1760000000000.123,
+                     *         "size": 214,
+                     *         "common": {
+                     *           "id": "MySy",
+                     *           "name": "MySynth",
+                     *           "vendor": "ABD Synths",
+                     *           "vendor_url": "https://example.invalid/abd",
+                     *           "genre": "Synth",
+                     *           "name_abbreviation": "MySy",
+                     *           "notes": "Rhodes edición 2026",
+                     *           "created": "2026-01-15"
+                     *         },
+                     *         "extended": {
+                     *           "category": "electric-piano",
+                     *           "tags": {
+                     *             "family": "keys"
+                     *           }
+                     *         },
+                     *         "source": {
+                     *           "vfxinfo": false
+                     *         },
+                     *         "updated": "2026-10-24T09:12:03Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PluginMetaConflictErrorDto"];
                 };
             };
         };

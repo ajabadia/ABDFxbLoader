@@ -143,8 +143,8 @@ Los umbrales se declaran en el propio comando (porcentajes de 0 a 100):
 npm run test:coverage -- --min-lines 94 --min-functions 80 --min-branches 78
 ```
 
-La CI usa esos tres valores, justo por debajo del dato actual (líneas 94.50 %,
-funciones 81.21 %, ramas 82.52 %), así que una regresión que tire la cobertura
+La CI usa esos tres valores, justo por debajo del dato actual (líneas 94.95 %,
+funciones 80.84 %, ramas 82.70 %), así que una regresión que tire la cobertura
 rompe el job con una anotación `::error::` y el resumen de qué métrica falló.
 Una métrica sin datos también falla: no se puede dar por cumplido un umbral que
 no se midió. Un flag desconocido o un porcentaje fuera de rango salen con código
@@ -347,6 +347,11 @@ El documento describe **todos** los endpoints:
 - `/fxb-config`: `FxbConfigDto`, `FxbConfigSnapshotDto`, las peticiones y los
   errores, con ejemplos para **200**, **400** (ruta inválida y validación) y
   **409** (`mtimeMs` obsoleto).
+- `/plugins/{id}/meta`: `PluginMetaSnapshotDto`, `PluginMetaWriteRequestDto` y
+  `PluginMetaCommonDto`; errores `PluginMetaPathErrorDto`,
+  `PluginMetaValidationErrorDto` y `PluginMetaConflictErrorDto`, con ejemplos en
+  **200**, **400** (parámetro ausente, ruta inválida, archivo que no cumple el
+  formato y valores rechazados) y **409** (`mtimeMs` obsoleto con su `current`).
 - `/library`: peticiones `LibraryScanRequestDto`, `LibraryInstallRequestDto`,
   `LibraryUninstallRequestDto`, `LibraryBatchRequestDto`,
   `LibraryBanksListRequestDto`, `LibraryBanksImportRequestDto`,
@@ -1107,6 +1112,54 @@ con `valid: false` y los motivos en `issues`; una ruta inválida es **400**, un
 plugin inexistente **404** y un `programDirName` roto **422**. No crea
 `presets\` si no existe y el origen queda intacto.
 
+## Endpoints de metadatos del plugin
+
+`fxbLoader.meta.json` guarda lo que la app sabe del plugin y que `vfxinfo.txt`
+no cubre: un `common` con los campos del catálogo y un `extended` libre por
+plugin. Vive en el directorio del plugin, se escribe de forma atómica y usa
+`mtimeMs` como control optimista. En la ruta, `:id` identifica al plugin en el
+catálogo; el directorio viaja aparte, así que el `id` no decide qué archivo se
+toca.
+
+### `GET /plugins/:id/meta`
+
+```
+GET /plugins/MySy/meta?dir=C:\VFX\plugs\MySynth
+```
+
+Devuelve `metaPath`, `exists`, `mtimeMs`, `size`, `common` (los ocho campos del
+catálogo), `extended`, `source` y `updated`. Si el archivo no existe responde
+**200** con `exists: false`, `mtimeMs: null`, `common` vacío y `extended: {}`,
+sin crear nada.
+
+Códigos: **200** y **400** (`dir` ausente o relativo, directorio inexistente o
+que es un archivo, o un `fxbLoader.meta.json` que no cumple el formato, con la
+lista de `issues`).
+
+### `POST /plugins/:id/meta`
+
+```json
+{
+  "pluginDir": "C:\\VFX\\plugs\\MySynth",
+  "expectedMtimeMs": 1760000000000.123,
+  "common": { "name": "MySynth 2", "vendor": "ABD Synths" },
+  "extended": { "category": "electric-piano" }
+}
+```
+
+Fusiona lo enviado con lo que haya en disco: `common` solo pisa las claves
+presentes y `extended` se combina clave a clave, de modo que un `null` borra esa
+clave y lo que no se envía se conserva. Con `expectedMtimeMs: null` se crea el
+archivo; si ya existía, la petición es un conflicto. Devuelve el snapshot
+escrito con el `mtimeMs` nuevo, que es el que hay que enviar la próxima vez.
+
+Códigos: **200**, **400** (`pluginDir` ausente o relativo, directorio
+inexistente, `expectedMtimeMs` ausente o que no sea número ni `null`, claves
+desconocidas, valores que no son cadenas, más de 255 caracteres, caracteres de
+control, `id` o `name` vacíos, arrays en `extended`) y **409** (`expectedMtimeMs`
+ya no es el vigente; el cuerpo trae `current` con el estado del disco, también
+cuando el archivo había desaparecido).
+
 ## Diálogo nativo
 
 ### `POST /system/pick`
@@ -1274,8 +1327,9 @@ src/library/
 src/plugin-meta/
   plugin-meta.types.ts         modelo y errores de fxbLoader.meta.json
   plugin-meta.service.ts       lectura, fusión y escritura atómica del meta
-  plugin-meta.controller.ts    GET y POST /plugins/:id/meta; el módulo no lo registra
-  plugin-meta.module.ts
+  plugin-meta.controller.ts    GET y POST /plugins/:id/meta + decoradores OpenAPI
+  plugin-meta.dto.ts           esquemas y ejemplos de Swagger
+  plugin-meta.module.ts        registra el controlador y exporta el servicio
   index.ts                     barril del módulo
 test/
   fxb-config.test.ts           vectores de la especificación

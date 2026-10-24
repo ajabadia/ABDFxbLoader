@@ -58,12 +58,19 @@ export interface PluginMetaSource {
   vfxinfo?: boolean;
 }
 
+/**
+ * Campos comunes tal como llegan del cliente: solo las claves presentes se
+ * aplican, y el servicio rechaza las que no son del formato.
+ */
+export type PluginMetaCommonInput = Readonly<Record<string, string | undefined>>;
+
 /** Entrada del cliente para escribir un meta. Solo lo que la persona puede actuar. */
 export interface PluginMetaWriteInput {
   pluginDir: string;
   /** `mtimeMs` que el cliente leyó, o `null` si el archivo no existía. */
   expectedMtimeMs: number | null;
-  common: PluginMetaCommon;
+  /** Solo las claves a cambiar: omitir una conserva el valor que haya en disco. */
+  common: PluginMetaCommonInput;
   extended: Readonly<Record<string, PluginMetaValue>>;
 }
 
