@@ -273,7 +273,7 @@ jobs:
       # `node --test --experimental-test-coverage` escribe coverage/lcov.info y
       # scripts/coverage.mjs lo convierte en coverage/html (sin dependencias).
       # Los umbrales están justo por debajo del dato actual de este job
-      # (líneas 94.95 · funciones 80.84 · ramas 82.70): una regresión de
+      # (líneas 94.67 · funciones 80.73 · ramas 82.71): una regresión de
       # cobertura rompe el job aunque los tests pasen.
       - name: Generar la cobertura y comprobar los umbrales
         run: >-

@@ -143,9 +143,10 @@ Los umbrales se declaran en el propio comando (porcentajes de 0 a 100):
 npm run test:coverage -- --min-lines 94 --min-functions 80 --min-branches 78
 ```
 
-La CI usa esos tres valores, justo por debajo del dato actual (líneas 94.95 %,
-funciones 80.84 %, ramas 82.70 %), así que una regresión que tire la cobertura
-rompe el job con una anotación `::error::` y el resumen de qué métrica falló.
+La CI usa esos tres valores, justo por debajo del dato que imprime el propio job
+(líneas 94.67 %, funciones 80.73 %, ramas 82.71 %), así que una regresión que
+tire la cobertura rompe el job con una anotación `::error::` y el resumen de qué
+métrica falló.
 Una métrica sin datos también falla: no se puede dar por cumplido un umbral que
 no se midió. Un flag desconocido o un porcentaje fuera de rango salen con código
 2, para no confundir un error de uso con cobertura insuficiente.
