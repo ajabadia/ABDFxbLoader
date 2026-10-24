@@ -11,6 +11,7 @@ import type {
   LibraryBanksImportResponse,
   LibraryBanksListResponse,
   LibraryScanResponse,
+  PluginMetaSnapshotResponse,
   RequestBody,
 } from '../../client/fxb-client.js';
 import { appendPaths, parentDir } from '../picker.js';
@@ -120,11 +121,35 @@ const els = {
   exportOrder: byId<HTMLSelectElement>('export-order'),
   exportOverwrite: byId<HTMLInputElement>('export-overwrite'),
   exportButton: byId<HTMLButtonElement>('export-button'),
+  meta: byId<HTMLElement>('meta'),
+  metaPlugin: byId<HTMLElement>('meta-plugin'),
+  metaClose: byId<HTMLButtonElement>('meta-close'),
+  metaPath: byId<HTMLElement>('meta-path'),
+  metaExists: byId<HTMLElement>('meta-exists'),
+  metaId: byId<HTMLInputElement>('meta-id'),
+  metaName: byId<HTMLInputElement>('meta-name'),
+  metaVendor: byId<HTMLInputElement>('meta-vendor'),
+  metaVendorUrl: byId<HTMLInputElement>('meta-vendor-url'),
+  metaGenre: byId<HTMLInputElement>('meta-genre'),
+  metaAbbreviation: byId<HTMLInputElement>('meta-abbreviation'),
+  metaCreated: byId<HTMLInputElement>('meta-created'),
+  metaNotes: byId<HTMLTextAreaElement>('meta-notes'),
+  metaExtended: byId<HTMLTextAreaElement>('meta-extended'),
+  metaSave: byId<HTMLButtonElement>('meta-save'),
+  metaReload: byId<HTMLButtonElement>('meta-reload'),
+  metaStatus: byId<HTMLParagraphElement>('meta-status'),
 };
 
 interface BanksState {
   pluginName: string;
   data: LibraryBanksListResponse;
+}
+
+/** Panel de catálogo abierto y el `mtimeMs` con el que se puede escribir. */
+interface MetaState {
+  pluginName: string;
+  dir: string;
+  snapshot: PluginMetaSnapshotResponse;
 }
 
 function readStorage(key: string): string {
@@ -191,6 +216,8 @@ let batchProgress: BatchProgress | null = null;
 let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
+let metaState: MetaState | null = null;
+let metaBusy = false;
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
@@ -690,6 +717,12 @@ function render(data: LibraryScanResponse): void {
     banksButton.title = `Ver los bancos de ${plugin.name}`;
     banksButton.addEventListener('click', () => {
       void openBanks(plugin);
+    });
+
+    const metaButton = query<HTMLButtonElement>(row, '[data-action="meta"]');
+    metaButton.title = `Ver el catálogo de ${plugin.name}`;
+    metaButton.addEventListener('click', () => {
+      void openMeta(plugin);
     });
 
     const action = query<HTMLButtonElement>(row, '[data-action="toggle"]');
@@ -1857,6 +1890,181 @@ async function exportBank(): Promise<void> {
   }
 }
 
+function setMetaStatus(message: string, kind = 'info'): void {
+  els.metaStatus.textContent = message;
+  els.metaStatus.className = message === '' ? 'status' : `status ${kind}`;
+}
+
+/** Guardar y descartar solo viven con un catálogo cargado y sin operación en curso. */
+function syncMetaDisabled(): void {
+  const disabled = metaBusy || metaState === null;
+  els.metaSave.disabled = disabled;
+  els.metaReload.disabled = disabled;
+}
+
+function setMetaBusy(value: boolean): void {
+  metaBusy = value;
+  syncMetaDisabled();
+}
+
+function clearMetaView(pluginName: string): void {
+  els.metaPlugin.textContent = pluginName;
+  els.metaPath.textContent = '';
+  els.metaExists.textContent = '';
+  els.metaId.value = '';
+  els.metaName.value = '';
+  els.metaVendor.value = '';
+  els.metaVendorUrl.value = '';
+  els.metaGenre.value = '';
+  els.metaAbbreviation.value = '';
+  els.metaCreated.value = '';
+  els.metaNotes.value = '';
+  els.metaExtended.value = '';
+}
+
+function renderMeta(snapshot: PluginMetaSnapshotResponse): void {
+  els.metaPath.textContent = snapshot.metaPath;
+  els.metaExists.textContent = snapshot.exists ? '' : '(aún no existe: se crea al guardar)';
+  els.metaId.value = snapshot.common.id;
+  els.metaName.value = snapshot.common.name;
+  els.metaVendor.value = snapshot.common.vendor;
+  els.metaVendorUrl.value = snapshot.common.vendor_url;
+  els.metaGenre.value = snapshot.common.genre;
+  els.metaAbbreviation.value = snapshot.common.name_abbreviation;
+  els.metaCreated.value = snapshot.common.created;
+  els.metaNotes.value = snapshot.common.notes;
+  els.metaExtended.value = JSON.stringify(snapshot.extended, null, 2);
+  syncMetaDisabled();
+}
+
+function closeMeta(): void {
+  if (els.meta.hidden) return;
+  els.meta.hidden = true;
+  metaState = null;
+  setMetaStatus('');
+  syncMetaDisabled();
+}
+
+/** Lee el catálogo de `dir` y deja el panel listo para guardar con ese `mtimeMs`. */
+async function readMeta(pluginName: string, dir: string): Promise<void> {
+  setMetaBusy(true);
+  setMetaStatus('Leyendo el catálogo…', 'busy');
+
+  try {
+    const snapshot = await client.plugins.meta.read({ id: pluginName, dir });
+    metaState = { pluginName, dir, snapshot };
+    renderMeta(snapshot);
+    setMetaStatus(
+      snapshot.exists ? '' : 'El plugin no tiene catálogo; al guardar se crea fxbLoader.meta.json.',
+      snapshot.exists ? 'info' : 'busy',
+    );
+  } catch (error) {
+    metaState = null;
+    clearMetaView(pluginName);
+    setMetaStatus(describeError(error), 'error');
+  } finally {
+    setMetaBusy(false);
+  }
+}
+
+async function openMeta(plugin: ScanPlugin): Promise<void> {
+  if (metaBusy) return;
+
+  els.meta.hidden = false;
+  metaState = null;
+  clearMetaView(plugin.name);
+  syncMetaDisabled();
+  await readMeta(plugin.name, plugin.path);
+  els.meta.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+async function reloadMeta(): Promise<void> {
+  if (metaState === null) return;
+  await readMeta(metaState.pluginName, metaState.dir);
+}
+
+/**
+ * `extended` se edita como JSON porque el formato admite claves y anidamientos
+ * libres; `null` devuelve `null` y el llamador distingue el error del objeto
+ * vacío.
+ */
+function readExtended(): Record<string, unknown> | null {
+  const text = els.metaExtended.value.trim();
+  if (text === '') return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    setMetaStatus('Los campos propios deben ser JSON válido.', 'error');
+    els.metaExtended.focus();
+    return null;
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    setMetaStatus('Los campos propios deben ser un objeto JSON.', 'error');
+    els.metaExtended.focus();
+    return null;
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+async function saveMeta(): Promise<void> {
+  if (metaState === null || metaBusy) return;
+
+  const id = els.metaId.value.trim();
+  const name = els.metaName.value.trim();
+  if (id === '' || name === '') {
+    setMetaStatus('El id y el nombre no pueden quedar vacíos.', 'error');
+    (id === '' ? els.metaId : els.metaName).focus();
+    return;
+  }
+
+  const extended = readExtended();
+  if (extended === null) return;
+
+  const { pluginName, dir, snapshot } = metaState;
+  setMetaBusy(true);
+  setMetaStatus('Guardando el catálogo…', 'busy');
+
+  try {
+    const written = await client.plugins.meta.write({
+      id: pluginName,
+      pluginDir: dir,
+      expectedMtimeMs: snapshot.mtimeMs,
+      common: {
+        id,
+        name,
+        vendor: els.metaVendor.value,
+        vendor_url: els.metaVendorUrl.value,
+        genre: els.metaGenre.value,
+        name_abbreviation: els.metaAbbreviation.value,
+        notes: els.metaNotes.value,
+        created: els.metaCreated.value,
+      },
+      extended,
+    });
+    metaState = { pluginName, dir, snapshot: written };
+    renderMeta(written);
+    setMetaStatus('Catálogo guardado.', 'ok');
+  } catch (error) {
+    if (isFxbApiError(error) && error.status === 409) {
+      // Otra escritura (otra pestaña o el propio plugin) adelantó el archivo:
+      // se relee para no seguir guardando con un `mtimeMs` viejo.
+      await readMeta(pluginName, dir);
+      setMetaStatus(
+        'El catálogo cambió en disco desde la última lectura; se muestra el estado actual. Vuelve a guardar.',
+        'error',
+      );
+      return;
+    }
+    setMetaStatus(describeError(error), 'error');
+  } finally {
+    setMetaBusy(false);
+  }
+}
+
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
   libraryRoot = els.root.value.trim();
@@ -1920,6 +2128,18 @@ els.retryAll.addEventListener('click', () => {
 
 els.banksClose.addEventListener('click', () => {
   closeBanks();
+});
+
+els.metaClose.addEventListener('click', () => {
+  closeMeta();
+});
+
+els.metaSave.addEventListener('click', () => {
+  void saveMeta();
+});
+
+els.metaReload.addEventListener('click', () => {
+  void reloadMeta();
 });
 
 els.defaultSave.addEventListener('click', () => {

@@ -266,6 +266,66 @@
         </details>
       </section>
 
+      <section id="meta" class="card" hidden aria-labelledby="meta-title">
+        <div class="summary">
+          <h2 id="meta-title">Catálogo de <span id="meta-plugin"></span></h2>
+          <button id="meta-close" type="button">Cerrar</button>
+        </div>
+
+        <p class="banks-path">
+          <code id="meta-path"></code>
+          <span id="meta-exists" class="note"></span>
+        </p>
+
+        <div class="meta-grid">
+          <div class="field">
+            <label for="meta-id">id</label>
+            <input id="meta-id" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-name">Nombre</label>
+            <input id="meta-name" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-vendor">Fabricante</label>
+            <input id="meta-vendor" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-vendor-url">URL del fabricante</label>
+            <input id="meta-vendor-url" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-genre">Género</label>
+            <input id="meta-genre" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-abbreviation">Abreviatura</label>
+            <input id="meta-abbreviation" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="meta-created">Creado (AAAA-MM-DD)</label>
+            <input id="meta-created" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="meta-notes">Notas</label>
+          <textarea id="meta-notes" rows="2"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="meta-extended">Campos propios (JSON)</label>
+          <textarea id="meta-extended" rows="6" spellcheck="false"></textarea>
+        </div>
+
+        <div class="row">
+          <button id="meta-save" class="primary" type="button">Guardar</button>
+          <button id="meta-reload" type="button">Descartar cambios</button>
+        </div>
+
+        <p id="meta-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
       <p class="hint">
         La carpeta debe contener <code>plugs\</code>. Instalar modifica
         <code>vfxinfo.txt</code> y crea <code>fxbLoader.config</code>; desinstalar restaura
@@ -282,6 +342,7 @@
         <td data-field="vfxinfo"></td>
         <td class="actions">
           <button type="button" data-action="banks">Bancos</button>
+          <button type="button" data-action="meta">Catálogo</button>
           <button type="button" data-action="toggle"></button>
         </td>
       </tr>

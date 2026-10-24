@@ -234,7 +234,15 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    deshabilita si no hay respaldo); y el selector de banco por defecto, que guarda `defaultFxbName` y
    «cargar al abrir el plugin» en `fxbLoader.config`. Si la DLL reescribe el
    archivo entre medias, el 409 refresca el snapshot y pide volver a guardar en
-   vez de pisar los cambios.
+   vez de pisar los cambios;
+6. **Catálogo** abre el `fxbLoader.meta.json` del plugin: los ocho campos
+   comunes (id, nombre, fabricante, URL, género, abreviatura, notas y fecha) y
+   un cuadro de texto con los **campos propios** en JSON, que admite claves y
+   anidamientos libres. **Guardar** manda lo que se ve junto al `mtimeMs` de la
+   lectura, así que si el archivo cambió mientras tanto la API responde 409, la
+   vista lo relee y pide volver a guardar en vez de pisar cambios ajenos;
+   **Descartar cambios** vuelve a lo que hay en disco sin escribir nada, y si el
+   archivo no existía el panel lo avisa antes de crearlo.
 
 La carpeta y la ruta opcional del DLL se guardan en `localStorage`. Además se
 recuerdan las **últimas ocho rutas usadas** de cada tipo —carpetas de librería,

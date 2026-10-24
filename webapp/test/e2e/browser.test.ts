@@ -376,6 +376,49 @@ test(
       assert.equal(await page.locator('#default-restore').isDisabled(), true);
       assert.equal(await page.locator('#banks-rows tr.is-default').count(), 1);
 
+      /* 3e. Catálogo del plugin: leer, guardar y releer ---------------- */
+      await pluginRow(page).locator('[data-action="meta"]').click();
+      await page.locator('#meta').waitFor({ state: 'visible' });
+      await waitForText(page, '#meta-plugin', PLUGIN);
+      await waitForText(page, '#meta-status', /no tiene catálogo/);
+      assert.equal(await page.locator('#meta-save').isDisabled(), false);
+
+      await page.fill('#meta-id', 'OBXd');
+      await page.fill('#meta-name', 'OB-Xd E2E');
+      await page.fill('#meta-vendor', 'discoDSP');
+      await page.fill('#meta-notes', 'Banco de fábrica');
+      await page.fill('#meta-extended', '{ "family": "synth" }');
+      await page.click('#meta-save');
+      await waitForText(page, '#meta-status', 'Catálogo guardado.');
+
+      // El archivo queda en el directorio del plugin con lo que se escribió.
+      const metaPath = path.join(pluginDir, 'fxbLoader.meta.json');
+      const meta = JSON.parse(await readFile(metaPath, 'utf8')) as {
+        common: { id: string; name: string; vendor: string; notes: string };
+        extended: Record<string, unknown>;
+        updated: string;
+      };
+      assert.equal(meta.common.id, 'OBXd');
+      assert.equal(meta.common.name, 'OB-Xd E2E');
+      assert.equal(meta.common.vendor, 'discoDSP');
+      assert.equal(meta.common.notes, 'Banco de fábrica');
+      assert.deepEqual(meta.extended, { family: 'synth' });
+      assert.match(meta.updated, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+      assert.equal(await page.locator('#meta-path').textContent(), metaPath);
+
+      // «Descartar cambios» vuelve a lo guardado sin escribir nada.
+      await page.fill('#meta-name', 'Sin guardar');
+      await page.click('#meta-reload');
+      await page.waitForFunction(`document.querySelector('#meta-status').textContent === ''`);
+      assert.equal(await page.inputValue('#meta-name'), 'OB-Xd E2E');
+      assert.equal(
+        (JSON.parse(await readFile(metaPath, 'utf8')) as { common: { name: string } }).common.name,
+        'OB-Xd E2E',
+      );
+
+      await page.click('#meta-close');
+      assert.equal(await page.locator('#meta').isHidden(), true);
+
       /* 4. Lote completo con progreso en caliente ----------------------- */
       // La vista ya no orquesta el lote: lo pide a `POST /library/batch/stream`
       // y pinta el plugin en curso a medida que el servidor lo cuenta.

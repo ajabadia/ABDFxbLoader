@@ -84,6 +84,13 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="loader-status"/);
   assert.match(response.text, /Compatibilidad/);
   assert.match(response.text, /data-field="compatibility"/);
+  // El catálogo del plugin es un panel más, abierto desde la fila.
+  assert.match(response.text, /id="meta"/);
+  assert.match(response.text, /id="meta-extended"/);
+  assert.match(response.text, /id="meta-save"/);
+  assert.match(response.text, /Campos propios \(JSON\)/);
+  assert.match(response.text, /data-action="meta"/);
+  assert.match(response.text, /Catálogo/);
 
   // La UI es un módulo ESM compilado desde TypeScript; `app.js` ya no existe.
   assert.match(response.text, /<script type="module" src="\/js\/ui\/browser\/main\.js">/);
@@ -155,6 +162,12 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   // El escaneo bloquea los plugins incompatibles.
   assert.match(main.text, /plugin\.compatible === false/);
   assert.match(main.text, /dataset\[['"]blocked['"]\]/);
+  // El catálogo del plugin se lee y se guarda con el cliente tipado, y el
+  // `mtimeMs` leído es el testigo que se manda al guardar.
+  assert.match(main.text, /client\.plugins\.meta\.read/);
+  assert.match(main.text, /client\.plugins\.meta\.write/);
+  assert.match(main.text, /renderMeta/);
+  assert.match(main.text, /readExtended/);
 
   const batch = await request(app.getHttpServer())
     .get('/js/ui/batch.js')
