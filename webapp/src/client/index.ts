@@ -15,6 +15,8 @@ export type {
   LibraryInstallResponse,
   LibraryScanResponse,
   LibraryUninstallResponse,
+  PluginMetaSnapshotResponse,
+  PluginMetaWriteResponse,
   RequestBody,
   SuccessBody,
   SystemPathsResponse,

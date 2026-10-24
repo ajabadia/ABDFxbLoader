@@ -22,6 +22,7 @@ import {
   type LibraryBatchResponse,
   type LibraryInstallResponse,
   type LibraryScanResponse,
+  type PluginMetaSnapshotResponse,
 } from '../src/client';
 import type { BankImportStreamEvent } from '../src/client/bank-import-stream';
 import type { BatchStreamEvent } from '../src/client/batch-stream';
@@ -71,6 +72,26 @@ function typeChecks(client: FxbClient): void {
     plugin: 'MySynth',
     // @ts-expect-error descartar el respaldo no admite `endianness`
     endianness: 'big',
+  });
+  // El meta exige el directorio y el `mtimeMs` leído, aunque sea `null`.
+  void client.plugins.meta.read({ id: 'MySy', dir: 'C:\\VFX\\plugs\\MySynth' });
+  void client.plugins.meta.write({
+    id: 'MySy',
+    pluginDir: 'C:\\VFX\\plugs\\MySynth',
+    expectedMtimeMs: null,
+  });
+  // @ts-expect-error `dir` es obligatorio al leer
+  void client.plugins.meta.read({ id: 'MySy' });
+  // @ts-expect-error `expectedMtimeMs` es obligatorio, aunque valga null
+  void client.plugins.meta.write({ id: 'MySy', pluginDir: 'C:\\VFX\\plugs\\MySynth' });
+  void client.plugins.meta.write({
+    id: 'MySy',
+    pluginDir: 'C:\\VFX\\plugs\\MySynth',
+    expectedMtimeMs: null,
+    common: {
+      // @ts-expect-error `common` no admite valores que no sean cadenas
+      rating: 4,
+    },
   });
 }
 void typeChecks;
@@ -453,6 +474,78 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   assert.deepEqual(
     uninstalled.actions.map((action) => action.kind),
     ['restore', 'restore', 'delete'],
+  );
+});
+
+test('el cliente lee y escribe el meta del plugin con control de mtime', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'fxb-client-meta-'));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const client = createFxbClient({ baseUrl });
+
+  const empty = await client.plugins.meta.read({ id: 'My Sy', dir });
+  assert.equal(empty.exists, false);
+  assert.equal(empty.mtimeMs, null);
+  assert.equal(empty.metaPath, path.join(dir, 'fxbLoader.meta.json'));
+
+  const created: PluginMetaSnapshotResponse = await client.plugins.meta.write({
+    id: 'My Sy',
+    pluginDir: dir,
+    expectedMtimeMs: null,
+    common: { id: 'MySy', name: 'MySynth' },
+    extended: { category: 'electric-piano' },
+  });
+  assert.equal(created.exists, true);
+  assert.equal(created.common.name, 'MySynth');
+  assert.deepEqual(created.extended, { category: 'electric-piano' });
+  assert.equal(typeof created.mtimeMs, 'number');
+
+  // Una segunda escritura parte del `mtimeMs` devuelto y conserva lo omitido.
+  const updated = await client.plugins.meta.write({
+    id: 'My Sy',
+    pluginDir: dir,
+    expectedMtimeMs: created.mtimeMs,
+    common: { name: 'MySynth 2' },
+    extended: { tags: { family: 'keys' } },
+  });
+  assert.equal(updated.common.name, 'MySynth 2');
+  assert.equal(updated.common.id, 'MySy');
+  assert.deepEqual(updated.extended, {
+    category: 'electric-piano',
+    tags: { family: 'keys' },
+  });
+
+  // El id de la ruta se codifica: un espacio no rompe la petición.
+  const read = await client.plugins.meta.read({ id: 'My Sy', dir });
+  assert.equal(read.common.name, 'MySynth 2');
+
+  // Un `mtimeMs` viejo es conflicto y trae el estado del disco.
+  await assert.rejects(
+    client.plugins.meta.write({
+      id: 'My Sy',
+      pluginDir: dir,
+      expectedMtimeMs: 1,
+      common: { name: 'Otro' },
+    }),
+    (error: unknown) => {
+      assert.equal(isFxbApiError(error), true);
+      assert.equal((error as FxbApiError).status, 409);
+      const body = (error as FxbApiError).body as { current?: { common?: { name?: string } } };
+      assert.equal(body.current?.common?.name, 'MySynth 2');
+      return true;
+    },
+  );
+
+  // Una ruta inexistente es 400, no un fallo del cliente.
+  await assert.rejects(
+    client.plugins.meta.read({ id: 'My Sy', dir: path.join(dir, 'NoExiste') }),
+    (error: unknown) => {
+      assert.equal(isFxbApiError(error), true);
+      assert.equal((error as FxbApiError).status, 400);
+      assert.match(String((error as FxbApiError).message), /el directorio no existe/);
+      return true;
+    },
   );
 });
 

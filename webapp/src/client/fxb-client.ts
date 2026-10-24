@@ -65,6 +65,8 @@ export type LibraryBankInspectResponse = SuccessBody<'/library/banks/inspect', '
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
 export type SystemPickResponse = SuccessBody<'/system/pick', 'post'>;
 export type SystemPathsResponse = SuccessBody<'/system/paths', 'post'>;
+export type PluginMetaSnapshotResponse = SuccessBody<'/plugins/{id}/meta', 'get'>;
+export type PluginMetaWriteResponse = SuccessBody<'/plugins/{id}/meta', 'post'>;
 
 /** Adaptador de `fetch`; permite inyectar uno instrumentado en tests o en la UI. */
 export type FxbFetch = typeof globalThis.fetch;
@@ -197,6 +199,25 @@ export interface FxbClient {
       body: RequestBody<'/fxb-config', 'put'>,
     ): Promise<SuccessBody<'/fxb-config', 'put'>>;
   };
+  readonly plugins: {
+    /**
+     * `fxbLoader.meta.json`: el catálogo propio del plugin, aparte de lo que
+     * declara `vfxinfo.txt`. El `id` de la ruta solo etiqueta el plugin; el
+     * archivo se resuelve con el directorio.
+     */
+    meta: {
+      /** Lee el meta; si no existe devuelve `exists: false` sin crear nada. */
+      read(input: { id: string; dir: string }): Promise<PluginMetaSnapshotResponse>;
+      /**
+       * Fusiona `common` y `extended` con lo que haya en disco. Exige el
+       * `expectedMtimeMs` leído y responde 409 con `current` si ya no es el
+       * vigente. Un `null` en `extended` borra esa clave.
+       */
+      write(
+        input: RequestBody<'/plugins/{id}/meta', 'post'> & { id: string },
+      ): Promise<PluginMetaWriteResponse>;
+    };
+  };
   readonly system: {
     /**
      * Abre un diálogo nativo en la máquina del servidor y devuelve las rutas
@@ -254,11 +275,18 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
   const extraHeaders = options.headers ?? {};
   const doFetch: FxbFetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
 
-  async function request(method: 'POST' | 'PUT', route: string, body: unknown): Promise<unknown> {
+  async function request(
+    method: 'GET' | 'POST' | 'PUT',
+    route: string,
+    body?: unknown,
+  ): Promise<unknown> {
     const response = await doFetch(`${baseUrl}${route}`, {
       method,
-      headers: { 'content-type': 'application/json', ...extraHeaders },
-      body: JSON.stringify(body),
+      headers:
+        body === undefined
+          ? { ...extraHeaders }
+          : { 'content-type': 'application/json', ...extraHeaders },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
 
     const payload = parsePayload(await response.text());
@@ -475,6 +503,21 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/fxb-config/read', body) as Promise<SuccessBody<'/fxb-config/read', 'post'>>,
       write: (body) =>
         request('PUT', '/fxb-config', body) as Promise<SuccessBody<'/fxb-config', 'put'>>,
+    },
+    plugins: {
+      meta: {
+        read: ({ id, dir }) =>
+          request(
+            'GET',
+            `/plugins/${encodeURIComponent(id)}/meta?dir=${encodeURIComponent(dir)}`,
+          ) as Promise<PluginMetaSnapshotResponse>,
+        write: ({ id, ...body }) =>
+          request(
+            'POST',
+            `/plugins/${encodeURIComponent(id)}/meta`,
+            body,
+          ) as Promise<PluginMetaWriteResponse>,
+      },
     },
     system: {
       pick: (body) =>

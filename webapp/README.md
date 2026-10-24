@@ -436,8 +436,9 @@ api.library.install({ libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' })
   falla si deja de coincidir con el documento generado.
 - [fxb-client.ts](src/client/fxb-client.ts) es el envoltorio de `fetch`:
   `library.scan | install | uninstall | batch | batchStream | listBanks |
-  importBanks | importBanksStream | exportBank | inspectBank` y `config.read |
-  write`.
+  importBanks | importBanksStream | exportBank | inspectBank`, `config.read |
+  write` y `plugins.meta.read | write` (el `id` de la ruta solo etiqueta el
+  plugin; el directorio viaja en la petición).
 - `library.batchStream` e `library.importBanksStream` leen el NDJSON con su
   propio lector de flujo: entregan cada evento a `onEvent` en cuanto llega (sin
   esperar al final) y resuelven con el `result` del evento `end`; si el flujo se
