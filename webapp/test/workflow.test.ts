@@ -23,7 +23,7 @@ test('el workflow publica el informe HTML de cobertura como artefacto', async ()
   assert.match(workflow, /--min-branches \d+/);
   // El informe se publica aunque los umbrales hayan fallado.
   assert.match(workflow, /^\s+if: always\(\)$/m);
-  assert.match(workflow, /uses: actions\/upload-artifact@v4/);
+  assert.match(workflow, /uses: actions\/upload-artifact@v7/);
   assert.match(workflow, /name: coverage-html/);
   // La ruta es relativa a la raíz del repositorio, no a `webapp/`.
   assert.match(workflow, /path: webapp\/coverage\/html/);

@@ -29,10 +29,10 @@ jobs:
         working-directory: webapp
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Preparar Node ${{ matrix.node }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -71,10 +71,10 @@ jobs:
         working-directory: webapp
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Preparar Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -106,7 +106,7 @@ jobs:
       # Si falla, la captura y los logs del servidor son la única pista.
       - name: Publicar la captura del fallo
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-chromium
           path: webapp/test-results
@@ -125,10 +125,10 @@ jobs:
         working-directory: webapp
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Preparar Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -246,10 +246,10 @@ jobs:
         working-directory: webapp
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Preparar Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -285,7 +285,7 @@ jobs:
       - name: Publicar el informe HTML
         # `always()`: si fallan los umbrales, el informe sigue disponible.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: webapp/coverage/html
