@@ -144,7 +144,7 @@ npm run test:coverage -- --min-lines 94 --min-functions 80 --min-branches 78
 ```
 
 La CI usa esos tres valores, justo por debajo del dato que imprime el propio job
-(líneas 94.67 %, funciones 80.73 %, ramas 82.71 %), así que una regresión que
+(líneas 94.67 %, funciones 80.93 %, ramas 82.86 %), así que una regresión que
 tire la cobertura rompe el job con una anotación `::error::` y el resumen de qué
 métrica falló.
 Una métrica sin datos también falla: no se puede dar por cumplido un umbral que
