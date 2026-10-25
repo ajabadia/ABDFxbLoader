@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssociationAuditModule } from '../association-audit/association-audit.module';
 import { FxbConfigModule } from '../fxb-config/fxb-config.module';
 import { PluginLogModule } from '../plugin-log/plugin-log.module';
 import { PluginMetaModule } from '../plugin-meta/plugin-meta.module';
@@ -8,7 +9,7 @@ import { LibraryController } from './library.controller';
 import { LibraryService } from './library.service';
 
 @Module({
-  imports: [FxbConfigModule, PluginLogModule, WizardModule, PluginMetaModule],
+  imports: [FxbConfigModule, AssociationAuditModule, PluginLogModule, WizardModule, PluginMetaModule],
   controllers: [LibraryController],
   providers: [LibraryService, LibraryImportService],
   exports: [LibraryService, LibraryImportService],

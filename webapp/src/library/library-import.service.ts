@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { AssociationAuditService } from '../association-audit/association-audit.service';
 import { PluginLogService } from '../plugin-log/plugin-log.service';
 import { WizardService } from '../wizard/wizard.service';
 import {
@@ -12,6 +13,8 @@ import {
   PackagePluginSummary,
 } from './library-import.types';
 import { LibraryOperationError, LibraryPathError } from './library.types';
+import { VFXINFO_FILENAME, readVfxinfo } from './vfxinfo';
+import { analyzeVfxinfo } from './vfxinfo';
 import { diagnoseVfxBank, repairVfxBank } from './vfx-bank-validator';
 
 async function directoryExists(dirPath: string): Promise<boolean> {
@@ -79,6 +82,7 @@ export class LibraryImportService {
   constructor(
     @Optional() private readonly pluginLogService?: PluginLogService,
     @Optional() private readonly wizardService?: WizardService,
+    @Optional() private readonly auditService?: AssociationAuditService,
   ) {}
 
   /**
@@ -392,6 +396,15 @@ export class LibraryImportService {
     };
   }
 
+  /** Lee el `dll_name` actual de un vfxinfo.txt, o `null` si no existe/está vacío. */
+  private async readCurrentDllName(dir: string): Promise<string | null> {
+    const raw = await readVfxinfo(path.join(dir, VFXINFO_FILENAME));
+    if (raw === null) return null;
+    const analysis = analyzeVfxinfo(raw);
+    if (analysis === null || analysis.hasLoader) return null;
+    return analysis.dllNameValue;
+  }
+
   /**
    * Importa de forma segura los plugins y bancos seleccionados hacia la librería activa.
    */
@@ -427,7 +440,9 @@ export class LibraryImportService {
     const importedBanks: string[] = [];
     const skippedBanks: { name: string; reason: string }[] = [];
     const repairedBanks: string[] = [];
+    const associationChanges: { plugin: string; previousValue: string | null }[] = [];
     let totalCopiedBytes = 0;
+    let overwritten = false;
 
     // 1. Copiar plugins
     for (const plugin of pluginsToImport) {
@@ -442,12 +457,19 @@ export class LibraryImportService {
           });
           continue;
         }
+        // Valor previo del vfxinfo destino ANTES de reemplazarlo: la auditoría
+        // registra el dado y cambia real, no el borrador del paquete.
+        const previousValue = await this.readCurrentDllName(destDir);
+        associationChanges.push({ plugin: plugin.name, previousValue });
+        overwritten = true;
         // Sobrescribir: borrar el directorio destino para asegurar reemplazo limpio
         try {
           await fs.rm(destDir, { recursive: true, force: true });
         } catch (err) {
           this.logger.warn(`No se pudo limpiar destino para sobrescribir ${destDir}: ${String(err)}`);
         }
+      } else {
+        associationChanges.push({ plugin: plugin.name, previousValue: null });
       }
 
       await fs.cp(plugin.sourceDir, destDir, { recursive: true, force: true });
@@ -518,6 +540,55 @@ export class LibraryImportService {
     this.logger.log(
       `Importación completada: ${importedPlugins.length} plugins, ${importedBanks.length} bancos (${totalCopiedBytes} bytes).`,
     );
+
+    // Auditoría durable: primero la auditoría, después el log rotado (ya se
+    // escribió arriba, no redirection): el orden audit-first solo aplica a
+    // association-change, que lleva el dado y cambia real.
+    const source = input.packagePath;
+    if (this.auditService) {
+      const packageSource = source;
+      for (const change of associationChanges) {
+        const pkg = pluginsToImport.find((p) => p.name === change.plugin);
+        if (!pkg) continue;
+        await this.auditService.append(input.targetLibraryRoot, {
+          kind: 'association-change',
+          plugin: change.plugin,
+          libraryRoot: input.targetLibraryRoot,
+          field: 'dll_name',
+          previousValue: change.previousValue,
+          newValue: pkg.dllName ? `${pkg.name}/${pkg.dllName}` : null,
+          packageSource,
+        });
+      }
+      // Resumen de la importación y colisiones, enlazadas por packageSource.
+      if (importedPlugins.length > 0 || importedBanks.length > 0 || overwritten) {
+        await this.auditService.append(input.targetLibraryRoot, {
+          kind: overwritten ? 'reimport' : 'import',
+          libraryRoot: input.targetLibraryRoot,
+          packageSource,
+          repairedBanks: [...repairedBanks],
+        });
+      }
+      for (const skipped of skippedPlugins) {
+        await this.auditService.append(input.targetLibraryRoot, {
+          kind: 'collision',
+          plugin: skipped.name,
+          libraryRoot: input.targetLibraryRoot,
+          packageSource,
+          collisionPolicy: policy,
+          collisionNames: [skipped.name],
+        });
+      }
+      for (const skipped of skippedBanks) {
+        await this.auditService.append(input.targetLibraryRoot, {
+          kind: 'collision',
+          libraryRoot: input.targetLibraryRoot,
+          packageSource,
+          collisionPolicy: policy,
+          collisionNames: [skipped.name],
+        });
+      }
+    }
 
     return {
       targetLibraryRoot: input.targetLibraryRoot,

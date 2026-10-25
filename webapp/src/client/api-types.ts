@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/library/association-audit/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lista eventos de la auditoría durable de asociaciones
+         * @description Lee `<libraryRoot>/fxbLoader.audit.jsonl` (apéndice puro, nunca rota) y devuelve los últimos `limit` eventos que pasan los filtros, en orden cronológico. Solo lectura: no existe endpoint de escritura; los servicios internos son los únicos que auditan.
+         */
+        post: operations["AssociationAuditController_list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/association-audit/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Snapshot completo de la auditoría para el visor
+         * @description Mismos datos que el listado sin filtros, aceptados como query: minea `<libraryRoot>/fxbLoader.audit.jsonl` tal cual. Solo lectura.
+         */
+        get: operations["AssociationAuditController_stream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fxb-config/read": {
         parameters: {
             query?: never;
@@ -612,6 +652,88 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AssociationAuditEntryDto: {
+            /**
+             * @description Marca de tiempo ISO-8601 UTC.
+             * @example 2026-10-25T09:32:11.482Z
+             */
+            ts: string;
+            /**
+             * @description Tipo de evento: 'association-change' | 'import' | 'reimport' | 'collision'.
+             * @example association-change
+             */
+            kind: string;
+            /**
+             * @description Carpeta del plugin; los eventos de import global pueden omitirla.
+             * @example AnalogSynth
+             */
+            plugin?: string;
+            /**
+             * @description Raíz canónica de la librería.
+             * @example C:/vfx/mylib
+             */
+            libraryRoot?: string;
+            /**
+             * @description Campo asociado (dll_name hoy).
+             * @example dll_name
+             */
+            field?: string;
+            /**
+             * @description Valor previo del campo (null para tombstone).
+             * @example AnalogSynth/AnalogSynth.dll
+             */
+            previousValue?: string | null;
+            /**
+             * @description Valor nuevo del campo (null en desinstalación).
+             * @example AnalogSynth/fxbLoader.dll
+             */
+            newValue?: string | null;
+            /**
+             * @description Origen del paquete: enlaza las líneas de una misma importación.
+             * @example C:/downloads/pack.vfxlibrary
+             */
+            packageSource?: string;
+            /**
+             * @description Política de colisión aplicada: 'skip' | 'overwrite'.
+             * @example skip
+             */
+            collisionPolicy?: string;
+            /** @description Nombres de plugins/bancos omitidos por la política. */
+            collisionNames?: string[];
+            /** @description Bancos reparados por la importación. */
+            repairedBanks?: string[];
+        };
+        AssociationAuditSnapshotDto: {
+            /**
+             * @description Ruta absoluta del almacén fxbLoader.audit.jsonl.
+             * @example C:\vfx\mylib\fxbLoader.audit.jsonl
+             */
+            auditPath: string;
+            /**
+             * @description Indica si el almacén ya existe.
+             * @example true
+             */
+            exists: boolean;
+            /**
+             * @description Tamaño del almacén en bytes.
+             * @example 512
+             */
+            size: number;
+            /**
+             * @description Total de eventos que pasan los filtros (antes del límite).
+             * @example 2
+             */
+            total: number;
+            /** @description Últimos eventos que pasan los filtros, en orden cronológico. */
+            entries: components["schemas"]["AssociationAuditEntryDto"][];
+        };
+        AssociationAuditPathErrorDto: {
+            /**
+             * @description Explicación del problema con la librería.
+             * @example libraryRoot debe ser una ruta absoluta: "rel/ativa"
+             */
+            message: string;
+        };
         FxbConfigPathErrorDto: {
             /**
              * @description Explicación del problema de ruta.
@@ -2845,6 +2967,79 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    AssociationAuditController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssociationAuditSnapshotDto"];
+                };
+            };
+            /** @description libraryRoot ausente o relativo, filtros inválidos. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "libraryRoot debe ser una ruta absoluta: \"rel/ativa\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AssociationAuditPathErrorDto"];
+                };
+            };
+        };
+    };
+    AssociationAuditController_stream: {
+        parameters: {
+            query: {
+                /** @description Filtro por carpeta de plugin. */
+                plugin?: unknown;
+                /** @description Raíz absoluta de la librería activa. */
+                libraryRoot: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssociationAuditSnapshotDto"];
+                };
+            };
+            /** @description libraryRoot ausente o relativo. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "libraryRoot debe ser una ruta absoluta: \"rel/ativa\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AssociationAuditPathErrorDto"];
+                };
+            };
+        };
+    };
     FxbConfigController_read: {
         parameters: {
             query?: never;

@@ -1,15 +1,32 @@
 # fxbLoader web — configuración y librería VFX
 
-Módulo NestJS que reproduce el comportamiento de `fxbLoaderConfig.exe` y de
-`fxbLoader.dll` sobre una librería VFX (`<libraryRoot>\plugs\<plugin>\`):
+Módulo NestJS y aplicación web completa que reproduce y amplía el comportamiento
+de `fxbLoaderConfig.exe` y de `fxbLoader.dll` sobre una librería VFX (`<libraryRoot>\plugs\<plugin>\`):
 
-- lectura y escritura de `fxbLoader.config` según
-  [la especificación](../fxbLoaderConfig.spec.md), con escritura atómica y
-  control optimista de cambios externos;
-- escaneo de la librería, instalación y desinstalación del cargador en un
-  plugin, guardando el respaldo `vfxinfo.tx_` y creando `presets\`;
-- validación de que el `fxbLoader.dll` y el binario original del plugin son
-  **PE32 i386**, con los plugins incompatibles marcados antes de instalar.
+- **Configuración y cargador:** lectura y escritura atómica de `fxbLoader.config`
+  según [la especificación](../fxbLoaderConfig.spec.md) con control optimista de
+  concurrencia por `mtimeMs`, e instalación/desinstalación atómica del cargador
+  con respaldo `vfxinfo.tx_` y creación de `presets\`.
+- **Compatibilidad y análisis PE:** validación estática de binarios **PE32 i386**
+  frente a arquitecturas incompatibles (64-bit AMD64, DLL corruptas o ausentes).
+- **Gestión integral de bancos .fxb:** parser VST2 estricto (Little/Big Endian,
+  `FxBk`/`FBCh`), importación por lotes con streaming NDJSON, inspección previa sin
+  copia, conversión in-situ con respaldo `.orig`, exportación y descarte seguro a la
+  Papelera del sistema.
+- **Catálogo de metadatos y logs:** catálogo estructurado `fxbLoader.meta.json`
+  (campos comunes y libres) y registro de actividad `fxbLoader.log` rotado por tamaño.
+- **Auditoría durable:** trazabilidad de asociaciones de DLL en `fxbLoader.audit.jsonl`
+  con numeración de secuencia monótona sin rotación ni truncado.
+- **Preferencia de DLL:** selección de la DLL objetivo (`dll_name`) por plugin con
+  respaldo automático y persistencia en `vfxinfo.txt`.
+- **Importador de paquetes y reparación:** importación selectiva desde paquetes
+  `.vfxlibrary` o volcados externos con auditoría y alineación de chunks binarios
+  (`vfx-bank-validator`).
+- **Catálogo de Wizards y adquisición directa:** índice integrado de los 268 wizards
+  oficiales de SM Pro Audio / VFX Machine para instalación desatendida.
+- **Asistente de nuevos plugins VST:** análisis estático de la tabla de exportaciones PE
+  (`inspectPeExports`), detección de entrypoints VST (`VSTPluginMain`/`main`),
+  sugerencia de FourCC ID y alta guiada sin wizard.
 
 ## Instalación y pruebas
 
@@ -273,13 +290,31 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    desalineados al importar** (alinea automáticamente IDs de chunks binarios y
    descriptores `preset.vfx` con el plugin destino). Al pulsar **Importar a la
    librería**, ejecuta la copia atómica selectiva, emite las entradas de auditoría en
-   el log del plugin y actualiza automáticamente la tabla principal.
+   el log del plugin y actualiza automáticamente la tabla principal;
+8. **Preferencia de DLL por plugin**: en el panel de **Catálogo**, el campo
+   **Preferencia de DLL** permite cambiar qué binario carga el plugin (editando
+   la línea `dll_name` de `vfxinfo.txt`). Cuenta con detección de borrador
+   (borde y badge distintivos), validación de que el archivo exista dentro de la
+   carpeta del plugin y respaldo automático `vfxinfo.tx_` en el primer cambio.
+   Al intentar abrir el importador con un borrador sin guardar, un diálogo modal
+   previene la pérdida accidental de datos;
+9. **Nuevo plugin VST (asistente de alta guiada)** abre el cajón deslizante
+   `#custom-plugin-drawer` (botón **Nuevo plugin VST…** en la cabecera): permite
+   seleccionar una DLL externa suelta mediante el diálogo nativo o escribir su ruta.
+   Al pulsar **Inspeccionar**, analiza estáticamente la cabecera PE sin ejecutar
+   código (bitness 32/64 bits, exportación de `VSTPluginMain` o `main`, nombre
+   interno PE), detecta si existe un wizard oficial coincidente en el catálogo y
+   sugiere el nombre y Unique ID FourCC. Si se confirma el alta, crea la jerarquía
+   oficial del host (`plugs/<plugin>/<plugin>/<dll>`), genera `vfxinfo.txt` y
+   `fxbLoader.meta.json`, inicializa la carpeta `presets/`, registra la operación en el log
+   y opcionalmente genera una plantilla reutilizable `.vfxwizard`.
 
-Los cajones de bancos, catálogo e importación de paquetes son **diálogos modales**:
-al abrirse el foco entra en el panel, que anuncia su nombre («Bancos de …»,
-«Catálogo de …», «Importar paquete …»); Tab y Shift+Tab dan la vuelta dentro de él,
-y Escape, **Cerrar** o el fondo lo cierran devolviendo el foco al control que lo abrió
-(«···» cuando se abrió desde el menú de fila, o el botón **Importar** de la cabecera).
+Los cajones de bancos, catálogo, importación de paquetes y alta de nuevo plugin son
+**diálogos modales**: al abrirse el foco entra en el panel, que anuncia su nombre
+(«Bancos de …», «Catálogo de …», «Importar paquete …», «Nuevo plugin VST …»); Tab y
+Shift+Tab dan la vuelta dentro de él, y Escape, **Cerrar** o el fondo lo cierran
+devolviendo el foco al control que lo abrió
+(«···» cuando se abrió desde el menú de fila, o el botón correspondiente de la cabecera).
 
 La carpeta y la ruta opcional del DLL se guardan en `localStorage`. Además se
 recuerdan las **últimas ocho rutas usadas** de cada tipo —carpetas de librería,
@@ -402,25 +437,40 @@ El documento describe **todos** los endpoints:
   error `PluginLogPathErrorDto`, con dos ejemplos de **200** —un plugin con dos
   operaciones en el archivo activo, y otro que todavía no escribió su log— y el
   de **400** (`dir` ausente o vacío).
+- `/library/association-audit/list` y `/library/association-audit/stream`:
+  `AssociationAuditSnapshotDto` (con `AssociationAuditEntryDto`) y el error
+  `AssociationAuditPathErrorDto` para la auditoría durable de asociaciones en
+  `<libraryRoot>/fxbLoader.audit.jsonl` (eventos `association-change`, `import`,
+  `reimport` y `collision`).
 - `/library`: peticiones `LibraryScanRequestDto`, `LibraryLoaderAddRequestDto`,
   `LibraryLoaderRemoveRequestDto`, `LibraryBatchRequestDto`,
   `LibraryBanksListRequestDto`, `LibraryBanksImportRequestDto`,
   `LibraryBankExportRequestDto`, `LibraryBankConvertRequestDto`,
-  `LibraryBankRestoreRequestDto` y `LibraryBankInspectRequestDto`; respuestas
+  `LibraryBankRestoreRequestDto`, `LibraryBankInspectRequestDto`,
+  `LibraryDllPreferenceRequestDto`, `LibraryInspectPackageRequestDto`,
+  `LibraryImportPackageRequestDto`, `LibraryInspectDllDto` y `LibraryCreateCustomPluginDto`; respuestas
   `LibraryScanResponseDto`, `LibraryOperationResponseDto`,
   `LibraryBatchResponseDto` (con `LibraryBatchPluginResultDto` por plugin),
   `LibraryBanksListResponseDto`, `LibraryBanksImportResponseDto`,
   `LibraryBankExportResponseDto`, `LibraryBankConvertResponseDto`,
-  `LibraryBankRestoreResponseDto` y `LibraryBankInspectResponseDto`; banco
+  `LibraryBankRestoreResponseDto`, `LibraryBankInspectResponseDto`,
+  `LibraryDllPreferenceResponseDto`, `LibraryInspectPackageResponseDto`,
+  `LibraryImportPackageResponseDto`, `LibraryInspectDllResponseDto` y
+  `LibraryCreateCustomPluginResponseDto`; banco
   (`BankInfoDto`, `BankReferenceDto`, `BankImportResultDto`, `PluginBankDto`,
   `BankExportFileDto`, `BankBackupFileDto`, `BankBackupSummaryDto`) y
   errores (`LibraryErrorDto`, `LibraryConflictErrorDto`,
-  `LibraryBanksImportErrorDto`). Cada operación trae
+  `LibraryBanksImportErrorDto`).
+- `/wizards`: peticiones y respuestas para el catálogo de 268 wizards oficiales:
+  `WizardSummaryDto`, `WizardDetailDto`, `WizardMatchQueryDto`,
+  `WizardCreateVfxinfoRequestDto`, `WizardApplyMetaRequestDto`,
+  `WizardInstallRequestDto`, `WizardInstallResponseDto` y `WizardListResponseDto`.
+  Cada operación trae
   ejemplos de petición y de cada código (**200**, **400**, **404**, **409**,
   **422**), incluidos el plan de `dryRun`, poner y quitar el cargador, un
   lote de plugins con su resultado por plugin, un lote de bancos aceptado o
-  rechazado, la conversión en el sitio con su respaldo y la restauración desde
-  ese respaldo.
+  rechazado, la conversión en el sitio con su respaldo, la restauración desde
+  ese respaldo, la preferencia de DLL, la inspección PE de DLLs y la importación de paquetes.
 
 **Todos** los cuerpos se publican **cerrados**: cada DTO de
 `components.schemas` —peticiones y respuestas, correctas o de error— lleva
@@ -496,10 +546,12 @@ api.library.install({ libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' })
   (dependencia de desarrollo) desde `openapi.json`; no se edita a mano. Un test
   falla si deja de coincidir con el documento generado.
 - [fxb-client.ts](src/client/fxb-client.ts) es el envoltorio de `fetch`:
-  `library.scan | install | uninstall | batch | batchStream | listBanks |
-  importBanks | importBanksStream | exportBank | inspectBank`, `config.read |
-  write` y `plugins.meta.read | write` (el `id` de la ruta solo etiqueta el
-  plugin; el directorio viaja en la petición).
+  - `library.scan | install | uninstall | batch | batchStream | listBanks | importBanks | importBanksStream | convertDefaultBank | restoreDefaultBank | discardDefaultBankBackup | exportBank | inspectBank | inspectPackage | importPackage | updateDllPreference | inspectDll | createCustomPlugin`
+  - `config.read | write`
+  - `plugins.meta.read | write`
+  - `plugins.log.read`
+  - `system.pick | paths`
+  - `wizards.list | get | match | createVfxinfo | applyMeta | install`
 - `library.batchStream` e `library.importBanksStream` leen el NDJSON con su
   propio lector de flujo: entregan cada evento a `onEvent` en cuanto llega (sin
   esperar al final) y resuelven con el `result` del evento `end`; si el flujo se
@@ -682,6 +734,31 @@ como `vfxinfo.txt` y borra `fxbLoader.config`. El DLL y los bancos importados
 se conservan, igual que en el original.
 
 Códigos: **200**, **404**, **409** (no tiene el cargador o falta el respaldo).
+
+### `POST /library/plugin-dll-preference`
+
+Guarda la preferencia local de DLL de un plugin modificando la línea `dll_name` de su
+`vfxinfo.txt` sin alterar la ruta de origen en disco.
+
+```json
+{
+  "pluginDir": "C:\\VFX\\Library\\plugs\\MySynth",
+  "dllName": "Synth64.dll"
+}
+```
+
+- `pluginDir`: ruta absoluta a la carpeta del plugin.
+- `dllName`: nombre o ruta relativa de la DLL dentro de la carpeta del plugin.
+- Si el respaldo `vfxinfo.tx_` aún no existe, se crea automáticamente en esta
+  primera modificación.
+- Si el valor solicitado ya es el vigente en el archivo, responde **200** con `changed: false`
+  y no modifica nada en disco.
+- Valida que la DLL exista en la carpeta del plugin: no permite asignar binarios
+  inexistentes o fuera del directorio del plugin.
+- Registra el cambio en `fxbLoader.log` y en la auditoría durable `fxbLoader.audit.jsonl`.
+
+Códigos: **200**, **400** (`pluginDir` ausente o no absoluto) y **422** (`dllName` vacío,
+con NUL, fuera de la carpeta, DLL inexistente o `vfxinfo.txt` ausente o sin línea `dll_name`).
 
 ### `POST /library/batch`
 
@@ -1382,6 +1459,57 @@ vez de un error.
 Códigos: **200** y **400** (`dir` ausente, vacío, con solo espacios o de otro
 tipo).
 
+## Auditoría durable de asociaciones DLL
+
+A diferencia de `fxbLoader.log` —que rota por tamaño y narra operaciones para
+humanos—, `fxbLoader.audit.jsonl` es un almacén **apéndice durable**: un solo
+fichero JSONL por librería, en `<libraryRoot>/fxbLoader.audit.jsonl`, que nunca
+rota ni se trunca y cruza plugins. Guarda el dato y su cambio, no la narración.
+
+Cada línea es un evento:
+
+- `ts`: marca de tiempo ISO-8601 UTC.
+- `kind`: `association-change`, `import`, `reimport` o `collision`.
+- `plugin`: carpeta del plugin tal cual; los eventos globales de importación
+  pueden omitirla.
+- `libraryRoot`: raíz canónica de la librería donde ocurrió el evento.
+- `field`, `previousValue` y `newValue`: el campo asociado (`dll_name` hoy) y sus
+  valores anterior y nuevo (`null` cuando no había valor o queda vacío).
+- `packageSource`, `collisionPolicy` (`skip` u `overwrite`), `collisionNames` y
+  `repairedBanks`: enlazan los eventos `import`, `reimport` y `collision` que
+  causó una misma importación.
+
+Escriben solo los servicios, con `fsync` por línea y antes del log rotado: si la
+auditoría falla, degrada a `false` con un aviso en el log del servidor y la
+operación del usuario continúa. El navegador nunca escribe.
+
+### `POST /library/association-audit/list`
+
+```
+POST /library/association-audit/list
+{ "libraryRoot": "C:\vfx\mylib", "plugin": "MySynth", "kind": "association-change", "limit": 50 }
+```
+
+Devuelve `auditPath`, `exists`, `size`, `total` y `entries`. Los `entries` son los
+últimos `limit` eventos que pasan los filtros —`limit` por defecto 200—, en orden
+cronológico. Los filtros son opcionales: `plugin`, `kind`, `from` y `to`
+(ISO-8601, ambos inclusive); `limit` debe ser un entero positivo.
+
+Si la librería aún no auditó nada responde **200** con `exists: false`, `size: 0`,
+`total: 0` y `entries: []`, sin crear el fichero. Las líneas que no son JSON válido
+o no traen `ts` y `kind` se saltan sin fallar la lectura.
+
+### `GET /library/association-audit/stream`
+
+Mismo snapshot para el visor, con los filtros como query:
+
+```
+GET /library/association-audit/stream?libraryRoot=C:\vfx\mylib&plugin=MySynth
+```
+
+Códigos: **200** y **400** (`libraryRoot` ausente, vacío, relativo o con un NUL;
+`kind` fuera de los cuatro válidos; `limit` que no sea un entero positivo).
+
 ## Diálogo nativo
 
 ### `POST /system/pick`
@@ -1494,7 +1622,7 @@ como inexistente, no como fallo de la petición.
 ```
 public/                        UI estática (index.html, styles.css; js/ es build)
 src/main.ts                    arranque: Nest en loopback, estáticos y /docs
-src/app.module.ts              módulos: fxb-config, library, plugin-log, plugin-meta, system y wizard
+src/app.module.ts              módulos: association-audit, fxb-config, library, plugin-log, plugin-meta, system y wizard
 src/app.setup.ts               resolución y montaje de public/
 src/ui/browser/
   main.ts                      UI web: DOM, cliente tipado y estado de la vista
@@ -1504,9 +1632,16 @@ src/ui/batch.ts                progreso y resultado del lote para la vista
 src/ui/bank-import.ts          progreso banco a banco de la importación
 src/ui/recents.ts              historial de rutas recientes de los <datalist>
 src/ui/picker.ts               carpetas de partida y suma de rutas del diálogo nativo
+src/ui/table.ts                tabla accesible con búsqueda, ordenación por tipos y paginación
 src/common/atomic-file.ts      temporales + fsync + rename compartidos
 src/common/bad-request.filter.ts  filtro global: el 400 lleva el cuerpo del DTO, sin sobre
 src/common/trash.ts            envía archivos a la papelera (reciclaje, XDG, ~/.Trash)
+src/association-audit/
+  association-audit.types.ts   almacén por librería, eventos, filtros y snapshot
+  association-audit.service.ts apéndice con fsync y lectura con filtros y límite
+  association-audit.controller.ts  POST /library/association-audit/list y GET .../stream
+  association-audit.dto.ts     esquemas y ejemplos de Swagger
+  association-audit.module.ts  registra el controlador y exporta el servicio
 src/fxb-config/
   fxb-config.constants.ts      límites y literales del binario
   fxb-config.types.ts          contrato, snapshot y errores de dominio
@@ -1538,17 +1673,23 @@ src/system/
 src/library/
   vfxinfo.ts                   análisis y parcheo de vfxinfo.txt
   pe.ts                        lectura de cabeceras PE32/PE32+
+  pe-exports.ts                parser estático de tabla de exportaciones PE32/PE32+ (VST entrypoints)
   loader-dll.ts                resolución del fxbLoader.dll por defecto
   fxbLoader-native.ts          puerta que sustituye a la DLL (PE32 y fxbLoader.config)
   fxb-bank.ts                  parser y validación de .fxb (VST2)
+  vfx-bank-validator.ts        diagnóstico y reparación de bancos .vfxbank y chunks binarios
+  library-import.types.ts      tipos de importación de paquetes y políticas de colisión
+  library-import.service.ts    inspección recursiva e importación selectiva de paquetes
+  library-import.dto.ts        esquemas y ejemplos OpenAPI de paquetes
   library.types.ts             modelo, peticiones y errores
-  library.service.ts           scan / install / uninstall / importBanks
+  library.service.ts           scan / install / uninstall / importBanks / inspectDll / createCustomPlugin
   library.controller.ts        REST + decoradores OpenAPI
   library.dto.ts               esquemas y ejemplos de Swagger
   library.module.ts
   index.ts                     barril del módulo
 src/plugin-meta/
   plugin-meta.types.ts         modelo y errores de fxbLoader.meta.json
+  plugin-meta.constants.ts     constantes de metadatos (META_FILENAME)
   plugin-meta.service.ts       lectura, fusión y escritura atómica del meta
   plugin-meta.controller.ts    GET y POST /plugins/:id/meta + decoradores OpenAPI
   plugin-meta.dto.ts           esquemas y ejemplos de Swagger
@@ -1561,14 +1702,30 @@ src/plugin-log/
   plugin-log.dto.ts            esquemas y ejemplos de Swagger
   plugin-log.module.ts         registra el controlador y exporta el servicio
   index.ts                     barril del módulo
+src/wizard/
+  wizard.types.ts              modelo y tipos de los wizards oficiales (.vfxwizard)
+  wizard-parser.ts             parser de ficheros de wizard (formato INI multilínea)
+  wizard.service.ts            catálogo de 268 wizards, búsqueda, emparejamiento e instalación
+  wizard.controller.ts         endpoints REST /wizards + decoradores OpenAPI
+  wizard.dto.ts                esquemas y ejemplos de Swagger
+  wizards-catalog.json         catálogo JSON precargado para producción
+  wizard.module.ts             registra el controlador y exporta el servicio
+  index.ts                     barril del módulo
 test/
   fxb-config.test.ts           vectores de la especificación
   fxb-config.service.test.ts   conflictos, atomicidad, CP-1252
   vfxinfo.test.ts              parser de vfxinfo.txt
   pe.test.ts                   arquitecturas PE32/PE32+ y errores de cabecera
+  pe-exports.test.ts           exportaciones PE y detección de puntos de entrada VST
   fxb-loader-native.test.ts    puerta nativa: cabeceras PE sintéticas y fxbLoader.config
   library.service.test.ts      escaneo, compatibilidad, instalación, desinstalación
   library.controller.test.ts   mapeo de errores del controlador
+  library-import.service.test.ts inspección recursiva e importación selectiva de paquetes
+  plugin-dll-preference.test.ts preferencia local de DLL por plugin y respaldo vfxinfo.tx_
+  association-audit.service.test.ts  auditoría por librería: apéndice, fsync, filtros y snapshot vacío
+  association-audit.docs.test.ts  ejemplos de auditoría (vacía y con eventos) contra la API real
+  wizard.service.test.ts       catálogo oficial de wizards, emparejamiento e instalación directa
+  vfx-bank-validator.test.ts   diagnóstico y reparación de cabeceras de chunks y preset.vfx
   fxb-bank.test.ts             parser .fxb y compatibilidad
   bank-import.test.ts          importación de bancos por banco y troceada (acumulado y corte)
   banks.import.stream.test.ts  importación NDJSON (eventos por archivo, 200 y validaciones)
@@ -1596,6 +1753,8 @@ test/
   picker.test.ts               carpeta de partida y suma de rutas de la vista
   recents.test.ts              historial de rutas: orden, duplicados, datos corruptos y poda
   batch.test.ts                cliente del lote: troceo, cancelación y reanudación
+  table.test.ts                ordenación tipada, búsqueda multircampo y paginación de filas
+  table-dom.test.ts            renderizado accesible de tablas, ordenación y filtros
   ui.test.ts                   estáticos, ids y selectores de la UI contra index.html
   ui.dom.test.ts               parser de HTML y matcher de selectores de ese test
   ui.styles.test.ts            audita styles.css contra index.html (reglas muertas)
@@ -1736,6 +1895,26 @@ El módulo `WizardModule` gestiona el catálogo de los 268 wizards oficiales cer
   - Genera `vfxinfo.txt` y `fxbLoader.meta.json` de forma consistente sin conflictos de timestamps.
   - Vuelca `registry_keys.reg` e instrucciones `wizard_readme.txt` si el wizard las incluye.
   - Crea la carpeta `presets/` e inserta registro de auditoría en `fxbLoader.log`.
+
+## Asistente de Plugins Nuevos sin Wizard e Inspección PE
+
+El módulo `LibraryModule` complementa el catálogo de wizards con endpoints para dar de alta plugins VST genéricos a partir de un binario DLL sin wizard previo:
+
+- `POST /library/inspect-dll`:
+  - Requiere `dllPath` (ruta absoluta al archivo DLL).
+  - Realiza un análisis estático de la tabla de exportaciones PE (`inspectPeExports`) sin ejecutar código nativo.
+  - Verifica si es PE32 (32-bit i386) o PE32+ (64-bit AMD64).
+  - Comprueba la presencia de puntos de entrada VST estándar (`VSTPluginMain` o `main`).
+  - Extrae el nombre interno (`internalDllName`) y la lista de funciones exportadas (`exportedNames`).
+  - Sugiere nombre de plugin y VST Unique ID (FourCC).
+  - Detecta si coincide con algún wizard existente en el catálogo.
+- `POST /library/create-custom-plugin`:
+  - Recibe `libraryRoot`, `sourceDllPath`, `pluginName`, `folderName`, `vstId`, `isSynth`, `vendor`, `preserveOriginalName`, `overwrite` y `saveAsWizard`.
+  - Crea la jerarquía esperada por el host (`plugs/<folderName>/<folderName>/<dll>`).
+  - Genera `vfxinfo.txt` oficial y `fxbLoader.meta.json` con control optimista de concurrencia.
+  - Crea la carpeta `presets/`.
+  - Si `saveAsWizard: true`, genera un archivo `.vfxwizard` reutilizable.
+  - Registra el alta en `fxbLoader.log`.
 
 ## Test con la DLL real
 

@@ -1,8 +1,24 @@
 # Auditoría durable de asociaciones — Diseño
 
 > Fase posterior acordada junto con la preferencia local de DLL (ver `roadmap.md`).
-> Estado: DISEÑO (no implementado). Este documento fija modelo de datos,
-> endpoints y su relación con el log rotado antes de tocar código.
+> Estado: **IMPLEMENTADO** (2026-10-25) tal como se describe en este documento.
+
+## Implementación (2026-10-25)
+
+- `webapp/src/association-audit/`: tipos, servicio de apéndice con `fsync`,
+  controlador, DTOs y módulo.
+- `POST /library/association-audit/list` y `GET /library/association-audit/stream`
+  (este último reutiliza el snapshot con los filtros como query).
+- Escritura desde `LibraryService` (instalar y desinstalar el cargador, guardar
+  `dll_name`, alta de plugin sin wizard) y `LibraryImportService` (importación,
+  reimportación y colisiones enlazadas por `packageSource`).
+- Lectura tolerante: las líneas corruptas se saltan; sin almacén, snapshot vacío
+  con `exists: false`.
+- Tests: `webapp/test/association-audit.service.test.ts` y los contratos de
+  `openapi.test.ts` y `openapi.examples.test.ts`.
+
+Queda fuera lo listado al final del documento: visor de UI, compresión o
+rotación del JSONL y auditoría de más campos de banco.
 
 ## Problema
 

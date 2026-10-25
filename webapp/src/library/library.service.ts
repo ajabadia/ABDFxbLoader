@@ -16,6 +16,7 @@ import { moveToTrash, type TrashInfo } from '../common/trash';
 import { FXB_CONFIG_FILENAME } from '../fxb-config/fxb-config.constants';
 import { FxbConfigService } from '../fxb-config/fxb-config.service';
 import type { FxbConfigSnapshot } from '../fxb-config/fxb-config.types';
+import { AssociationAuditService } from '../association-audit/association-audit.service';
 import { PluginLogService } from '../plugin-log/plugin-log.service';
 import { META_FILENAME } from '../plugin-meta/plugin-meta.constants';
 import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
@@ -258,6 +259,7 @@ export class LibraryService {
   constructor(
     private readonly configService: FxbConfigService,
     private readonly logService?: PluginLogService,
+    @Optional() private readonly auditService?: AssociationAuditService,
     @Optional() private readonly wizardService?: WizardService,
     @Optional() private readonly metaService?: PluginMetaService,
   ) {}
@@ -417,6 +419,16 @@ export class LibraryService {
       if (error.code !== 'EEXIST') throw error;
     });
 
+    // La auditoría se escribe primero: si el log rota y pierde la línea,
+    // el cambio de asociación queda.
+    await this.auditService?.append(path.dirname(plugsPath), {
+      kind: 'association-change',
+      plugin: input.plugin,
+      libraryRoot: path.dirname(plugsPath),
+      field: 'dll_name',
+      previousValue: originalDllName,
+      newValue: `${input.plugin}/${LOADER_DLL_FILENAME}`,
+    });
     await this.logService?.append(
       pluginDir,
       'install',
@@ -476,10 +488,24 @@ export class LibraryService {
       await fs.rename(vfxinfoPath, disabledPath);
     }
     report(1);
+    // Para la auditoría: el valor previo es la dll_name instalada, y la
+    // desinstalación es un tombstone (newValue: null), no un borrado.
+    const installedRaw = await readVfxinfo(vfxinfoPath);
+    const installedAnalysis = installedRaw === null ? null : analyzeVfxinfo(installedRaw);
     await fs.rename(backupPath, vfxinfoPath);
     report(2);
     await fs.rm(configPath, { force: true });
 
+    await this.auditService?.append(path.dirname(plugsPath), {
+      kind: 'association-change',
+      plugin: input.plugin,
+      libraryRoot: path.dirname(plugsPath),
+      field: 'dll_name',
+      previousValue: installedAnalysis?.hasLoader
+        ? LOADER_DLL_FILENAME
+        : installedAnalysis?.dllNameValue ?? null,
+      newValue: null,
+    });
     await this.logService?.append(
       pluginDir,
       'uninstall',
@@ -1950,6 +1976,21 @@ export class LibraryService {
     if (!backupExists) await copyFileAtomic(vfxinfoPath, backupPath);
     await writeFileAtomic(vfxinfoPath, Buffer.from(newlineResult, 'latin1'));
 
+    // previousValue desde disco (no del borrador de la UI); auditoría primero.
+    const derivedRoot =
+      path.basename(path.dirname(pluginDir)) === 'plugs'
+        ? path.dirname(path.dirname(pluginDir))
+        : undefined;
+    if (derivedRoot !== undefined) {
+      await this.auditService?.append(derivedRoot, {
+        kind: 'association-change',
+        plugin: path.basename(pluginDir),
+        libraryRoot: derivedRoot,
+        field: 'dll_name',
+        previousValue: analysis.dllNameValue,
+        newValue: value,
+      });
+    }
     await this.logService?.append(
       pluginDir,
       'dll-preference',
@@ -1974,13 +2015,15 @@ export class LibraryService {
     if (!input || typeof input.dllPath !== 'string' || input.dllPath.trim() === '') {
       throw new BadRequestException('dllPath es obligatorio');
     }
-    const resolvedPath = path.resolve(input.dllPath.trim());
-    if (!path.isAbsolute(resolvedPath)) {
+    const requestedPath = input.dllPath.trim();
+    if (!path.isAbsolute(requestedPath)) {
       throw new BadRequestException(`dllPath debe ser una ruta absoluta: "${input.dllPath}"`);
     }
+    // `resolve` siempre devuelve absoluta: la comprobación va sobre lo recibido.
+    const resolvedPath = path.resolve(requestedPath);
     const stats = await statOrNull(resolvedPath);
     if (stats === null || !stats.isFile()) {
-      throw new NotFoundException(`No existe el archivo DLL: "${resolvedPath}"`);
+      throw new NotFoundException({ message: `No existe el archivo DLL: "${resolvedPath}"` });
     }
 
     const pe = await inspectPeExports(resolvedPath);
@@ -2055,13 +2098,15 @@ export class LibraryService {
 
     const folderExists = await exists(pluginDir);
     if (folderExists && !input.overwrite) {
-      throw new ConflictException(`Ya existe una carpeta para el plugin en: "${pluginDir}"`);
+      throw new ConflictException({
+        message: `Ya existe una carpeta para el plugin en: "${pluginDir}"`,
+      });
     }
 
     const sourceDll = path.resolve(input.sourceDllPath.trim());
     const dllStats = await statOrNull(sourceDll);
     if (dllStats === null || !dllStats.isFile()) {
-      throw new NotFoundException(`No existe el archivo DLL origen: "${sourceDll}"`);
+      throw new NotFoundException({ message: `No existe el archivo DLL origen: "${sourceDll}"` });
     }
 
     const warnings: string[] = [];
@@ -2081,9 +2126,12 @@ export class LibraryService {
       warnings.push(`No se pudo verificar la cabecera PE del DLL: ${(err as Error).message}`);
     }
 
-    await fs.mkdir(pluginDir, { recursive: true });
+    // El host espera `plugs/<Plugin>/<Plugin>/<dll>`: el `dll_name` que se
+    // escribe abajo es relativo a la carpeta del plugin.
     const dllFilename = path.basename(sourceDll);
-    const targetDllPath = path.join(pluginDir, dllFilename);
+    const binaryDir = path.join(pluginDir, folderName);
+    await fs.mkdir(binaryDir, { recursive: true });
+    const targetDllPath = path.join(binaryDir, dllFilename);
     await copyFileAtomic(sourceDll, targetDllPath);
 
     // Carpeta presets
@@ -2126,9 +2174,12 @@ export class LibraryService {
     const vendor = input.vendor?.trim() || '';
 
     if (this.metaService) {
+      // Al rehacer el plugin (`overwrite`) el meta ya existe: se escribe sobre
+      // el mtime vigente en lugar de chocar con él.
+      const existingMeta = await statOrNull(metaPath);
       await this.metaService.write({
         pluginDir,
-        expectedMtimeMs: null,
+        expectedMtimeMs: existingMeta?.mtimeMs ?? null,
         common: {
           id: String(numericId),
           name: pluginName,
@@ -2168,6 +2219,17 @@ export class LibraryService {
       }
     }
 
+    // Valor previo desde disco si la carpeta se reutilizó (overwrite).
+    const previousVfxinfo = folderExists ? await readVfxinfo(vfxinfoPath) : null;
+    const previousAssociation = previousVfxinfo === null ? null : analyzeVfxinfo(previousVfxinfo);
+    await this.auditService?.append(path.dirname(plugsPath), {
+      kind: 'association-change',
+      plugin: folderName,
+      libraryRoot: path.dirname(plugsPath),
+      field: 'dll_name',
+      previousValue: previousAssociation === null ? null : previousAssociation.dllNameValue,
+      newValue: `${folderName}/${dllFilename}`,
+    });
     await this.logService?.append(
       pluginDir,
       'create-custom-plugin',

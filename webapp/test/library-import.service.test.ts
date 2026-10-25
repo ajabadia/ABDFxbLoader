@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, it } from 'node:test';
 import { LibraryImportService } from '../src/library/library-import.service';
+import { AssociationAuditService } from '../src/association-audit/association-audit.service';
 import { PluginLogService } from '../src/plugin-log/plugin-log.service';
 import { PluginMetaService } from '../src/plugin-meta/plugin-meta.service';
 import { WizardService } from '../src/wizard/wizard.service';
@@ -16,7 +17,11 @@ const STORAGE_DIR = path.join(BANKS_ROOT, 'storage');
 
 describe('LibraryImportService', () => {
   const wizardService = new WizardService(new PluginMetaService());
-  const service = new LibraryImportService(new PluginLogService(), wizardService);
+  const service = new LibraryImportService(
+    new PluginLogService(),
+    wizardService,
+    new AssociationAuditService(),
+  );
 
   it('inspecciona un paquete de librería real (Novation V-Station demo) con Wizard y concordancia', async () => {
     await wizardService.onModuleInit();
@@ -137,6 +142,80 @@ describe('LibraryImportService', () => {
       assert.deepEqual(res3.importedPlugins, ['V-Station Demo']);
       assert.deepEqual(res3.importedBanks, ['000_Novation V-Station demo.vfxbank']);
       assert.equal(res3.skippedPlugins.length, 0);
+    } finally {
+      await fs.rm(tempTarget, { recursive: true, force: true });
+    }
+  });
+
+  it('audita import, association-change y collision enlazados por packageSource', async () => {
+    const tempTarget = await fs.mkdtemp(path.join(os.tmpdir(), 'vfx-audit-import-'));
+
+    try {
+      const service2 = new LibraryImportService(
+        new PluginLogService(),
+        wizardService,
+        new AssociationAuditService(),
+      );
+      // 1. Primera importación: sin colisiones, con association-change inicial
+      await service2.importPackage({
+        packagePath: NOVATION_DEMO_DIR,
+        targetLibraryRoot: tempTarget,
+        collisionPolicy: 'skip',
+      });
+
+      const audit = new AssociationAuditService();
+      const snap1 = await audit.read(tempTarget);
+      assert.ok(snap1.exists);
+      const kinds1 = snap1.entries.map((entry) => entry.kind);
+      assert.ok(kinds1.includes('import'), `falta 'import': ${kinds1}`);
+      assert.ok(kinds1.includes('association-change'), `falta 'association-change': ${kinds1}`);
+      const importEvent = snap1.entries.find((entry) => entry.kind === 'import')!;
+      assert.equal(importEvent.packageSource, NOVATION_DEMO_DIR);
+      assert.deepEqual(importEvent.repairedBanks, []);
+      const associationChange = snap1.entries.find(
+        (entry) => entry.kind === 'association-change',
+      )!;
+      assert.equal(associationChange.plugin, 'V-Station Demo');
+      assert.equal(associationChange.previousValue, null);
+      assert.equal(associationChange.packageSource, NOVATION_DEMO_DIR);
+
+      // 2. Reimportación con 'skip': collision con la política, sin cambios de asociación
+      await service2.importPackage({
+        packagePath: NOVATION_DEMO_DIR,
+        targetLibraryRoot: tempTarget,
+        collisionPolicy: 'skip',
+      });
+      const snap2 = await audit.read(tempTarget);
+      const collisions = snap2.entries.filter((entry) => entry.kind === 'collision');
+      // Dos colisiones: un plugin y un banco
+      assert.equal(collisions.length, 2);
+      assert.ok(collisions.every((entry) => entry.collisionPolicy === 'skip'));
+      assert.ok(
+        collisions.every(
+          (entry) => entry.packageSource === NOVATION_DEMO_DIR,
+        ),
+      );
+      assert.deepEqual(
+        collisions[0]!.collisionNames,
+        ['V-Station Demo'],
+      );
+
+      // 3. Reimportación con 'overwrite': kind reimport y previousValue real desde disco
+      await service2.importPackage({
+        packagePath: NOVATION_DEMO_DIR,
+        targetLibraryRoot: tempTarget,
+        collisionPolicy: 'overwrite',
+      });
+      const snap3 = await audit.read(tempTarget);
+      const reimports = snap3.entries.filter((entry) => entry.kind === 'reimport');
+      assert.equal(reimports.length, 1);
+      const overwriteChange = snap3.entries.filter(
+        (entry) => entry.kind === 'association-change' && entry.previousValue !== null,
+      );
+      assert.ok(
+        overwriteChange.length >= 1,
+        'el overwrite registra el dado y cambia real (previousValue desde disco)',
+      );
     } finally {
       await fs.rm(tempTarget, { recursive: true, force: true });
     }

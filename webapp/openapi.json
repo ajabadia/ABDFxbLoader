@@ -1,6 +1,183 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/library/association-audit/list": {
+      "post": {
+        "description": "Lee `<libraryRoot>/fxbLoader.audit.jsonl` (apéndice puro, nunca rota) y devuelve los últimos `limit` eventos que pasan los filtros, en orden cronológico. Solo lectura: no existe endpoint de escritura; los servicios internos son los únicos que auditan.",
+        "operationId": "AssociationAuditController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssociationAuditSnapshotDto"
+                },
+                "examples": {
+                  "conEventos": {
+                    "summary": "Almacén con eventos de asociación e importación",
+                    "value": {
+                      "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
+                      "exists": true,
+                      "size": 648,
+                      "total": 2,
+                      "entries": [
+                        {
+                          "ts": "2026-10-25T09:32:11.482Z",
+                          "kind": "association-change",
+                          "plugin": "AnalogSynth",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "field": "dll_name",
+                          "previousValue": "AnalogSynth/AnalogSynth.dll",
+                          "newValue": "AnalogSynth/fxbLoader.dll"
+                        },
+                        {
+                          "ts": "2026-10-25T09:35:02.100Z",
+                          "kind": "import",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "packageSource": "C:/downloads/pack.vfxlibrary",
+                          "collisionPolicy": "skip",
+                          "collisionNames": [
+                            "OtroPlugin"
+                          ],
+                          "repairedBanks": []
+                        }
+                      ]
+                    }
+                  },
+                  "sinAlmacen": {
+                    "summary": "Librería que todavía no audita nada",
+                    "value": {
+                      "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
+                      "exists": false,
+                      "size": 0,
+                      "total": 0,
+                      "entries": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "libraryRoot ausente o relativo, filtros inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssociationAuditPathErrorDto"
+                },
+                "example": {
+                  "message": "libraryRoot debe ser una ruta absoluta: \"rel/ativa\""
+                }
+              }
+            }
+          }
+        },
+        "summary": "Lista eventos de la auditoría durable de asociaciones",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/association-audit/stream": {
+      "get": {
+        "description": "Mismos datos que el listado sin filtros, aceptados como query: minea `<libraryRoot>/fxbLoader.audit.jsonl` tal cual. Solo lectura.",
+        "operationId": "AssociationAuditController_stream",
+        "parameters": [
+          {
+            "name": "plugin",
+            "required": false,
+            "in": "query",
+            "description": "Filtro por carpeta de plugin.",
+            "schema": {
+              "example": "AnalogSynth"
+            }
+          },
+          {
+            "name": "libraryRoot",
+            "required": true,
+            "in": "query",
+            "description": "Raíz absoluta de la librería activa.",
+            "schema": {
+              "example": "C:\\vfx\\mylib"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssociationAuditSnapshotDto"
+                },
+                "examples": {
+                  "conEventos": {
+                    "summary": "Almacén con eventos de asociación e importación",
+                    "value": {
+                      "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
+                      "exists": true,
+                      "size": 648,
+                      "total": 2,
+                      "entries": [
+                        {
+                          "ts": "2026-10-25T09:32:11.482Z",
+                          "kind": "association-change",
+                          "plugin": "AnalogSynth",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "field": "dll_name",
+                          "previousValue": "AnalogSynth/AnalogSynth.dll",
+                          "newValue": "AnalogSynth/fxbLoader.dll"
+                        },
+                        {
+                          "ts": "2026-10-25T09:35:02.100Z",
+                          "kind": "import",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "packageSource": "C:/downloads/pack.vfxlibrary",
+                          "collisionPolicy": "skip",
+                          "collisionNames": [
+                            "OtroPlugin"
+                          ],
+                          "repairedBanks": []
+                        }
+                      ]
+                    }
+                  },
+                  "sinAlmacen": {
+                    "summary": "Librería que todavía no audita nada",
+                    "value": {
+                      "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
+                      "exists": false,
+                      "size": 0,
+                      "total": 0,
+                      "entries": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "libraryRoot ausente o relativo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssociationAuditPathErrorDto"
+                },
+                "example": {
+                  "message": "libraryRoot debe ser una ruta absoluta: \"rel/ativa\""
+                }
+              }
+            }
+          }
+        },
+        "summary": "Snapshot completo de la auditoría para el visor",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/fxb-config/read": {
       "post": {
         "description": "Si el archivo no existe devuelve los valores por defecto con `exists: false` y `mtimeMs: null`, sin crear nada.",
@@ -4039,6 +4216,131 @@
   ],
   "components": {
     "schemas": {
+      "AssociationAuditEntryDto": {
+        "type": "object",
+        "properties": {
+          "ts": {
+            "type": "string",
+            "description": "Marca de tiempo ISO-8601 UTC.",
+            "example": "2026-10-25T09:32:11.482Z"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Tipo de evento: 'association-change' | 'import' | 'reimport' | 'collision'.",
+            "example": "association-change"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Carpeta del plugin; los eventos de import global pueden omitirla.",
+            "example": "AnalogSynth"
+          },
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz canónica de la librería.",
+            "example": "C:/vfx/mylib"
+          },
+          "field": {
+            "type": "string",
+            "description": "Campo asociado (dll_name hoy).",
+            "example": "dll_name"
+          },
+          "previousValue": {
+            "type": "string",
+            "description": "Valor previo del campo (null para tombstone).",
+            "example": "AnalogSynth/AnalogSynth.dll",
+            "nullable": true
+          },
+          "newValue": {
+            "type": "string",
+            "description": "Valor nuevo del campo (null en desinstalación).",
+            "example": "AnalogSynth/fxbLoader.dll",
+            "nullable": true
+          },
+          "packageSource": {
+            "type": "string",
+            "description": "Origen del paquete: enlaza las líneas de una misma importación.",
+            "example": "C:/downloads/pack.vfxlibrary"
+          },
+          "collisionPolicy": {
+            "type": "string",
+            "description": "Política de colisión aplicada: 'skip' | 'overwrite'.",
+            "example": "skip"
+          },
+          "collisionNames": {
+            "description": "Nombres de plugins/bancos omitidos por la política.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repairedBanks": {
+            "description": "Bancos reparados por la importación.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ts",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "AssociationAuditSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "auditPath": {
+            "type": "string",
+            "description": "Ruta absoluta del almacén fxbLoader.audit.jsonl.",
+            "example": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl"
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "Indica si el almacén ya existe.",
+            "example": true
+          },
+          "size": {
+            "type": "number",
+            "description": "Tamaño del almacén en bytes.",
+            "example": 512
+          },
+          "total": {
+            "type": "number",
+            "description": "Total de eventos que pasan los filtros (antes del límite).",
+            "example": 2
+          },
+          "entries": {
+            "description": "Últimos eventos que pasan los filtros, en orden cronológico.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssociationAuditEntryDto"
+            }
+          }
+        },
+        "required": [
+          "auditPath",
+          "exists",
+          "size",
+          "total",
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "AssociationAuditPathErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Explicación del problema con la librería.",
+            "example": "libraryRoot debe ser una ruta absoluta: \"rel/ativa\""
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
       "FxbConfigPathErrorDto": {
         "type": "object",
         "properties": {

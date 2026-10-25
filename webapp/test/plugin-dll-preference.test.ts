@@ -170,3 +170,40 @@ test('400 pluginDir no absoluto y 422 vfxinfo ausente', async (t) => {
   ).body as { message: string };
   assert.ok(sinVfxinfo.message.includes('vfxinfo'));
 });
+
+test('el ciclo de preferencias deja una entrada association-change en la auditoría', async (t) => {
+  const data = await scaffold(t);
+
+  await dllPreference({
+    pluginDir: data.pluginDir,
+    dllName: 'Synth64.dll',
+  }).expect(200);
+
+  const audit = (
+    await http()
+      .post('/library/association-audit/list')
+      .send({ libraryRoot: data.root })
+      .expect(200)
+  ).body as {
+    exists: boolean;
+    total: number;
+    entries: { kind: string; previousValue: string | null; newValue: string | null }[];
+  };
+
+  assert.equal(audit.exists, true);
+  assert.equal(audit.total, 1);
+  assert.equal(audit.entries[0]!.kind, 'association-change');
+  assert.equal(audit.entries[0]!.previousValue, 'Synth/Synth.dll');
+  assert.equal(audit.entries[0]!.newValue, 'Synth64.dll');
+  // El fichero del log rotado no contiene los eventos JSON de la auditoría
+  // y viceversa: son ficheros separados.
+  const logContent = await readFile(path.join(data.pluginDir, 'fxbLoader.log'), 'utf8');
+  assert.ok(!logContent.includes('association-change'));
+  const auditContent = await readFile(
+    path.join(data.root, 'fxbLoader.audit.jsonl'),
+    'utf8',
+  );
+  assert.ok(!auditContent.includes('[dll-preference]'));
+  assert.ok(auditContent.includes('association-change'));
+});
+

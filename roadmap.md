@@ -22,14 +22,20 @@
 - El catálogo de cada plugin expone la preferencia de DLL (`dll_name`): editable con **Guardar preferencia** / **Cancelar**, borrador visible (etiqueta y contorno) mientras hay cambios sin guardar.
 - Guardar valida que la DLL exista dentro de la carpeta del plugin (422 si no), respalda el `vfxinfo.txt` original como `vfxinfo.tx_` solo la primera vez, reescribe solo la línea `dll_name` (CRLF del resto intacto) y deja entrada `[dll-preference]` en el log del plugin.
 - Al abrir el importador con un borrador activo: aviso con «Continuar sin cambios» (descarta el borrador y usa la preferencia guardada) o «Cancelar» (conserva el borrador); **no se guarda desde el aviso**.
-- `POST /library/plugin-dll-preference`, DTOs OpenAPI, cliente tipado y suite `plugin-dll-preference.test.ts` (517 unitarias/integración en verde).
+- `POST /library/plugin-dll-preference`, DTOs OpenAPI, cliente tipado y suite `plugin-dll-preference.test.ts` (539 unitarias/integración en verde).
 - E2E de navegador contra el servidor real: borrador/estados del panel, guardado con `vfxinfo.tx_` intacto (el instalador ya crea el respaldo del original) y aviso al abrir el importador («Cancelar» conserva, «Continuar sin cambios» descarta).
-- **Fase posterior que no se debe olvidar:** analizar junto con el historial de importación la auditoría durable de asociaciones (campo, valor anterior/nuevo), su vínculo con importaciones/reimportaciones y políticas de colisión; la auditoría no se implementa en la fase inicial de edición DLL y el historial de importación sigue siendo de solo lectura.
 
-**Fase posterior que no se debe olvidar:** analizar junto con el historial de importación la auditoría durable de asociaciones (campo, valor anterior/nuevo) y su vínculo con importaciones/reimportaciones y políticas de colisión. La auditoría no se implementa en la fase inicial de edición DLL.
+**Fase III.F: Auditoría durable de asociaciones [COMPLETO]**
+
+- Un solo almacén por librería, `<libraryRoot>/fxbLoader.audit.jsonl`: apéndice puro de una línea JSON por evento (`open` en modo `a` + `fsync`) que **nunca rota ni se trunca** y cruza plugins, frente al `fxbLoader.log` rotado que narra operaciones. El log sigue existiendo; la auditoría guarda el campo y su cambio.
+- Entrada: `ts` ISO-8601, `kind` (`association-change`, `import`, `reimport`, `collision`), `plugin`, `libraryRoot`, `field`/`previousValue`/`newValue` y, en importaciones, `packageSource`, `collisionPolicy`, `collisionNames` y `repairedBanks`, que enlazan las líneas de una misma llamada.
+- Escritura solo desde los servicios (`LibraryService` y `LibraryImportService`) a través de `AssociationAuditService.append`: `previousValue` se lee del disco y no del borrador de la UI, y un fallo degrada a `false` sin abortar la operación.
+- `POST /library/association-audit/list` y `GET /library/association-audit/stream`: snapshot de solo lectura con `auditPath`, `exists`, `size`, `total` y `entries`, filtros opcionales `plugin`, `kind`, `from`, `to` y `limit` (200 por defecto, los últimos eventos en orden cronológico). Sin almacén, 200 con `exists: false` y lista vacía; `libraryRoot` inválido o filtro mal formado, 400.
+- DTOs con dos ejemplos de 200 (con eventos y vacío) y el 400, `openapi.json` y tipos del cliente regenerados, y suite `association-audit.service.test.ts` (apéndice con `fsync`, filtros, límite, líneas corruptas, snapshot vacío y HTTP).
+- Pendiente: visor de auditoría en la UI (el endpoint de lectura ya está) y políticas de colisión nuevas más allá de las que registra la importación.
 
 - **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
-- **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [PLANIFICADO]**
+- **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [COMPLETO]**
 - **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [PLANIFICADO]**
 
 ## Objetivos Arquitectónicos
@@ -119,6 +125,13 @@ Nuevos implementados:
   - `plugin-log.controller.ts`
   - `index.ts`
 
+- `webapp/src/association-audit/`
+  - `association-audit.types.ts`
+  - `association-audit.service.ts`
+  - `association-audit.controller.ts`
+  - `association-audit.dto.ts`
+  - `association-audit.module.ts`
+
 - `webapp/src/wizard/`
   - `wizard.types.ts`
   - `wizard-parser.ts`
@@ -143,6 +156,8 @@ Nuevos implementados:
   - `plugin-log.controller.test.ts`
   - `wizard.service.test.ts`
   - `library-import.service.test.ts`
+  - `association-audit.service.test.ts`
+  - `association-audit.docs.test.ts`
   - `ui.dom.test.ts`, `ui.markup.test.ts`, `ui.styles.test.ts`
   - Casos en `library.service.test.ts` y `library.controller.test.ts`
 
@@ -151,7 +166,7 @@ Modificados:
 - `webapp/src/app.module.ts` → registrar módulos de metadatos, log y wizards.
 - `webapp/src/library/library.module.ts` → registrar y proveer `LibraryImportService`.
 - `webapp/src/library/library.controller.ts` → endpoints de inspección e importación de paquetes (`inspect-package`, `import-package`).
-- `webapp/src/library/library.service.ts` → puntos de registro en las operaciones públicas hacia `PluginLogService`.
+- `webapp/src/library/library.service.ts` → puntos de registro en las operaciones públicas hacia `PluginLogService` y `AssociationAuditService`.
 - `webapp/src/ui/browser/main.ts` → paneles deslizantes de Catálogo, Wizard, Historial e Importador de paquetes; filtrado por 4 ejes de 3 estados, paginación embebida y resolución de scroll en tablas.
 - `webapp/public/index.html` → estructura semántica y accesible para `#meta`, `#plugin-wizard`, `#log-drawer`, `#wizards` e `#import-package-drawer`.
 - `webapp/public/styles.css` → diseño de drawers, badges, estados, paginación y menús contextuales.
@@ -311,20 +326,31 @@ Modificados:
 
 ---
 
-### Fase III.D: Asistente para Plugins Nuevos sin Wizard (y Análisis del Binario)
+### Fase III.D: Asistente para Plugins Nuevos sin Wizard (y Análisis del Binario) [COMPLETO]
 
 > **Objetivo:** Ofrecer un proceso de importación y creación de asistentes para cualquier plugin VST que no tenga wizard previo, evitando tener que redactar a mano el `vfxinfo.txt` ni adivinar sus parámetros.
 
-- [ ] **Asistente Guiado de Creación de Plugin:**
-  - Formulario asistido para dar de alta un VST nuevo a partir de un archivo `.dll` suelto.
-  - Validación básica del ejecutable PE (32-bit Windows DLL, exportación de `VSTPluginMain` o `main`).
-- [ ] **Extracción Automática de Metadatos VST / Herramienta Oficial:**
-  - Desensamblado y análisis de la herramienta oficial de SM Pro Audio / VFX (*VFX Application / Wizard Editor*) para replicar cómo la máquina oficial detecta automáticamente:
-    - FourCC / VST Unique ID (`cMagic` / `id`).
-    - Número de parámetros (`numParams`) y programas (`numPrograms`).
-    - Canales de entrada/salida de audio.
-    - Indicador de sintetizador (`isSynth`) y dimensiones de la GUI personalizada (`width x height`).
-  - Generación de un nuevo registro de wizard para que pueda ser guardado en la base de datos local y reutilizado en futuras instalaciones.
+- [x] **Inspección Estática PE y Exportaciones VST (`inspectPeExports`):**
+  - Parser PE32 / PE32+ que inspecciona `IMAGE_EXPORT_DIRECTORY` sin ejecutar código nativo.
+  - Comprobación de arquitectura (32-bit i386 vs 64-bit AMD64).
+  - Detección de puntos de entrada VST estándar (`VSTPluginMain`, `main`).
+  - Extracción de nombres exportados y nombre interno del DLL (`internalDllName`).
+- [x] **Endpoints en `LibraryModule`:**
+  - `POST /library/inspect-dll`: inspecciona binario DLL, valida arquitectura y VST entrypoint, sugiere nombre/FourCC ID y busca si existe wizard coincidente en el catálogo.
+  - `POST /library/create-custom-plugin`: instala plugin DLL en `plugs/<Plugin>/<Plugin>/<dll>`, genera `vfxinfo.txt`, `fxbLoader.meta.json` sincronizado, inicializa `presets/`, registra en `fxbLoader.log` y opcionalmente guarda plantilla `.vfxwizard`.
+- [x] **Asistente Guiado en la UI Web:**
+  - Drawer accesible `#custom-plugin-drawer` con selector/ruta de DLL.
+  - Diagnóstico visual en tiempo real (arquitectura, entrypoint VST, nombre interno, advertencias).
+  - Aviso de wizard existente si coincide, permitiendo derivar a la instalación guiada.
+  - Formulario de alta (nombre, carpeta, VST ID FourCC, categoría synth/effect, fabricante, guardar como wizard).
+- [x] **Validación y Tests Exhaustivos:**
+  - Tests unitarios en `pe-exports.test.ts` (5 tests PE32/PE64 sintéticos).
+  - Tests OpenAPI en `openapi.test.ts`.
+  - Tests HTTP e integración en `http.integration.test.ts`.
+  - Tests de contratos de errores en `error-bodies.test.ts`.
+  - Tests de documentación en `library.docs.test.ts`.
+  - Tests E2E de navegador en `browser.test.ts`.
+  - Cero CSS muerto y cero markup muerto en `ui.styles.test.ts` y `ui.markup.test.ts`.
 
 ---
 

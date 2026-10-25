@@ -89,6 +89,8 @@ test('el documento expone los endpoints de fxb-config', () => {
   assert.deepStrictEqual(routes, [
     '/fxb-config',
     '/fxb-config/read',
+    '/library/association-audit/list',
+    '/library/association-audit/stream',
     '/library/banks/convert',
     '/library/banks/discard-backup',
     '/library/banks/export',
@@ -897,4 +899,88 @@ test('openapi.json está sincronizado con el documento generado', async () => {
   const normalized = JSON.parse(JSON.stringify(document)) as OpenAPIObject;
 
   assert.deepEqual(stored, normalized);
+});
+
+test('POST /library/association-audit/list documenta 200 con eventos y vacío, y el 400', () => {
+  const list = responses('/library/association-audit/list', 'post');
+  assert.deepEqual(Object.keys(list).sort(), ['200', '400']);
+  assert.equal(
+    document.paths['/library/association-audit/list']?.post?.tags?.[0],
+    'library',
+    'la auditoría vive en la etiqueta library',
+  );
+
+  const ok = jsonBody(list['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/AssociationAuditSnapshotDto',
+  );
+  const examples = ok['examples'] as Record<string, { value: Record<string, unknown> }>;
+  assert.deepEqual(Object.keys(examples).sort(), ['conEventos', 'sinAlmacen']);
+
+  const empty = examples['sinAlmacen']!.value;
+  assert.equal(empty['exists'], false);
+  assert.equal(empty['size'], 0);
+  assert.equal(empty['total'], 0);
+  assert.deepEqual(empty['entries'], []);
+  assert.ok(
+    String(empty['auditPath']).endsWith('fxbLoader.audit.jsonl'),
+    'el ejemplo vacío apunta al almacén correcto',
+  );
+
+  const withEvents = examples['conEventos']!.value;
+  assert.equal(withEvents['exists'], true);
+  assert.equal(withEvents['total'], 2);
+  assert.equal((withEvents['entries'] as unknown[]).length, 2);
+  assert.ok(
+    (withEvents['entries'] as Record<string, unknown>[]).every(
+      (entry) => typeof entry['kind'] === 'string' && typeof entry['ts'] === 'string',
+    ),
+    'cada evento del ejemplo lleva kind y ts',
+  );
+
+  const bad = jsonBody(list['400']);
+  assert.equal(
+    (bad['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/AssociationAuditPathErrorDto',
+  );
+  assert.ok(bad['example'], 'el 400 debe documentar un ejemplo');
+});
+
+test('GET /library/association-audit/stream documenta libraryRoot obligatorio y el mismo snapshot', () => {
+  const operation = document.paths['/library/association-audit/stream']?.get;
+  assert.ok(operation, 'falta GET /library/association-audit/stream');
+
+  const params = (operation!.parameters ?? []) as {
+    name: string;
+    required?: boolean;
+    in: string;
+  }[];
+  const libraryRoot = params.find((param) => param.name === 'libraryRoot');
+  assert.ok(libraryRoot, 'debe documentar libraryRoot');
+  assert.equal(libraryRoot!.in, 'query');
+  assert.equal(libraryRoot!.required, true);
+
+  const plugin = params.find((param) => param.name === 'plugin');
+  assert.ok(plugin, 'debe documentar el filtro plugin');
+  assert.equal(plugin!.required, false);
+
+  const stream = responses('/library/association-audit/stream', 'get');
+  assert.deepEqual(Object.keys(stream).sort(), ['200', '400']);
+  const ok = jsonBody(stream['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/AssociationAuditSnapshotDto',
+  );
+  assert.deepEqual(
+    Object.keys((ok['examples'] ?? {}) as object).sort(),
+    ['conEventos', 'sinAlmacen'],
+    'el stream documenta los mismos dos ejemplos que el listado',
+  );
+  assert.equal(
+    ((ok['examples'] as Record<string, { value: Record<string, unknown> }>)['sinAlmacen']!.value)[
+      'exists'
+    ],
+    false,
+  );
 });
