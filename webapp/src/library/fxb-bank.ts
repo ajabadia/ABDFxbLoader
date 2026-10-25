@@ -461,3 +461,111 @@ export function checkBankCompatibility(
   }
   return { compatibility: 'compatible' };
 }
+
+/** Tope defensivo de programas en un banco recién generado. */
+export const FXB_MAX_CREATED_PROGRAMS = 4096;
+/** Tope defensivo de parámetros por programa generado (VST2 usa índices). */
+export const FXB_MAX_CREATED_PARAMS = 65536;
+
+export interface FxBankProgramInput {
+  /** Nombre del programa (se recorta a los 28 bytes del formato). */
+  name?: string;
+  /** Valores de parámetro [0,1]; los que falten se rellenan a cero. */
+  params?: number[];
+}
+
+export interface FxBankBuildInput {
+  /** uniqueID canónico `CCONST(a,b,c,d)` del plugin objetivo. */
+  uniqueId: number;
+  /** Versión del plugin que declarará el banco (默认 0). */
+  fxVersion?: number;
+  /**
+   * Nombres de los programas del banco, en orden. Cada uno es un programa
+   * `FxCk` con `programNames.length` parámetros por defecto a cero.
+   */
+  programNames: string[];
+  /** Parámetros por programa; por defecto el máximo de los pasados por programa. */
+  numParams?: number;
+  /** Orden de bytes del archivo: little en Windows (default). */
+  endianness?: FxbEndianness;
+}
+
+/** Nombre de programa serializado: 28 bytes latin1 rellenos de NUL. */
+export function serializeProgramName(name: string): Buffer {
+  const source = [...name].slice(0, 28).map((ch) => (ch.codePointAt(0) ?? 0) & 0xff);
+  const buffer = Buffer.alloc(28);
+  source.forEach((code, index) => {
+    buffer[index] = code;
+  });
+  return buffer;
+}
+
+/**
+ * Construye desde cero un banco VST2 `CcnK/FxBk` con programas `FxCk`:
+ * cabecera de 156 bytes para el banco más, por programa, un chunk
+ * `CcnK/FxCk` de 48 bytes de cabecera fija + 4 bytes por parámetro.
+ *
+ * Se escribe siempre con el orden de bytes pedido (little en Windows) y se
+ * calcula `byteSize` como el `fxHeader::check()` original lo espera:
+ * tamaño del archivo menos los 8 primeros bytes. `numParams` fija el número de
+ * floats de cada programa (los que falten llegan a 0); ninguno llega aquí
+ * validado de formato: quien llama ya rechazó lo inválido.
+ */
+export function buildFxBank(input: FxBankBuildInput): Buffer {
+  const endianness = input.endianness ?? 'little';
+  const writeU32 = (buffer: Buffer, offset: number, value: number): void => {
+    if (endianness === 'little') buffer.writeUInt32LE(value >>> 0, offset);
+    else buffer.writeUInt32BE(value >>> 0, offset);
+  };
+  const uniqueId = input.uniqueId >>> 0;
+  const fxVersion = (input.fxVersion ?? 0) >>> 0;
+  const names = input.programNames.map((name, index) => {
+    if (typeof name !== 'string') {
+      throw new RangeError(`programNames[${index}] debe ser una cadena`);
+    }
+    return name.trim() === '' ? `Program ${index + 1}` : name.trim();
+  });
+  if (names.length === 0) {
+    throw new RangeError('un banco necesita al menos un programa');
+  }
+  if (names.length > FXB_MAX_CREATED_PROGRAMS) {
+    throw new RangeError(
+      `programNames supera el máximo de ${FXB_MAX_CREATED_PROGRAMS} programas`,
+    );
+  }
+  const numParams = input.numParams ?? 0;
+  if (!Number.isInteger(numParams) || numParams < 0 || numParams > FXB_MAX_CREATED_PARAMS) {
+    throw new RangeError(`numParams ${numParams} fuera de rango (0..${FXB_MAX_CREATED_PARAMS})`);
+  }
+
+  const programSize = PROGRAM_MIN_PAYLOAD + 4 * numParams;
+  const bankSize = FXB_HEADER_SIZE + names.length * (8 + programSize);
+  const buffer = Buffer.alloc(bankSize);
+
+  // Cabecera del banco: CCONs y byteSize excluye los 8 primeros bytes.
+  writeU32(buffer, 0, CHUNK_MAGIC);
+  writeU32(buffer, 4, bankSize - 8);
+  writeU32(buffer, 8, FX_BANK_MAGIC);
+  writeU32(buffer, 12, 1);
+  writeU32(buffer, 16, uniqueId);
+  writeU32(buffer, 20, fxVersion);
+  writeU32(buffer, 24, names.length);
+  writeU32(buffer, 28, 0); // versión 1 del formato de banco no usa currentProgram
+
+  names.forEach((name, index) => {
+    const offset = FXB_HEADER_SIZE + index * (8 + programSize);
+    writeU32(buffer, offset, CHUNK_MAGIC);
+    writeU32(buffer, offset + 4, programSize);
+    writeU32(buffer, offset + 8, FX_PROGRAM_MAGIC); // 'FxCk'
+    writeU32(buffer, offset + 12, 1);
+    writeU32(buffer, offset + 16, uniqueId);
+    writeU32(buffer, offset + 20, fxVersion);
+    writeU32(buffer, offset + 24, numParams);
+    serializeProgramName(name).copy(buffer, offset + 28);
+    for (let param = 0; param < numParams; param += 4) {
+      buffer.fill(0, offset + PROGRAM_MIN_PAYLOAD + param, offset + PROGRAM_MIN_PAYLOAD + param + 4);
+    }
+  });
+
+  return buffer;
+}

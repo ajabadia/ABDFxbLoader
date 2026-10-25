@@ -212,6 +212,36 @@ export interface BankImportResponse {
   results: BankImportResult[];
 }
 
+export interface BankCreateInput {
+  libraryRoot: string;
+  plugin: string;
+  /** Nombre del archivo, sin `.fxb` si falta. */
+  bankName?: string;
+  /**
+   * Nombres de programa, en orden. Cada uno genera un `FxCk` con
+   * `numParams` parámetros a cero. Con derivas del `programNames`.
+   */
+  programNames: string[];
+  /** Parámetros por programa; por defecto 0. */
+  numParams?: number;
+  /** Sobrescribir si ya existe ese archivo (por defecto no). */
+  overwrite?: boolean;
+  /** Reemplaza el `fxVersion` del fichero; por defecto 0. */
+  fxVersion?: number;
+}
+
+export interface BankCreateResult {
+  plugin: PluginEntry;
+  presetsDir: string;
+  /** Ruta absoluta del `.fxb` creado. */
+  target: string;
+  status: 'created' | 'overwritten';
+  /** FourCC del plugin objetivo, sacado del `id` de `vfxinfo.txt`. */
+  fourCc: string;
+  /** Copia del banco ya revalidado tras escribirlo. */
+  bank: FxbBankInfo;
+}
+
 export interface BankInspectInput {
   /** Ruta absoluta del `.fxb` a inspeccionar. No se copia. */
   sourcePath: string;

@@ -984,3 +984,35 @@ test('GET /library/association-audit/stream documenta libraryRoot obligatorio y 
     false,
   );
 });
+
+test('POST /library/association-audit/list documenta su cuerpo con DTO cerrado y ejemplo', () => {
+  const body = requestContent('/library/association-audit/list', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/AssociationAuditListRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}), ['filtros']);
+
+  const example = body.examples?.['filtros']?.value as Record<string, unknown>;
+  assert.equal(typeof example['libraryRoot'], 'string', 'el ejemplo lleva libraryRoot');
+  assert.equal(example['limit'], 50);
+  const exampleRoot = String(example['libraryRoot']);
+  assert.match(exampleRoot, /^[A-Za-z]:[\\/]/);
+  assert.ok(!/[\u0000-\u001f]/.test(exampleRoot), 'el ejemplo no lleva caracteres de control');
+
+  const schema = document.components?.schemas?.['AssociationAuditListRequestDto'] as {
+    required?: string[];
+    properties?: Record<string, { enum?: string[] }>;
+    additionalProperties?: boolean;
+  };
+  assert.ok(schema, 'falta el DTO de la petición');
+  assert.deepEqual(schema.required, ['libraryRoot'], 'solo libraryRoot es obligatorio');
+  assert.deepEqual(
+    Object.keys(schema.properties ?? {}).sort(),
+    ['from', 'kind', 'libraryRoot', 'limit', 'plugin', 'to'],
+  );
+  assert.equal(schema.additionalProperties, false, 'el cuerpo se publica cerrado');
+  assert.deepEqual(schema.properties?.['kind']?.enum, [
+    'association-change',
+    'import',
+    'reimport',
+    'collision',
+  ]);
+});

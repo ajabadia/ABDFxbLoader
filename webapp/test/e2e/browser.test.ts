@@ -3053,8 +3053,14 @@ test(
         await page.inputValue('#custom-plugin-folder'),
         /^DemoSynth$/,
         'el análisis rellena el nombre con el base del DLL',
+      );      assert.equal((await page.inputValue('#custom-plugin-id')).length > 0, true);
+      // Un DLL apto para el host de 32 bits no activa la advertencia.
+      assert.equal(
+        await page.locator('#custom-plugin-bitness-warning').isHidden(),
+        true,
+        'PE de 32 bits: sin advertencia de arquitectura',
       );
-      assert.equal((await page.inputValue('#custom-plugin-id')).length > 0, true);
+
 
       // Crear con los valores sugeridos: sin editor, sin wizard guardado.
       await page.click('#custom-plugin-create-btn');
@@ -3076,11 +3082,28 @@ test(
       // Repetir el alta sin «Sobrescribir» devuelve 409: la vista enseña el
       // mensaje del API, no un error genérico.
       await page.click('#custom-plugin-create-btn');
-      await waitForText(page, '#custom-plugin-status', /Ya existe una carpeta para el plugin/);
-      assert.match(
+      await waitForText(page, '#custom-plugin-status', /Ya existe una carpeta para el plugin/);      assert.match(
         (await page.textContent('#custom-plugin-status')) ?? '',
         /^No se pudo crear el plugin: Ya existe una carpeta para el plugin en:/,
       );
+
+      // Advertencia visible antes de crear: al analizar un DLL de 64 bits el
+      // cajón muestra el aviso de arquitectura sin bloquear el alta.
+      const dll64Path = path.join(temp, 'DemoSynth64.dll');
+      await writeFile(dll64Path, peWithExportsDll(['VSTPluginMain'], { bitness: 64 }));
+      await page.fill('#custom-plugin-path', dll64Path);
+      await page.click('#custom-plugin-inspect-btn');
+      await waitForText(page, '#custom-plugin-status', 'Binario analizado.');
+      assert.equal(
+        await page.locator('#custom-plugin-bitness-warning').isVisible(),
+        true,
+        'DLL de 64 bits: advertencia de arquitectura visible',
+      );
+      assert.match(
+        (await page.textContent('#custom-plugin-bitness-warning')) ?? '',
+        /no es apto para el host de 32 bits/,
+      );
+
 
       // El cajón es clicable solo una vez por revisión: al cerrarlo y abrir el
       // importador, el cajón del asistente queda oculto y sin estado pintado.

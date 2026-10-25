@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -21,6 +22,8 @@ import {
   ASSOCIATION_AUDIT_BAD_REQUEST_EXAMPLE,
   ASSOCIATION_AUDIT_EMPTY_EXAMPLE,
   ASSOCIATION_AUDIT_LIST_EXAMPLE,
+  ASSOCIATION_AUDIT_LIST_REQUEST_EXAMPLE,
+  AssociationAuditListRequestDto,
   AssociationAuditPathErrorDto,
   AssociationAuditSnapshotDto,
 } from './association-audit.dto';
@@ -101,6 +104,15 @@ export class AssociationAuditController {
       'Lee `<libraryRoot>/fxbLoader.audit.jsonl` (apéndice puro, nunca rota) y devuelve ' +
       'los últimos `limit` eventos que pasan los filtros, en orden cronológico. ' +
       'Solo lectura: no existe endpoint de escritura; los servicios internos son los únicos que auditan.',
+  })
+  @ApiBody({
+    type: AssociationAuditListRequestDto,
+    examples: {
+      filtros: {
+        summary: 'Listar los últimos cambios de asociación de un plugin',
+        value: ASSOCIATION_AUDIT_LIST_REQUEST_EXAMPLE,
+      },
+    },
   })
   @ApiOkResponse({
     description:

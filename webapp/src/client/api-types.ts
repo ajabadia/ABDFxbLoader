@@ -652,6 +652,39 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AssociationAuditListRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería activa.
+             * @example C:\vfx\mylib
+             */
+            libraryRoot: string;
+            /**
+             * @description Filtra por carpeta de plugin.
+             * @example AnalogSynth
+             */
+            plugin?: string;
+            /**
+             * @description Filtra por tipo de evento.
+             * @example association-change
+             * @enum {string}
+             */
+            kind?: "association-change" | "import" | "reimport" | "collision";
+            /**
+             * @description Desde esta marca ISO-8601, inclusive.
+             * @example 2026-10-25T00:00:00.000Z
+             */
+            from?: string;
+            /**
+             * @description Hasta esta marca ISO-8601, inclusive.
+             * @example 2026-10-25T23:59:59.999Z
+             */
+            to?: string;
+            /**
+             * @description Máximo de eventos devueltos; 200 si se omite.
+             * @example 50
+             */
+            limit?: number;
+        };
         AssociationAuditEntryDto: {
             /**
              * @description Marca de tiempo ISO-8601 UTC.
@@ -2974,7 +3007,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociationAuditListRequestDto"];
+            };
+        };
         responses: {
             /** @description Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía. */
             200: {

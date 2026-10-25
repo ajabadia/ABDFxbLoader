@@ -6,6 +6,27 @@
         "description": "Lee `<libraryRoot>/fxbLoader.audit.jsonl` (apéndice puro, nunca rota) y devuelve los últimos `limit` eventos que pasan los filtros, en orden cronológico. Solo lectura: no existe endpoint de escritura; los servicios internos son los únicos que auditan.",
         "operationId": "AssociationAuditController_list",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociationAuditListRequestDto"
+              },
+              "examples": {
+                "filtros": {
+                  "summary": "Listar los últimos cambios de asociación de un plugin",
+                  "value": {
+                    "libraryRoot": "C:\\vfx\\mylib",
+                    "plugin": "AnalogSynth",
+                    "kind": "association-change",
+                    "limit": 50
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Snapshot calculado del almacén. Sin almacén, responde 200 con exists: false y lista vacía.",
@@ -4216,6 +4237,52 @@
   ],
   "components": {
     "schemas": {
+      "AssociationAuditListRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería activa.",
+            "example": "C:\\vfx\\mylib"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Filtra por carpeta de plugin.",
+            "example": "AnalogSynth"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Filtra por tipo de evento.",
+            "enum": [
+              "association-change",
+              "import",
+              "reimport",
+              "collision"
+            ],
+            "example": "association-change"
+          },
+          "from": {
+            "type": "string",
+            "description": "Desde esta marca ISO-8601, inclusive.",
+            "example": "2026-10-25T00:00:00.000Z"
+          },
+          "to": {
+            "type": "string",
+            "description": "Hasta esta marca ISO-8601, inclusive.",
+            "example": "2026-10-25T23:59:59.999Z"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Máximo de eventos devueltos; 200 si se omite.",
+            "example": 50,
+            "minimum": 1
+          }
+        },
+        "required": [
+          "libraryRoot"
+        ],
+        "additionalProperties": false
+      },
       "AssociationAuditEntryDto": {
         "type": "object",
         "properties": {

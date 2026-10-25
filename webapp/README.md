@@ -438,7 +438,8 @@ El documento describe **todos** los endpoints:
   operaciones en el archivo activo, y otro que todavía no escribió su log— y el
   de **400** (`dir` ausente o vacío).
 - `/library/association-audit/list` y `/library/association-audit/stream`:
-  `AssociationAuditSnapshotDto` (con `AssociationAuditEntryDto`) y el error
+  `AssociationAuditListRequestDto` (solo en el listado), `AssociationAuditSnapshotDto`
+  (con `AssociationAuditEntryDto`) y el error
   `AssociationAuditPathErrorDto` para la auditoría durable de asociaciones en
   `<libraryRoot>/fxbLoader.audit.jsonl` (eventos `association-change`, `import`,
   `reimport` y `collision`).

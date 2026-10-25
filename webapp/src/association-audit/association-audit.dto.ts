@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   AssociationAuditEntry,
   AssociationAuditSnapshot,
@@ -208,3 +208,52 @@ export class AssociationAuditSnapshotDto
   })
   entries!: AssociationAuditEntry[];
 }
+
+/** Cuerpo de `POST /library/association-audit/list`. */
+export class AssociationAuditListRequestDto {
+  @ApiProperty({
+    description: 'Raíz absoluta de la librería activa.',
+    example: 'C:\\vfx\\mylib',
+  })
+  libraryRoot!: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtra por carpeta de plugin.',
+    example: 'AnalogSynth',
+  })
+  plugin?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtra por tipo de evento.',
+    enum: ['association-change', 'import', 'reimport', 'collision'],
+    example: 'association-change',
+  })
+  kind?: string;
+
+  @ApiPropertyOptional({
+    description: 'Desde esta marca ISO-8601, inclusive.',
+    example: '2026-10-25T00:00:00.000Z',
+  })
+  from?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hasta esta marca ISO-8601, inclusive.',
+    example: '2026-10-25T23:59:59.999Z',
+  })
+  to?: string;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Máximo de eventos devueltos; 200 si se omite.',
+    example: 50,
+    minimum: 1,
+  })
+  limit?: number;
+}
+
+export const ASSOCIATION_AUDIT_LIST_REQUEST_EXAMPLE = {
+  libraryRoot: 'C:\\vfx\\mylib',
+  plugin: 'AnalogSynth',
+  kind: 'association-change',
+  limit: 50,
+};

@@ -865,6 +865,113 @@ export class LibraryService {
   }
 
   /**
+   * Crea un banco `.fxb` desde cero para un plugin de la librería.
+   *
+   * El FourCC viene del `id` de `vfxinfo.txt` del propio plugin: si el plugin
+   * no lo declara, no hay banco que generar. Los programas son `FxCk` con
+   * `numParams` parámetros a cero; los nombres omitidos siguen
+   * `Program <n>`. Tras escribirlo se reparsea la cabecera y esa copia es la
+   * que devuelve el endpoint.
+   */
+  async createBank(input: BankCreateInput): Promise<BankCreateResult> {
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const presetsDir = await this.resolvePresetsDir(pluginDir, 'crear un banco');
+
+    const fourCc = await this.readVfxinfoId(pluginDir);
+    const uniqueIdValue = parseUniqueIdInput(fourCc);
+
+    const names = Array.isArray(input.programNames)
+      ? input.programNames.map((name, index) => {
+          if (typeof name !== 'string') {
+            throw new LibraryPathError(`programNames[${index}] debe ser una cadena`);
+          }
+          return name.trim() === '' ? `Program ${index + 1}` : name.trim();
+        })
+      : [];
+    if (names.length === 0) {
+      throw new LibraryPathError('programNames debe contener al menos un programa');
+    }
+    if (names.length > FXB_MAX_CREATED_PROGRAMS) {
+      throw new LibraryPathError(
+        `programNames supera el máximo de ${FXB_MAX_CREATED_PROGRAMS} programas`,
+      );
+    }
+    const numParams = input.numParams ?? 0;
+    if (!Number.isInteger(numParams) || numParams < 0 || numParams > FXB_MAX_CREATED_PARAMS) {
+      throw new LibraryPathError(`numParams debe ser un entero entre 0 y ${FXB_MAX_CREATED_PARAMS}`);
+    }
+    const fxVersion = input.fxVersion ?? 0;
+    if (!Number.isInteger(fxVersion) || fxVersion < 0 || fxVersion > 0xffffffff) {
+      throw new LibraryPathError('fxVersion debe ser un entero entre 0 y 0xFFFFFFFF');
+    }
+
+    const bankNameInput = typeof input.bankName === 'string' ? input.bankName.trim() : '';
+    const bankName = bankNameInput === '' ? `${input.plugin}.fxb` : bankNameInput;
+    if (hasPathSeparator(bankName)) {
+      throw new LibraryPathError(`bankName no puede contener separadores de ruta: "${bankName}"`);
+    }
+    const fileName = /\.fxb$/i.test(bankName) ? bankName : `${bankName}.fxb`;
+    const target = path.join(presetsDir, fileName);
+    const targetExists = await exists(target);
+    if (targetExists && input.overwrite === false) {
+      throw new PluginStateError(`ya existe ${target}; marca overwrite para reemplazarlo`);
+    }
+
+    const data = buildFxBank({
+      uniqueId: uniqueIdValue,
+      fxVersion,
+      programNames: names,
+      numParams,
+    });
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      // No se va a escribir un banco que el propio validador rechace.
+      throw new LibraryOperationError(
+        `el banco generado no pasó la validación: ${parsed.issues.join('; ') || 'cabecera inválida'}`,
+      );
+    }
+
+    await fs.mkdir(presetsDir, { recursive: true });
+    try {
+      await writeFileAtomic(target, data);
+    } catch (error) {
+      throw new LibraryOperationError(`no se pudo escribir el banco: ${(error as Error).message}`);
+    }
+
+    await this.logService?.append(
+      pluginDir,
+      'create-bank',
+      `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (${names.length} programa(s))`,
+    );
+
+    return {
+      plugin: await this.describe(plugsPath, input.plugin),
+      presetsDir,
+      target,
+      status: targetExists ? 'overwritten' : 'created',
+      fourCc,
+      bank: parsed.bank!,
+    };
+  }
+
+  /** FourCC del plugin (`id` de `vfxinfo.txt`), tal como está en el archivo. */
+  private async readVfxinfoId(pluginDir: string): Promise<string> {
+    const text = await readVfxinfo(path.join(pluginDir, VFXINFO_FILENAME));
+    if (text === null) {
+      throw new PluginStateError('el plugin no tiene `vfxinfo.txt`; no hay FourCC que usar');
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const colon = line.indexOf(':');
+      if (colon === -1) continue;
+      const key = line.slice(0, colon).trim().toLowerCase();
+      const value = line.slice(colon + 1).trim();
+      if (key === 'id' && value !== '') return value;
+    }
+    throw new PluginStateError('el `vfxinfo.txt` del plugin no tiene línea `id` con el FourCC');
+  }
+
+  /**
    * Exporta un banco ya importado en el orden de bytes pedido.
    *
    * Sirve para los bancos legacy que un plugin de Windows guardó con su struct

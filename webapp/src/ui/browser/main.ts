@@ -270,6 +270,7 @@ const els = {
   customPluginWizard: byId<HTMLElement>('custom-plugin-wizard'),
   customPluginExports: byId<HTMLElement>('custom-plugin-exports'),
   customPluginIssues: byId<HTMLElement>('custom-plugin-issues'),
+  customPluginBitnessWarning: byId<HTMLElement>('custom-plugin-bitness-warning'),
   customPluginRoot: byId<HTMLInputElement>('custom-plugin-root'),
   customPluginFolder: byId<HTMLInputElement>('custom-plugin-folder'),
   customPluginName: byId<HTMLInputElement>('custom-plugin-name'),
@@ -3907,6 +3908,7 @@ function closeCustomPluginDrawer(): void {
   customPluginInspection = null;
   els.customPluginResult.hidden = true;
   els.customPluginCreated.hidden = true;
+  els.customPluginBitnessWarning.hidden = true;
   els.customPluginStatus.textContent = '';
   els.customPluginStatus.className = 'status';
 }
@@ -3964,6 +3966,17 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
     els.customPluginIssues.append(item);
   }
   els.customPluginIssues.hidden = result.issues.length === 0;
+
+  // Advertencia persistente si el binario no es apto para el host de 32 bits:
+  // se puede seguir creando, pero el plugin no cargará en la V-Machine / VFX Host.
+  if (!result.is32BitCompatible) {
+    els.customPluginBitnessWarning.textContent =
+      `El binario no es apto para el host de 32 bits: ${result.validPe ? `es ${result.bitness} bits` : 'ni siquiera es un PE valido'}. ` +
+      'Puedes crear el plugin igualmente, pero fxbLoader no cargara este DLL en una V-Machine / VFX Host de 32 bits.';
+    els.customPluginBitnessWarning.hidden = false;
+  } else {
+    els.customPluginBitnessWarning.hidden = true;
+  }
 }
 
 /** Botón «Analizar binario»: inspección estática de la DLL. */
@@ -3976,6 +3989,7 @@ async function inspectCustomPlugin(): Promise<void> {
   }
 
   els.customPluginResult.hidden = true;
+  els.customPluginBitnessWarning.hidden = true;
   setCustomPluginBusy(true);
   setCustomPluginStatus('Analizando el binario…', 'busy');
   try {
