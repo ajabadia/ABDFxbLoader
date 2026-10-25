@@ -58,6 +58,24 @@ test('lee un plugin sin meta como no existente', async (t) => {
   );
 });
 
+test('un plugin con vfxinfo.txt y sin meta.json devuelve los datos de vfxinfo como catálogo por defecto', async (t) => {
+  const dir = await tempDir(t);
+  await writeFile(
+    path.join(dir, 'vfxinfo.txt'),
+    'id: 1954033970\r\nname: Texture\r\nvendor: UGO\r\n',
+    'latin1',
+  );
+
+  const snapshot = await service.read(dir);
+
+  assert.equal(snapshot.exists, false);
+  assert.equal(snapshot.common.id, '1954033970');
+  assert.equal(snapshot.common.name, 'Texture');
+  assert.equal(snapshot.common.vendor, 'UGO');
+  assert.equal(snapshot.common.genre, '');
+  assert.deepEqual(snapshot.source, { vfxinfo: true });
+});
+
 test('no lee un meta existente sin extended pero admite un meta existente con extended', async (t) => {
   const dir = await tempDir(t);
   await writeFile(
@@ -573,7 +591,7 @@ test('la escritura rechaza lo que el esquema no admite en la entrada', async (t)
     ['common.id: debe ser una cadena', () =>
       service.write({ pluginDir: dir, expectedMtimeMs: null, common: { id: 7 as unknown as string }, extended: {} })],
     ['common: clave del cliente no admitida "extra"', () =>
-      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { extra: 'x' }, extended: {} })],
+      service.write({ pluginDir: dir, expectedMtimeMs: null, common: { extra: 'x' } as any, extended: {} })],
     ['common.id: 256 caracteres; el máximo es 255', () =>
       service.write({ pluginDir: dir, expectedMtimeMs: null, common: { id: 'x'.repeat(256) }, extended: {} })],
     ['common.name: no puede contener caracteres de control', () =>

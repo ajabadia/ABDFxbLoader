@@ -68,7 +68,7 @@ test('importa el banco de fábrica de OB-Xd en la librería de prueba', async (t
   const originalVfxinfo = await readFile(path.join(FIXTURE_LIBRARY, 'plugs', PLUGIN, 'vfxinfo.txt'));
 
   await server()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: root, plugin: PLUGIN, dllSourcePath: loader })
     .expect(200);
 
@@ -113,7 +113,7 @@ test('importa el banco de fábrica de OB-Xd en la librería de prueba', async (t
     .expect(200);
 
   const banks = listed.body as BankListResult;
-  assert.equal(banks.plugin.installed, true);
+  assert.equal(banks.plugin.hasLoader, true);
   assert.equal(banks.presetsDirExists, true);
   assert.deepEqual(
     banks.banks.map((entry) => entry.fileName),

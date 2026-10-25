@@ -65,7 +65,7 @@ async function scaffold(t: TestContext): Promise<Scaffold> {
   const dll = path.join(root, 'loader.dll');
   await writeFile(dll, pe32Dll());
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: root, plugin: 'Synth', dllSourcePath: dll })
     .expect(200);
 

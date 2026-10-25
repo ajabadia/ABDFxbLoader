@@ -42,3 +42,83 @@ export function pe32Dll(): Buffer {
 export function pe64Dll(): Buffer {
   return peStub({ bitness: 64 });
 }
+
+/**
+ * Genera un buffer PE sintético con una sección de exportaciones `.rdata`
+ * que declara las funciones exportadas por nombre indicadas.
+ */
+export function peWithExportsDll(
+  exportNames: string[],
+  options: { bitness?: 32 | 64; internalName?: string } = {},
+): Buffer {
+  const bitness = options.bitness ?? 32;
+  const is64 = bitness === 64;
+  const machine = is64 ? 0x8664 : 0x014c;
+  const optionalMagic = is64 ? 0x20b : 0x10b;
+  const sizeOfOptionalHeader = is64 ? 0xf0 : 0xe0;
+  const peOffset = 0x80;
+
+  const totalSize = 0x1000;
+  const buffer = Buffer.alloc(totalSize);
+
+  // 1. Cabecera DOS
+  buffer.write('MZ', 0, 'latin1');
+  buffer.writeUInt32LE(peOffset, 0x3c);
+
+  // 2. Cabecera PE y COFF
+  buffer.writeUInt32LE(0x00004550, peOffset); // "PE\0\0"
+  buffer.writeUInt16LE(machine, peOffset + 4);
+  buffer.writeUInt16LE(1, peOffset + 6); // 1 sección
+  buffer.writeUInt16LE(sizeOfOptionalHeader, peOffset + 20);
+
+  // 3. Optional Header
+  const optOffset = peOffset + 24;
+  buffer.writeUInt16LE(optionalMagic, optOffset);
+
+  // DataDirectory[0] Export Table: offset 96 en PE32, 112 en PE32+
+  const exportDirEntryOffset = optOffset + (is64 ? 112 : 96);
+  const sectionRva = 0x1000;
+  const sectionFileOffset = 0x200;
+  buffer.writeUInt32LE(sectionRva, exportDirEntryOffset); // Export RVA
+  buffer.writeUInt32LE(0x400, exportDirEntryOffset + 4); // Export Size
+
+  // 4. Section Header (IMAGE_SECTION_HEADER: 40 bytes)
+  const secOffset = optOffset + sizeOfOptionalHeader;
+  buffer.write('.rdata\0\0', secOffset, 'ascii');
+  buffer.writeUInt32LE(0x800, secOffset + 8); // VirtualSize
+  buffer.writeUInt32LE(sectionRva, secOffset + 12); // VirtualAddress
+  buffer.writeUInt32LE(0x800, secOffset + 16); // SizeOfRawData
+  buffer.writeUInt32LE(sectionFileOffset, secOffset + 20); // PointerToRawData
+
+  // 5. IMAGE_EXPORT_DIRECTORY (en sectionFileOffset, correspondiendo a RVA 0x1000)
+  const expDirFileOffset = sectionFileOffset;
+  const internalNameRva = sectionRva + 0x60;
+  const addressOfNamesRva = sectionRva + 0x30;
+
+  buffer.writeUInt32LE(internalNameRva, expDirFileOffset + 12); // Name RVA
+  buffer.writeUInt32LE(exportNames.length, expDirFileOffset + 20); // NumberOfFunctions
+  buffer.writeUInt32LE(exportNames.length, expDirFileOffset + 24); // NumberOfNames
+  buffer.writeUInt32LE(addressOfNamesRva, expDirFileOffset + 32); // AddressOfNames RVA
+
+  // Escribir nombre interno de DLL
+  const internalName = options.internalName ?? 'plugin.dll';
+  const internalNameFileOffset = sectionFileOffset + 0x60;
+  buffer.write(internalName + '\0', internalNameFileOffset, 'ascii');
+
+  // Escribir punteros a nombres y las cadenas de nombres
+  const namesPointersFileOffset = sectionFileOffset + 0x30;
+  let strFileOffset = sectionFileOffset + 0x100;
+  let strRva = sectionRva + 0x100;
+
+  for (let i = 0; i < exportNames.length; i++) {
+    const fnName = exportNames[i]!;
+    buffer.writeUInt32LE(strRva, namesPointersFileOffset + i * 4);
+    buffer.write(fnName + '\0', strFileOffset, 'ascii');
+    const bytesWritten = fnName.length + 1;
+    strFileOffset += bytesWritten;
+    strRva += bytesWritten;
+  }
+
+  return buffer;
+}
+

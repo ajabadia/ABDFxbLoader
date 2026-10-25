@@ -84,7 +84,7 @@ test(
       .expect(200);
 
     const candidate = (scan.body.plugins as PluginEntry[]).find(
-      (plugin) => plugin.hasVfxinfo && !plugin.installed && plugin.compatible !== false,
+      (plugin) => plugin.hasVfxinfo && !plugin.hasLoader && plugin.compatible !== false,
     );
     if (!candidate) {
       t.skip('la librería no tiene ningún plugin compatible con vfxinfo.txt sin instalar');
@@ -111,11 +111,11 @@ test(
 
     // Sin dllSourcePath: debe resolver la DLL real del repositorio.
     const installed = await server()
-      .post('/library/install')
+      .post('/library/loader/add')
       .send({ libraryRoot: library, plugin: candidate.name });
     assert.equal(installed.status, 200, JSON.stringify(installed.body));
 
-    assert.equal(installed.body.plugin.installed, true);
+    assert.equal(installed.body.plugin.hasLoader, true);
     assert.equal(installed.body.plugin.pluginName, expectedPluginName);
 
     const copyAction = (installed.body.actions as { kind: string; detail?: string }[]).find(
@@ -157,11 +157,11 @@ test(
     const patchedBuffer = await readFile(vfxinfoPath);
 
     const uninstalled = await server()
-      .post('/library/uninstall')
+      .post('/library/loader/remove')
       .send({ libraryRoot: library, plugin: candidate.name })
       .expect(200);
 
-    assert.equal(uninstalled.body.plugin.installed, false);
+    assert.equal(uninstalled.body.plugin.hasLoader, false);
     assert.deepEqual(await readFile(vfxinfoPath), originalVfxinfo);
     assert.deepEqual(await readFile(path.join(pluginDir, 'vfxinfo.loader')), patchedBuffer);
     assert.equal(existsSync(configPath), false);

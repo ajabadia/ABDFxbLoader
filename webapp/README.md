@@ -163,23 +163,28 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
 
 1. elegir la carpeta de la librería (la que contiene `plugs\`) con **Elegir
    carpeta…**, que abre el diálogo del sistema, o escribirla a mano, y pulsar
-   **Escanear** (el diálogo ya escanea al elegir);
+   **Escanear** (el diálogo ya escanea al elegir). Si el campo se queda vacío o
+   el escaneo rechaza la ruta, junto al campo aparece un aviso con lo que debe
+   contener la carpeta y qué modifican **Poner cargador** y **Quitar cargador**; el
+   detalle del rechazo sigue en la línea de estado;
 2. ver cada plugin con su estado, compatibilidad con el cargador de 32 bits,
-   `pluginName` y si tiene `vfxinfo.txt`; el escaneo valida que el
+   `pluginName`, si tiene `vfxinfo.txt`, cuántos bancos tiene y si ya tiene
+   catálogo propio (`fxbLoader.meta.json`), que se actualiza al guardarlo desde
+   el panel; el escaneo valida que el
    `fxbLoader.dll` sea un **PE32 i386** y lee la arquitectura del binario
    original. Los plugins incompatibles (por ejemplo, PE32+ AMD64, o con un
    `dll_name` que apunta a un archivo que no existe) se marcan y el botón
-   **Instalar** queda deshabilitado con el motivo;
-3. **Instalar** o **Desinstalar** con un clic, con el resultado en la misma
+   **Poner cargador** queda deshabilitado con el motivo;
+3. **Poner cargador** o **Quitar cargador** con un clic, con el resultado en la misma
    tabla y los errores de la API tal cual (409, 422, etc.);
-4. **Instalar todos** / **Desinstalar todos** manda el lote al servidor con
+4. **Poner cargador a todos** / **Quitar cargador a todos** manda el lote al servidor con
    `POST /library/batch/stream`: los procesa **en serie y en el orden recibido**
    y devuelve el resultado de cada plugin (`status`, `message` y `actions`), de
    modo que un fallo no detiene al resto. Si hay más plugins que el tope por
    petición, el lote se trocea y se manda en peticiones consecutivas, con el
-   **progreso de todas acumulado en la misma barra**: «Instalando 501 de 501»
+   **progreso de todas acumulado en la misma barra**: «Poniendo el cargador 501 de 501»
    sigue contando aunque cambie la petición. Mientras dura, la vista pinta el
-   **progreso en caliente** —una barra, «Instalando 2 de 5: Bass…», una línea
+   **progreso en caliente** —una barra, «Poniendo el cargador 2 de 5: Bass…», una línea
    con el paso interno en curso («paso 2 de 5 · copiando fxbLoader.dll»), la
    fila del plugin resaltada y un **reloj** («12,4 s transcurridos · ~18 s
    restantes · 0,3 s en el paso actual»)— porque el servidor escribe un evento
@@ -204,11 +209,13 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    mandar el lote con **solo** esos plugins, en el mismo orden y con la misma
    acción, sin repetir los que ya respondieron; la lista se contrasta con el
    escaneo posterior, así que el plugin que el servidor terminó después de
-   cancelar no se toca otra vez (reinstalarlo daría un 409) y el botón
+   cancelar no se toca otra vez (volver a ponerle el cargador daría un 409) y el botón
    desaparece si ya no queda nada por hacer. Los fallos del intento anterior
    siguen en su desplegable con su **Reintentar** individual y con
    **Reintentar fallidos (N)** para probarlos todos de nuevo;
-5. **Bancos** abre la vista del plugin: sus `.fxb` con tipo, programas,
+5. **Bancos** abre la vista del plugin —también la pastilla de la columna
+   **Bancos**, que muestra el recuento del último escaneo y lista los nombres
+   al pasar el ratón—: sus `.fxb` con tipo, programas,
    `uniqueID` y `fxVersion`; un formulario para importar rutas absolutas de
    `.fxb` (una por línea, admite las comillas de «copiar como ruta»), con un
    botón **Añadir archivos…** que abre el diálogo del sistema y **suma** los
@@ -241,8 +248,38 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    anidamientos libres. **Guardar** manda lo que se ve junto al `mtimeMs` de la
    lectura, así que si el archivo cambió mientras tanto la API responde 409, la
    vista lo relee y pide volver a guardar en vez de pisar cambios ajenos;
-   **Descartar cambios** vuelve a lo que hay en disco sin escribir nada, y si el
-   archivo no existía el panel lo avisa antes de crearlo.
+   **Descartar cambios** vuelve a lo que hay en disco sin escribir nada. Si el
+   archivo no existía, el panel lo avisa antes de crearlo, arranca con el `id` y
+   el nombre que trae el `vfxinfo.txt` del plugin y una nota dice de dónde salen
+   esos valores y qué falta para poder guardar; sin `vfxinfo.txt` los campos se
+   rellenan a mano. Debajo, **Historial de operaciones** despliega el
+   `fxbLoader.log` del plugin: la ruta del archivo activo, cuánto ocupa, sus
+   entradas (hora local, acción, resumen y detalle; la línea en bruto queda en
+   el `title`) y los `.log.N` que dejó la rotación por tamaño. La pastilla de la
+   columna **Catálogo** abre este mismo cajón con un clic, sin desplegar el menú
+   de la fila;
+7. **Importar paquete a la librería** abre el cajón deslizante superior
+   **Importar instrumentos y bancos a la librería activa** (botón **Importar** en la
+   cabecera superior): permite seleccionar con el diálogo nativo del sistema
+   (**Elegir carpeta…**) o escribir a mano la ruta a cualquier paquete `.vfxlibrary`
+   o carpeta externa (incluso volcados sin carpeta `plugs/` o colecciones anidadas).
+   El botón **Inspeccionar** analiza el origen de forma recursiva, ignorando
+   directorios de soporte (`wizards/`, `node_modules`, `_backup*`), empareja cada
+   plugin con el catálogo de wizards oficiales certificados (mostrando fabricante y
+   nombre canónico), evalúa colisiones contra la librería activa y realiza una
+   auditoría transversal de concordancia técnica en cada banco `.vfxbank`. El panel
+   ofrece selección múltiple de plugins y bancos, selector de política de colisión
+   (**Omitir existentes** o **Sobrescribir existentes**) y la opción **Reparar bancos
+   desalineados al importar** (alinea automáticamente IDs de chunks binarios y
+   descriptores `preset.vfx` con el plugin destino). Al pulsar **Importar a la
+   librería**, ejecuta la copia atómica selectiva, emite las entradas de auditoría en
+   el log del plugin y actualiza automáticamente la tabla principal.
+
+Los cajones de bancos, catálogo e importación de paquetes son **diálogos modales**:
+al abrirse el foco entra en el panel, que anuncia su nombre («Bancos de …»,
+«Catálogo de …», «Importar paquete …»); Tab y Shift+Tab dan la vuelta dentro de él,
+y Escape, **Cerrar** o el fondo lo cierran devolviendo el foco al control que lo abrió
+(«···» cuando se abrió desde el menú de fila, o el botón **Importar** de la cabecera).
 
 La carpeta y la ruta opcional del DLL se guardan en `localStorage`. Además se
 recuerdan las **últimas ocho rutas usadas** de cada tipo —carpetas de librería,
@@ -361,8 +398,12 @@ El documento describe **todos** los endpoints:
   `PluginMetaValidationErrorDto` y `PluginMetaConflictErrorDto`, con ejemplos en
   **200**, **400** (parámetro ausente, ruta inválida, archivo que no cumple el
   formato y valores rechazados) y **409** (`mtimeMs` obsoleto con su `current`).
-- `/library`: peticiones `LibraryScanRequestDto`, `LibraryInstallRequestDto`,
-  `LibraryUninstallRequestDto`, `LibraryBatchRequestDto`,
+- `/plugins/{id}/log`: `PluginLogSnapshotDto` (con `PluginLogEntryDto`) y el
+  error `PluginLogPathErrorDto`, con dos ejemplos de **200** —un plugin con dos
+  operaciones en el archivo activo, y otro que todavía no escribió su log— y el
+  de **400** (`dir` ausente o vacío).
+- `/library`: peticiones `LibraryScanRequestDto`, `LibraryLoaderAddRequestDto`,
+  `LibraryLoaderRemoveRequestDto`, `LibraryBatchRequestDto`,
   `LibraryBanksListRequestDto`, `LibraryBanksImportRequestDto`,
   `LibraryBankExportRequestDto`, `LibraryBankConvertRequestDto`,
   `LibraryBankRestoreRequestDto` y `LibraryBankInspectRequestDto`; respuestas
@@ -376,7 +417,7 @@ El documento describe **todos** los endpoints:
   errores (`LibraryErrorDto`, `LibraryConflictErrorDto`,
   `LibraryBanksImportErrorDto`). Cada operación trae
   ejemplos de petición y de cada código (**200**, **400**, **404**, **409**,
-  **422**), incluidos el plan de `dryRun`, la instalación, la desinstalación, un
+  **422**), incluidos el plan de `dryRun`, poner y quitar el cargador, un
   lote de plugins con su resultado por plugin, un lote de bancos aceptado o
   rechazado, la conversión en el sitio con su respaldo y la restauración desde
   ese respaldo.
@@ -405,6 +446,14 @@ devolver **400**. El esquema lo prohíbe igualmente (el cliente tipado no puede
 enviarlo) y los ejemplos no pueden traerlo; queda anotado como diferencia
 pendiente entre contrato y ejecución.
 
+El **400** sí devuelve ya el cuerpo que documenta su DTO. Nest envuelve en
+`{ statusCode, message, error }` los `BadRequestException` lanzados con un
+mensaje de texto, así que [bad-request.filter.ts](src/common/bad-request.filter.ts)
+es un filtro global que quita ese sobre y deja `{ message }` —o
+`{ message, issues }` cuando la validación acumula motivos—. También alcanza los
+400 que no nacen en un controlador, como un cuerpo JSON mal formado. El resto de
+códigos (404, 409, 422, 501...) mantiene el comportamiento por defecto.
+
 Los tests mantienen la documentación honesta. [test/openapi.test.ts](test/openapi.test.ts)
 compara `openapi.json` con el documento generado y fija los DTO de cada
 operación; [test/openapi.examples.test.ts](test/openapi.examples.test.ts) valida
@@ -417,8 +466,12 @@ de validar en los DTO anidados (`current`, su `config`, `plugin`, `results`, el
 `bank`), en **cualquier respuesta** —correcta o de error— y en **cada petición**.
 [test/library.docs.test.ts](test/library.docs.test.ts) ejecuta los endpoints
 reales y comprueba que los ejemplos tienen exactamente los campos que devuelve la
-API, y [test/client.test.ts](test/client.test.ts) exige que los tipos del cliente
-coincidan con el documento. Si cambias los DTOs o las respuestas, ejecuta
+API, [test/plugin-log.docs.test.ts](test/plugin-log.docs.test.ts) hace lo mismo
+con el log por plugin (incluido el 400 exacto),
+[test/error-bodies.test.ts](test/error-bodies.test.ts) recorre los códigos de
+error documentados —400, 404, 409, 422 y 501— y exige que ninguno lleve
+`statusCode` ni `error`, y [test/client.test.ts](test/client.test.ts) exige que
+los tipos del cliente coincidan con el documento. Si cambias los DTOs o las respuestas, ejecuta
 `npm run client` (que ya regenera `openapi.json`).
 
 ## Cliente TypeScript
@@ -543,23 +596,35 @@ término, el `vst\fxbLoader.dll` del repositorio.
     {
       "name": "MySynth",
       "path": "C:\\VFX\\Library\\plugs\\MySynth",
-      "installed": true,
+      "hasLoader": true,
       "hasVfxinfo": true,
+      "hasMeta": true,
+      "hasWizard": true,
+      "wizardId": "MySynth",
       "pluginName": "MySynth.dll",
       "warnings": [],
       "compatible": true,
-      "compatibilityIssues": []
+      "compatibilityIssues": [],
+      "banks": { "count": 2, "names": ["Rhodes.fxb", "Strings.fxb"] }
     }
   ]
 }
 ```
 
-Solo se listan directorios. `installed` replica al binario: existe
-`fxbLoader.config`. Los `.config` ilegibles o con avisos aparecen en
+Solo se listan directorios. `hasLoader` replica al binario: existe
+`fxbLoader.config`. `hasVfxinfo` dice si hay `vfxinfo.txt` y `hasMeta` si el
+plugin ya tiene `fxbLoader.meta.json`, que es lo que la tabla muestra en las
+columnas homónimas. `banks` resume los `.fxb` de la carpeta de presets con la
+misma lista que devuelve `POST /library/banks/list`: cuántos hay y sus nombres,
+para que la tabla no tenga que abrir el panel de cada plugin. Como el panel,
+respeta el tope de 100 archivos y solo cuenta los bancos válidos; si el
+`programDirName` o la carpeta no se pueden usar, la entrada queda en cero y el
+motivo va en `warnings`. Los `.config` ilegibles o con avisos aparecen en
 `warnings` sin abortar el escaneo.
 
 El escaneo lee la cabecera PE del cargador y del binario original del plugin
-(`dll_name` de `vfxinfo.txt`; en instalados, del respaldo `vfxinfo.tx_`).
+(`dll_name` de `vfxinfo.txt`; en los que ya tienen el cargador, del respaldo
+`vfxinfo.tx_`).
 `compatible` es `true` para PE32 i386, `false` si el binario es de 64 bits u otra
 arquitectura, si existe pero no es un PE usable (archivo vacío, truncado o sin
 cabecera), si el cargador no es PE32 i386 **o si el archivo del `dll_name` no
@@ -567,7 +632,7 @@ existe** (el host no tendría nada que cargar); `null` solo si el DLL está pero
 se pudo leer. Los motivos van en `compatibilityIssues`. No se carga el DLL
 entero: solo se leen las cabeceras DOS/PE.
 
-### `POST /library/install`
+### `POST /library/loader/add`
 
 ```json
 {
@@ -592,21 +657,21 @@ Pasos, en este orden:
 4. escribe `fxbLoader.config` con `pluginName` tomado del `dll_name` original;
 5. crea `presets\`.
 
-El `pluginName` se toma del respaldo o de la configuración vigente al
-reinstalar, nunca del `dll_name` ya parcheado (que daría `fxbLoader.dll`).
-Reinstalar (`force`) conserva `defaultFxbName` y `loadFxbBank`.
+El `pluginName` se toma del respaldo o de la configuración vigente al volver
+a ponerlo, nunca del `dll_name` ya parcheado (que daría `fxbLoader.dll`).
+Volver a ponerlo (`force`) conserva `defaultFxbName` y `loadFxbBank`.
 
-La instalación vuelve a validar el cargador y el binario original antes de
+Poner el cargador vuelve a validar el cargador y el binario original antes de
 escribir: rechaza con **422** un `fxbLoader.dll` que no sea PE32 i386, un plugin
 de 64 bits o un `dll_name` que apunte a un archivo **inexistente** (se trata
 como incompatible), sin tocar el disco.
 
 Códigos: **200**, **400** (ruta/nombre inválido, DLL ausente), **404** (plugin
-inexistente), **409** (ya instalado sin `force`), **422** (`vfxinfo.txt` sin
-línea `dll_name`, `dll_name` sin archivo —tratado como incompatible—, cargador
-que no es PE32 i386 o plugin incompatible).
+inexistente), **409** (ya tiene el cargador sin `force`), **422** (`vfxinfo.txt`
+sin línea `dll_name`, `dll_name` sin archivo —tratado como incompatible—,
+cargador que no es PE32 i386 o plugin incompatible).
 
-### `POST /library/uninstall`
+### `POST /library/loader/remove`
 
 ```json
 { "libraryRoot": "C:\\VFX\\Library", "plugin": "MySynth" }
@@ -616,14 +681,14 @@ Mueve el `vfxinfo.txt` modificado a `vfxinfo.loader`, restaura `vfxinfo.tx_`
 como `vfxinfo.txt` y borra `fxbLoader.config`. El DLL y los bancos importados
 se conservan, igual que en el original.
 
-Códigos: **200**, **404**, **409** (no instalado o sin respaldo).
+Códigos: **200**, **404**, **409** (no tiene el cargador o falta el respaldo).
 
 ### `POST /library/batch`
 
 ```json
 {
   "libraryRoot": "C:\\VFX\\Library",
-  "action": "install",
+  "action": "add",
   "plugins": ["MySynth", "GrandPiano"],
   "dllSourcePath": "C:\\fxbLoader\\vst\\fxbLoader.dll",
   "force": false,
@@ -631,18 +696,18 @@ Códigos: **200**, **404**, **409** (no instalado o sin respaldo).
 }
 ```
 
-El lote de instalar/desinstalar vive en el servidor (antes lo hacía la vista
-con una petición por plugin). Recorre `plugins` **en serie y en el orden
-recibido** —el instalador escribe sobre el mismo árbol— y devuelve el resultado
+El lote de poner/quitar el cargador vive en el servidor (antes lo hacía la
+vista con una petición por plugin). Recorre `plugins` **en serie y en el orden
+recibido** —la operación escribe sobre el mismo árbol— y devuelve el resultado
 de cada uno. `dllSourcePath` y `force` se aplican igual que en
-`POST /library/install`; `dryRun` también vale para `uninstall` y devuelve el
-plan de cada plugin sin tocar el disco.
+`POST /library/loader/add`; `dryRun` también vale para `action: "remove"` y
+devuelve el plan de cada plugin sin tocar el disco.
 
 Respuesta **200** (aunque fallen todos, porque el lote ya se ha recorrido):
 
 ```json
 {
-  "action": "install",
+  "action": "add",
   "dryRun": false,
   "total": 2,
   "succeeded": 1,
@@ -650,15 +715,15 @@ Respuesta **200** (aunque fallen todos, porque el lote ya se ha recorrido):
   "results": [
     {
       "name": "MySynth",
-      "status": "installed",
+      "status": "added",
       "message": null,
-      "entry": { "name": "MySynth", "installed": true, "…": "…" },
+      "entry": { "name": "MySynth", "hasLoader": true, "…": "…" },
       "actions": [{ "kind": "backup", "…": "…" }]
     },
     {
       "name": "GrandPiano",
       "status": "failed",
-      "message": "GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)",
+      "message": "GrandPiano ya tiene el cargador (usa force para volver a ponerlo)",
       "entry": null,
       "actions": []
     }
@@ -666,8 +731,8 @@ Respuesta **200** (aunque fallen todos, porque el lote ya se ha recorrido):
 }
 ```
 
-Por plugin: `status` (`installed`, `uninstalled`, `planned` si `dryRun` solo
-calculó el plan, o `failed`), `message` (`null` si no falló), `entry` (estado
+Por plugin: `status` (`added`, `removed`, `planned` si `dryRun` solo calculó el
+plan, o `failed`), `message` (`null` si no falló), `entry` (estado
 tras la operación, `null` si no se pudo operar) y `actions` (los pasos dados o
 el plan). **Sin reintentos automáticos**: un fallo se reporta y la vista ofrece
 reintentarlo con los endpoints individuales.
@@ -697,33 +762,33 @@ El mismo cuerpo, el mismo tope de 500 plugins y las mismas validaciones que
 **según avanza** el lote. Es lo que usa la vista para el progreso en caliente.
 
 ```
-{"type":"start","action":"install","dryRun":false,"total":2,"plugins":["MySynth","GrandPiano"]}
+{"type":"start","action":"add","dryRun":false,"total":2,"plugins":["MySynth","GrandPiano"]}
 {"type":"plugin","index":0,"total":2,"name":"MySynth","status":"running","message":null}
 {"type":"step","index":0,"total":2,"name":"MySynth","step":"backup","stepIndex":0,"steps":5}
 {"type":"step","index":0,"total":2,"name":"MySynth","step":"copy","stepIndex":1,"steps":5}
 {"type":"step","index":0,"total":2,"name":"MySynth","step":"patch","stepIndex":2,"steps":5}
 {"type":"step","index":0,"total":2,"name":"MySynth","step":"write-config","stepIndex":3,"steps":5}
 {"type":"step","index":0,"total":2,"name":"MySynth","step":"create-dir","stepIndex":4,"steps":5}
-{"type":"plugin","index":0,"total":2,"name":"MySynth","status":"installed","message":null}
+{"type":"plugin","index":0,"total":2,"name":"MySynth","status":"added","message":null}
 {"type":"plugin","index":1,"total":2,"name":"GrandPiano","status":"running","message":null}
-{"type":"plugin","index":1,"total":2,"name":"GrandPiano","status":"failed","message":"GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)"}
-{"type":"end","result":{ "action":"install", "total":2, "succeeded":1, "failed":1, "results":[…] }}
+{"type":"plugin","index":1,"total":2,"name":"GrandPiano","status":"failed","message":"GrandPiano ya tiene el cargador (usa force para volver a ponerlo)"}
+{"type":"end","result":{ "action":"add", "total":2, "succeeded":1, "failed":1, "results":[…] }}
 ```
 
 - `start` sale **después** de validar la petición entera (raíz y cargador), así
   que un **400**/**422** sigue siendo una respuesta JSON normal: no hay eventos
   a medias.
 - `plugin` sale dos veces por plugin: `status: "running"` antes de operarlo y
-  el estado final (`installed`, `uninstalled`, `planned`, `failed`) después.
+  el estado final (`added`, `removed`, `planned`, `failed`) después.
 - Si el cliente cierra la respuesta (el botón **Cancelar** de la vista), el
   servidor deja de empezar plugins: termina el que está en curso —puede estar
   ya a medias en disco— y corta el flujo sin `end`. La vista conserva los
   eventos finales que sí recibió y resume con ellos lo confirmado.
 - `step` sale entre esos dos avisos, uno por cada paso interno del plugin:
-  `backup`, `copy`, `patch`, `write-config` y `create-dir` al instalar;
-  `restore`, `restore` y `delete` al desinstalar. `stepIndex`/`steps` dicen por
+  `backup`, `copy`, `patch`, `write-config` y `create-dir` al poner el cargador;
+  `restore`, `restore` y `delete` al quitarlo. `stepIndex`/`steps` dicen por
   cuál va (0-based) y cuántos hará. Un plugin que falla antes de tocar nada
-  (inexistente, ya instalado) no manda ninguno, y con `dryRun` tampoco hay
+  (inexistente, ya con el cargador) no manda ninguno, y con `dryRun` tampoco hay
   pasos porque no se ejecuta nada: solo se calcula el plan.
 - `end` lleva el mismo `result` que devolvería `POST /library/batch`.
 
@@ -1122,6 +1187,115 @@ con `valid: false` y los motivos en `issues`; una ruta inválida es **400**, un
 plugin inexistente **404** y un `programDirName` roto **422**. No crea
 `presets\` si no existe y el origen queda intacto.
 
+### `POST /library/inspect-package`
+
+Inspecciona una carpeta o paquete externo de librería (por ejemplo un archivo
+o directorio `.vfxlibrary`, una carpeta suelta con volcados de KVR con `vfxinfo.txt`
+o una estructura con `plugs/` y `banks/`) sin modificar ni copiar nada en el disco.
+
+```json
+{
+  "packagePath": "D:\\_banks\\Novation V-Station demo.vfxlibrary",
+  "targetLibraryRoot": "D:\\_banks\\storage"
+}
+```
+
+- `packagePath` es obligatorio y debe ser una ruta absoluta a la carpeta o paquete.
+- `targetLibraryRoot` es opcional: si se proporciona, evalúa si los plugins o bancos
+  ya existen en la librería destino (`alreadyExistsInTarget`).
+
+El escaneo es **recursivo**: busca carpetas de plugins tanto en la raíz como dentro
+de subcarpetas `plugs/` (incluidos niveles anidados tipo `plugs/<vendor>/<plugin>/`)
+y carpetas de bancos `.vfxbank` en la raíz o dentro de `banks/`. Ignora automáticamente
+carpetas de soporte como `wizards/`, `node_modules` o respaldos `_backup*`.
+
+Para cada plugin encontrado:
+- Lee su DLL y `vfxinfo.txt` si existen (`dllName`, `hasVfxinfo`, `vfxinfoId`, `vfxinfoName`).
+- Lo empareja automáticamente con el catálogo oficial de Wizards (`matchedWizard`: `id`,
+  `name`, `vendor`, `isSynth`).
+
+Para cada banco encontrado:
+- Cuenta los presets `.vfxpreset` contenidos y calcula el tamaño total en bytes.
+- Ejecuta el diagnóstico transversal `diagnoseVfxBank` para leer las cabeceras binarias
+  de los chunks, extrayendo el ID VST (`chunkPluginId`), su FourCC (`chunkPluginFourCc`),
+  el wizard emparejado (`matchedWizardName`), si el banco es concordante (`isConcordant`),
+  si es reparable (`canRepair`) y la lista de anomalías (`deficiencies`).
+
+Responde **200** con `resolvedKind` (`vfxlibrary` o `plugin-folder`), `plugins[]` y `banks[]`.
+Códigos: **200**, **400** (ruta inválida, relativa o ausente) y **404** (carpeta inexistente).
+
+### `POST /library/import-package`
+
+Ejecuta la importación selectiva de plugins y bancos desde el paquete inspeccionado
+hacia la librería activa.
+
+```json
+{
+  "packagePath": "D:\\_banks\\Novation V-Station demo.vfxlibrary",
+  "targetLibraryRoot": "D:\\_banks\\storage",
+  "selectedPlugins": ["V-Station Demo"],
+  "selectedBanks": ["000_Novation V-Station demo.vfxbank"],
+  "collisionPolicy": "skip",
+  "repairBanks": true
+}
+```
+
+- `selectedPlugins` y `selectedBanks` son opcionales: si se omiten, importa todos los
+  detectados en el paquete.
+- `collisionPolicy`: `skip` (por defecto, no toca elementos que ya existan en la librería
+  destino y los lista en `skippedPlugins`/`skippedBanks`) u `overwrite` (reemplaza
+  atómica y completamente el contenido en destino).
+- `repairBanks`: si es `true`, tras copiar los bancos a la librería de destino, aplica
+  `repairVfxBank` para sincronizar automáticamente el ID de los chunks binarios y
+  regenerar los descriptores `preset.vfx` con el plugin objetivo.
+- Copia de forma atómica y recursiva los archivos de cada plugin a
+  `<targetLibraryRoot>\plugs\<plugin>\` y de cada banco a `<targetLibraryRoot>\banks\<banco>\`.
+- Registra cada operación en el log del plugin (`PluginLogService`) con la acción `import`.
+
+Responde **200** con `importedPlugins[]`, `skippedPlugins[]`, `importedBanks[]`,
+`skippedBanks[]`, `repairedBanks[]` y `totalCopiedBytes`.
+Códigos: **200**, **400** (rutas inválidas), **404** (origen o destino inexistente).
+
+## Validación y Reparación Transversal de Bancos VFX (`vfx-bank-validator`)
+
+[`vfx-bank-validator.ts`](src/library/vfx-bank-validator.ts) es un módulo utilitario
+desacoplado diseñado para auditar la integridad estructural de los bancos nativos
+del formato VFX (`.vfxbank`) y reparar discrepancias entre los descriptores de texto,
+los chunks binarios y el plugin objetivo.
+
+### Estructura de un Preset VFX (`.vfxpreset`)
+Dentro de cada subcarpeta `.vfxpreset` de un banco `.vfxbank` coexisten:
+1. **Descriptor `preset.vfx`**: archivo de texto estructurado que define los canales:
+   ```
+   channel: 1 -> plugin: 1316377392
+   name: Factory Preset 01
+   short_name: NvS0
+   ```
+2. **Chunk binario `channel_X_slot_Y_<pluginId>.chunk`**:
+   - Offsets `0..15`: Cadena mágica de 16 bytes `!VFXCHUNKMAGIC!\0`.
+   - Offsets `16..19`: Salt / suma de verificación.
+   - Offsets `24..27`: Longitud total del archivo en bytes (uint32 LE).
+   - Offsets `32..35`: Desplazamiento del payload de datos VST (48 bytes).
+   - Offsets `40..43`: FourCC o ID numérico VST del plugin en formato Little-Endian
+     (`readUInt32LE(40)`).
+
+### Diagnóstico (`diagnoseVfxBank`)
+Recorre todos los `.vfxpreset` del banco y reporta:
+- `MISSING_DESCRIPTOR`: Falta `preset.vfx` en la carpeta del preset.
+- `MISSING_CHUNK`: Falta el archivo binario `.chunk` correspondiente al slot.
+- `CHUNK_MAGIC_INVALID`: La cabecera del archivo binario no empieza por `!VFXCHUNKMAGIC!\0`.
+- `CHUNK_ID_MISMATCH`: El ID numérico o FourCC del nombre del archivo difiere del FourCC
+  grabado en el offset 40 de la cabecera binaria.
+- `DESCRIPTOR_ID_MISMATCH`: El plugin ID declarado en `preset.vfx` no coincide con el FourCC
+  del archivo binario o del plugin/wizard objetivo.
+
+### Reparación Atómica (`repairVfxBank`)
+Permite alinear automáticamente un banco desalineado con un plugin o wizard:
+1. Renombra los archivos `.chunk` al nuevo ID canónico (`channel_1_slot_a_<newId>.chunk`).
+2. Parchea in-situ la cabecera binaria reescribiendo los 4 bytes del offset 40 con el
+   entero de 32 bits little-endian correspondiente al FourCC del plugin.
+3. Genera o actualiza el archivo `preset.vfx` con los nombres y canales limpios.
+
 ## Endpoints de metadatos del plugin
 
 `fxbLoader.meta.json` guarda lo que la app sabe del plugin y que `vfxinfo.txt`
@@ -1170,6 +1344,44 @@ control, `id` o `name` vacíos, arrays en `extended`) y **409** (`expectedMtimeM
 ya no es el vigente; el cuerpo trae `current` con el estado del disco, también
 cuando el archivo había desaparecido).
 
+## Endpoints de log por plugin
+
+`fxbLoader.log` guarda el historial de lo que la app hizo con cada plugin
+—cargador puesto o quitado, bancos importados, exportados o convertidos,
+respaldos restaurados o descartados, e instrumentos importados a la librería—
+en un archivo dentro del directorio del plugin que rota por tamaño: 1 MiB y
+siete `.log.N`, el `.log.7` se descarta al crear el siguiente. El log acompaña
+pero nunca aborta la operación: si no se puede escribir, la operación sigue y
+el fallo solo queda en el log del servidor. En la ruta, `:id` es informativo;
+el directorio viaja aparte y es el que decide qué archivo se lee.
+
+### `GET /plugins/:id/log`
+
+```
+GET /plugins/MySynth/log?dir=C:\\VFX\\plugs\\MySynth
+```
+
+Devuelve `logPath`, `exists`, `size`, `totalEntries`, `entries`, `raw` y
+`rotatedFiles`. Cada entrada trae `timestamp` (ISO-8601), `action`, `summary`,
+`detail` opcional y `raw`, la línea tal como está escrita en el archivo. Las
+acciones son `install` y `uninstall` (cargador), `import-banks`, `export-bank`,
+`convert-bank`, `restore-bank` y `discard-backup` (bancos) e `import`
+(instrumento traído a la librería desde un paquete externo).
+
+`entries` y `raw` recorren `.log.7` … `.log.1` y después el archivo activo, así
+que llegan en orden cronológico; `rotatedFiles` los nombra al revés, del más
+nuevo al más viejo (`.log.1` primero). `size` es solo el archivo activo —0 si no
+existe— y `totalEntries` cuenta las entradas leídas, no un histórico: al rotar,
+lo que había en `.log.7` se descarta.
+
+Si el plugin todavía no escribió nada responde **200** con `exists: false`,
+`size: 0`, `totalEntries: 0`, `entries: []`, `raw: ''` y `rotatedFiles: []`,
+sin crear el archivo. Una carpeta que no existe da ese mismo snapshot vacío en
+vez de un error.
+
+Códigos: **200** y **400** (`dir` ausente, vacío, con solo espacios o de otro
+tipo).
+
 ## Diálogo nativo
 
 ### `POST /system/pick`
@@ -1213,7 +1425,7 @@ servidor.
 Dice cuáles de las rutas recordadas por la vista siguen en el disco. El
 navegador no puede consultarlo, así que lo pregunta al servidor, que ve el mismo
 disco: es lo que permite descartar del historial una carpeta renombrada, un
-`.fxb` borrado o un DLL desinstalado.
+`.fxb` borrado o un cargador quitado.
 
 ```json
 {
@@ -1282,7 +1494,7 @@ como inexistente, no como fallo de la petición.
 ```
 public/                        UI estática (index.html, styles.css; js/ es build)
 src/main.ts                    arranque: Nest en loopback, estáticos y /docs
-src/app.module.ts              módulos: fxb-config, library, plugin-meta y system
+src/app.module.ts              módulos: fxb-config, library, plugin-log, plugin-meta, system y wizard
 src/app.setup.ts               resolución y montaje de public/
 src/ui/browser/
   main.ts                      UI web: DOM, cliente tipado y estado de la vista
@@ -1293,6 +1505,7 @@ src/ui/bank-import.ts          progreso banco a banco de la importación
 src/ui/recents.ts              historial de rutas recientes de los <datalist>
 src/ui/picker.ts               carpetas de partida y suma de rutas del diálogo nativo
 src/common/atomic-file.ts      temporales + fsync + rename compartidos
+src/common/bad-request.filter.ts  filtro global: el 400 lleva el cuerpo del DTO, sin sobre
 src/common/trash.ts            envía archivos a la papelera (reciclaje, XDG, ~/.Trash)
 src/fxb-config/
   fxb-config.constants.ts      límites y literales del binario
@@ -1341,6 +1554,13 @@ src/plugin-meta/
   plugin-meta.dto.ts           esquemas y ejemplos de Swagger
   plugin-meta.module.ts        registra el controlador y exporta el servicio
   index.ts                     barril del módulo
+src/plugin-log/
+  plugin-log.types.ts          nombre del log, límites, modelo y snapshot
+  plugin-log.service.ts        escritura con rotación por tamaño y lectura del snapshot
+  plugin-log.controller.ts     GET /plugins/:id/log + decoradores OpenAPI
+  plugin-log.dto.ts            esquemas y ejemplos de Swagger
+  plugin-log.module.ts         registra el controlador y exporta el servicio
+  index.ts                     barril del módulo
 test/
   fxb-config.test.ts           vectores de la especificación
   fxb-config.service.test.ts   conflictos, atomicidad, CP-1252
@@ -1368,6 +1588,11 @@ test/
   system.picker.test.ts        validación, exclusión mutua y mapeo de errores del diálogo
   system.paths.test.ts         validación, stat y respuesta de POST /system/paths
   plugin-meta.service.test.ts  meta del plugin: validación, fusión y conflictos de mtime
+  plugin-log.service.test.ts   log del plugin: formato, rotación por tamaño y lectura de rotados
+  plugin-log.controller.test.ts  GET /plugins/:id/log: 400 sin dir y snapshot vacío
+  plugin-log.docs.test.ts      ejemplos del log contra respuestas reales e invariantes del snapshot
+  error-bodies.test.ts         todos los códigos de error, sin statusCode ni error en el cuerpo
+  describe-error.test.ts        texto de los fallos en la vista: issues, red y errores ajenos al API
   picker.test.ts               carpeta de partida y suma de rutas de la vista
   recents.test.ts              historial de rutas: orden, duplicados, datos corruptos y poda
   batch.test.ts                cliente del lote: troceo, cancelación y reanudación
@@ -1405,7 +1630,7 @@ test/
 persona, contra el servidor real: arranca `dist/main.js` compilado en un puerto
 libre, abre Chromium con Playwright y, sobre una copia temporal del
 [fixture de librería](test/fixtures/vfx-library/README.md), **escanea** (3
-plugins, 0 instalados), **instala** `OB-Xd` (comprueba el badge, el resumen y
+plugins, 0 con cargador), **pone el cargador** a `OB-Xd` (comprueba el badge, el resumen y
 que el `fxbLoader.dll` copiado tiene el SHA-256 del repositorio), abre
 **Bancos**, **importa** el banco real `wam-obxd-factory.fxb` y lo deja como banco
 por defecto (verifica el `.fxb` copiado y las claves de `fxbLoader.config` en
@@ -1418,18 +1643,23 @@ borra. En el lote comprueba
 también que la vista pinta los pasos internos que
 llegan por el flujo («paso 2 de 5 · copiando fxbLoader.dll»): como los eventos
 de un plugin llegan dentro de la misma tarea, los recoge con un
-`MutationObserver` en vez de leer el texto al final. Al final exige que la
-página no haya lanzado errores de JavaScript.
+`MutationObserver` en vez de leer el texto al final. Ese mismo recorrido provoca
+**409** al guardar el catálogo —la prueba reescribe `fxbLoader.meta.json` por
+detrás— y al guardar el banco por defecto —reescribe `fxbLoader.config` con el
+mismo contenido, solo para mover su `mtimeMs`—, y **400** al escanear una ruta
+relativa y al guardar un catálogo con notas de más de 255 caracteres. En todos
+los casos la vista tiene que enseñar el mensaje del API, no un texto propio, y en
+el último además el `issue` del servidor debajo, línea a línea. Al final exige que la página no haya lanzado errores de JavaScript.
 
 El segundo test comprueba el troceado del lote sin instalar 501 plugins de
 verdad: responde al escaneo y a `POST /library/batch/stream` desde Playwright con
 un plugin más que el tope, y exige que la vista mande **dos** peticiones (ninguna
 por encima de 500, los trozos en orden) y que, mientras la segunda está en vuelo,
-la barra siga en «Instalando 501 de 501» con `max` del lote completo y un solo
+la barra siga en «Poniendo el cargador 501 de 501…» con `max` del lote completo y un solo
 `<progress>` en la página.
 
 El tercero cubre **cancelar y reanudar**: deja la primera petición del lote en
-vuelo (la responde la prueba, no el instalador real), pulsa **Cancelar**, y
+vuelo (la responde la prueba, no el lote real), pulsa **Cancelar**, y
 exige que el resumen separe lo confirmado de lo pendiente y que aparezca
 **Reanudar 2 sin confirmar**. El escaneo posterior dice que Alpha sí terminó, así
 que al pulsar el botón la vista manda **solo** `Beta` y `Gamma`, en el orden del
@@ -1437,7 +1667,7 @@ lote; al completarse, el botón desaparece. También exige que la página no hay
 lanzado errores de JavaScript.
 
 El cuarto importa **51 bancos reales** (copias del de OB-Xd) contra el servidor
-instalado y exige que la vista mande dos peticiones de 50 y 1, que la lista de
+real y exige que la vista mande dos peticiones de 50 y 1, que la lista de
 resultados tenga 51 filas sin ningún rechazo y que la tabla del plugin acabe con
 los 51 bancos. Otro test importa **tres bancos reales en un solo flujo** y
 registra cada valor que la vista asigna al `<progress>`: la barra debe pasar por
@@ -1488,6 +1718,24 @@ Queda fuera de `npm test` y de la cobertura porque necesita el navegador; el
 build (`npm run build`) es parte del script. Si algo falla, guarda una captura en
 `test-results/` y escribe los logs del servidor, y CI publica esa carpeta como
 artefacto.
+
+## Catálogo y Adquisición desde Wizards Certificados
+
+El módulo `WizardModule` gestiona el catálogo de los 268 wizards oficiales certificados de SM Pro Audio / VFX Machine:
+
+- `GET /wizards`: lista paginada y filtrable por texto o género.
+- `GET /wizards/match?id=...&name=...&dllName=...`: resolución inteligente de coincidencias para un plugin.
+- `GET /wizards/:id`: ficha completa del wizard (dimensiones de GUI, número de programas/parámetros, flags Wine, dependencias y claves de registro).
+- `POST /wizards/create-vfxinfo`: genera `vfxinfo.txt` oficial a partir del wizard para plugins existentes sin descriptor.
+- `POST /wizards/apply-meta`: vuelca metadatos del wizard al catálogo `fxbLoader.meta.json`.
+- `POST /wizards/install`: **Adquisición / Alta directa**:
+  - Requiere `wizardId`, `libraryRoot` y la ruta del DLL original `dllSourcePath`.
+  - Inspecciona la cabecera PE para verificar binario PE32 (i386 de 32 bits).
+  - Crea atómicamente la carpeta del plugin bajo `<libraryRoot>/plugs/<PluginName>/`.
+  - Copia el archivo DLL original en su ruta esperada por el wizard.
+  - Genera `vfxinfo.txt` y `fxbLoader.meta.json` de forma consistente sin conflictos de timestamps.
+  - Vuelca `registry_keys.reg` e instrucciones `wizard_readme.txt` si el wizard las incluye.
+  - Crea la carpeta `presets/` e inserta registro de auditoría en `fxbLoader.log`.
 
 ## Test con la DLL real
 

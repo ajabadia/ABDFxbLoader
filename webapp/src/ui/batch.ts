@@ -24,7 +24,7 @@ import type {
   BatchStreamStepKind,
 } from '../client/batch-stream.js';
 
-export type BatchAction = 'install' | 'uninstall';
+export type BatchAction = 'add' | 'remove';
 
 /** Lo mínimo que la vista necesita de un plugin para poder informar de él. */
 export interface BatchPlugin {
@@ -47,7 +47,7 @@ export interface BatchResult<P extends BatchPlugin = BatchPlugin> {
 /** Forma de un resultado por plugin de `POST /library/batch`. */
 export interface BatchPluginOutcome {
   name: string;
-  status: 'installed' | 'uninstalled' | 'planned' | 'failed';
+  status: 'added' | 'removed' | 'planned' | 'failed';
   message: string | null;
 }
 
@@ -271,10 +271,10 @@ export function retryProgress(
 
 /** Texto del progreso: qué plugin va y cuántos quedan, con los fallos a la vista. */
 export function progressLabel(state: BatchProgress): string {
-  const doing = state.action === 'install' ? 'Instalando' : 'Desinstalando';
-  const done = state.action === 'install' ? 'instalado' : 'desinstalado';
+  const doing = state.action === 'add' ? 'Poniendo el cargador' : 'Quitando el cargador';
+  const done = state.action === 'add' ? 'con cargador' : 'sin cargador';
   const errors = state.failed === 0 ? '' : ` · ${state.failed} con error`;
-  if (state.finished) return `${state.done} de ${state.total} ${done}(s)${errors}.`;
+  if (state.finished) return `${state.done} de ${state.total} ${done}${errors}.`;
 
   // Entre plugins, `done` es el que viene; mientras corre uno, manda su índice.
   // Al cerrar el último del trozo ambos llegan al total, y sumar uno daría
@@ -451,9 +451,9 @@ export function summarize(result: {
   succeeded: number;
   failed: number;
 }): string {
-  const verb = result.action === 'install' ? 'instalado' : 'desinstalado';
-  if (result.failed === 0) return `${result.succeeded} plugin(s) ${verb}(s).`;
-  return `${result.succeeded} de ${result.total} ${verb}(s); ${result.failed} con error.`;
+  const verb = result.action === 'add' ? 'con cargador' : 'sin cargador';
+  if (result.failed === 0) return `${result.succeeded} plugin(s) ${verb}.`;
+  return `${result.succeeded} de ${result.total} ${verb}; ${result.failed} con error.`;
 }
 
 /** Envía una petición de lote; la vista le pasa el cliente HTTP. */
@@ -592,7 +592,7 @@ export async function runBatchInChunks(options: BatchRunOptions): Promise<BatchR
 /** Un plugin del último escaneo: lo justo para decidir si sigue pendiente. */
 export interface ScannedPlugin {
   name: string;
-  installed: boolean;
+  hasLoader: boolean;
   compatible: boolean | null;
 }
 
@@ -613,9 +613,9 @@ export function resumablePlugins(
   return pending.filter((name) => {
     const plugin = state.get(name);
     if (plugin === undefined) return false;
-    return action === 'install'
-      ? !plugin.installed && plugin.compatible === true
-      : plugin.installed;
+    return action === 'add'
+      ? !plugin.hasLoader && plugin.compatible === true
+      : plugin.hasLoader;
   });
 }
 
@@ -632,8 +632,8 @@ export function resumeLabel(count: number): string {
 export function cancelledSummary(
   run: Pick<BatchRun, 'action' | 'total' | 'succeeded' | 'failed' | 'unreported'>,
 ): string {
-  const verb = run.action === 'install' ? 'instalado' : 'desinstalado';
+  const verb = run.action === 'add' ? 'con cargador' : 'sin cargador';
   const errors = run.failed === 0 ? '' : ` y ${run.failed} con error`;
   const pending = run.unreported === 0 ? '' : `; ${run.unreported} sin confirmar`;
-  return `Lote cancelado: ${run.succeeded} de ${run.total} ${verb}(s)${errors}${pending}.`;
+  return `Lote cancelado: ${run.succeeded} de ${run.total} ${verb}${errors}${pending}.`;
 }

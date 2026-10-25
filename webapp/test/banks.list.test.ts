@@ -62,7 +62,7 @@ async function scaffold(t: TestContext, plugin = 'Synth'): Promise<Scaffold> {
   await writeFile(dll, pe32Dll());
 
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: root, plugin, dllSourcePath: dll })
     .expect(200);
 
@@ -97,7 +97,7 @@ test('lista los bancos válidos del plugin con su configuración', async (t) => 
   const body = (await list(data.root).expect(200)).body as BankListResult;
 
   assert.equal(body.plugin.name, 'Synth');
-  assert.equal(body.plugin.installed, true);
+  assert.equal(body.plugin.hasLoader, true);
   assert.equal(body.presetsDir, data.presets);
   assert.equal(body.presetsDirExists, true);
   assert.deepEqual(
@@ -129,7 +129,7 @@ test('no crea la carpeta ni la configuración si no existen', async (t) => {
 
   const body = (await list(root).expect(200)).body as BankListResult;
 
-  assert.equal(body.plugin.installed, false);
+  assert.equal(body.plugin.hasLoader, false);
   assert.deepEqual(body.banks, []);
   assert.equal(body.presetsDir, path.join(pluginDir, 'presets'));
   assert.equal(body.presetsDirExists, false);

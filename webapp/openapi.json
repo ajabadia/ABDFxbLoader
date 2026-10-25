@@ -241,22 +241,39 @@
                     {
                       "name": "MySynth",
                       "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                      "installed": true,
+                      "hasLoader": true,
                       "hasVfxinfo": true,
+                      "hasWizard": true,
+                      "wizardId": "MySynth",
+                      "hasMeta": true,
                       "pluginName": "MySynth.dll",
                       "warnings": [],
                       "compatible": true,
-                      "compatibilityIssues": []
+                      "compatibilityIssues": [],
+                      "banks": {
+                        "count": 2,
+                        "names": [
+                          "Rhodes.fxb",
+                          "Strings.fxb"
+                        ]
+                      }
                     },
                     {
                       "name": "GrandPiano",
                       "path": "C:\\VFX\\Library\\plugs\\GrandPiano",
-                      "installed": false,
+                      "hasLoader": false,
                       "hasVfxinfo": true,
+                      "hasWizard": false,
+                      "wizardId": null,
+                      "hasMeta": false,
                       "pluginName": null,
                       "warnings": [],
                       "compatible": true,
-                      "compatibilityIssues": []
+                      "compatibilityIssues": [],
+                      "banks": {
+                        "count": 0,
+                        "names": []
+                      }
                     }
                   ]
                 }
@@ -300,21 +317,118 @@
         ]
       }
     },
-    "/library/install": {
+    "/library/plugin-dll-preference": {
       "post": {
-        "description": "Respalda `vfxinfo.txt` como `vfxinfo.tx_`, copia el DLL, reescribe `dll_name` y crea `fxbLoader.config` + `presets\\`.",
-        "operationId": "LibraryController_install",
+        "description": "Escribe el valor pedido en la línea `dll_name` de `vfxinfo.txt` del plugin. La DLL debe existir dentro de la carpeta del plugin: la ruta origen nunca se altera. Si el respaldo `vfxinfo.tx_` todavía no existe se crea en este primer guardado; si el valor pedido ya es el vigente no se toca nada (`changed: false`).",
+        "operationId": "LibraryController_updateDllPreference",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LibraryInstallRequestDto"
+                "$ref": "#/components/schemas/LibraryDllPreferenceRequestDto"
               },
               "examples": {
-                "instalacion": {
-                  "summary": "Instalar con el DLL del repositorio",
+                "cambio": {
+                  "summary": "Guardar una DLL concreta del plugin",
+                  "value": {
+                    "pluginDir": "C:\\VFX\\Library\\plugs\\MySynth",
+                    "dllName": "Synth64.dll"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preferencia guardada (o ya vigente). `actions` describe los pasos hechos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryDllPreferenceResponseDto"
+                },
+                "example": {
+                  "pluginDir": "C:\\VFX\\Library\\plugs\\MySynth",
+                  "previousDllName": "MySynth/fxbLoader.dll",
+                  "dllName": "Synth64.dll",
+                  "backupFile": null,
+                  "changed": true,
+                  "actions": [
+                    {
+                      "kind": "backup",
+                      "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_",
+                      "detail": "vfxinfo.tx_ ya existe; se conserva"
+                    },
+                    {
+                      "kind": "patch",
+                      "path": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt",
+                      "detail": "dll_name: Synth64.dll"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`pluginDir` ausente o no absoluto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "ruta": {
+                    "summary": "pluginDir no es absoluto",
+                    "value": {
+                      "message": "pluginDir debe ser una ruta absoluta: \"MySynth\""
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`dllName` vacío, con NUL, absoluto, fuera del plugin, sin archivo en disco, o `vfxinfo.txt` ausente o sin línea `dll_name`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "fuera": {
+                    "summary": "dllName sale de la carpeta del plugin",
+                    "value": {
+                      "message": "dllName apunta fuera del plugin: \"..\\otro.dll\""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Guarda la preferencia local de DLL de un plugin",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/loader/add": {
+      "post": {
+        "description": "Respalda `vfxinfo.txt` como `vfxinfo.tx_`, copia el DLL, reescribe `dll_name` y crea `fxbLoader.config` + `presets\\`.",
+        "operationId": "LibraryController_addLoader",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryLoaderAddRequestDto"
+              },
+              "examples": {
+                "cargador": {
+                  "summary": "Poner el cargador usando el DLL del repositorio",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
                     "plugin": "MySynth"
@@ -341,14 +455,17 @@
                   "$ref": "#/components/schemas/LibraryOperationResponseDto"
                 },
                 "examples": {
-                  "instalado": {
-                    "summary": "Instalación aplicada",
+                  "puesto": {
+                    "summary": "Cargador puesto",
                     "value": {
                       "plugin": {
                         "name": "MySynth",
                         "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                        "installed": true,
+                        "hasLoader": true,
                         "hasVfxinfo": true,
+                        "hasWizard": true,
+                        "wizardId": "MySynth",
+                        "hasMeta": true,
                         "pluginName": "MySynth.dll",
                         "warnings": [],
                         "compatible": true,
@@ -389,8 +506,11 @@
                       "plugin": {
                         "name": "GrandPiano",
                         "path": "C:\\VFX\\Library\\plugs\\GrandPiano",
-                        "installed": false,
+                        "hasLoader": false,
                         "hasVfxinfo": true,
+                        "hasWizard": false,
+                        "wizardId": null,
+                        "hasMeta": false,
                         "pluginName": null,
                         "warnings": [],
                         "compatible": true,
@@ -467,7 +587,7 @@
             }
           },
           "409": {
-            "description": "El plugin ya está instalado (usa `force`) o `fxbLoader.config` cambió entre la lectura y la escritura.",
+            "description": "El plugin ya tiene el cargador (usa `force`) o `fxbLoader.config` cambió entre la lectura y la escritura.",
             "content": {
               "application/json": {
                 "schema": {
@@ -484,11 +604,11 @@
                   "yaInstalado": {
                     "summary": "Ya tiene el cargador",
                     "value": {
-                      "message": "MySynth ya tiene fxbLoader instalado (usa force para reinstalar)"
+                      "message": "MySynth ya tiene el cargador (usa force para volver a ponerlo)"
                     }
                   },
                   "configCambiada": {
-                    "summary": "Config modificada por la DLL durante la instalación",
+                    "summary": "Config modificada por la DLL mientras se ponía el cargador",
                     "value": {
                       "message": "El archivo cambió en disco desde la última lectura",
                       "current": {
@@ -541,7 +661,7 @@
             }
           }
         },
-        "summary": "Instala fxbLoader en un plugin",
+        "summary": "Pone el cargador en un plugin",
         "tags": [
           "library"
         ]
@@ -561,7 +681,7 @@
               },
               "examples": {
                 "plugin": {
-                  "summary": "Bancos de un plugin instalado",
+                  "summary": "Bancos de un plugin con el cargador",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
                     "plugin": "MySynth"
@@ -583,8 +703,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -729,8 +852,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -839,8 +965,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -936,7 +1065,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "example": "{\"type\":\"start\",\"total\":2,\"sourcePaths\":[\"C:\\\\Banks\\\\Rhodes.fxb\",\"C:\\\\Banks\\\\Strings.fxb\"]}\n{\"type\":\"bank\",\"index\":0,\"total\":2,\"result\":{\"source\":\"C:\\\\Banks\\\\Rhodes.fxb\",\"fileName\":\"Rhodes.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Rhodes.fxb\",\"status\":\"imported\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":208,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":1,\"currentProgram\":null,\"chunkSize\":null}}}\n{\"type\":\"bank\",\"index\":1,\"total\":2,\"result\":{\"source\":\"C:\\\\Banks\\\\Strings.fxb\",\"fileName\":\"Strings.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Strings.fxb\",\"status\":\"overwritten\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":328,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":3,\"currentProgram\":null,\"chunkSize\":null}}}\n{\"type\":\"end\",\"result\":{\"plugin\":{\"name\":\"MySynth\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\",\"installed\":true,\"hasVfxinfo\":true,\"pluginName\":\"MySynth.dll\",\"warnings\":[],\"compatible\":true,\"compatibilityIssues\":[]},\"presetsDir\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\",\"reference\":{\"source\":\"explicit\",\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"file\":null},\"results\":[{\"source\":\"C:\\\\Banks\\\\Rhodes.fxb\",\"fileName\":\"Rhodes.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Rhodes.fxb\",\"status\":\"imported\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":208,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":1,\"currentProgram\":null,\"chunkSize\":null}},{\"source\":\"C:\\\\Banks\\\\Strings.fxb\",\"fileName\":\"Strings.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Strings.fxb\",\"status\":\"overwritten\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":328,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":3,\"currentProgram\":null,\"chunkSize\":null}}]}}"
+                "example": "{\"type\":\"start\",\"total\":2,\"sourcePaths\":[\"C:\\\\Banks\\\\Rhodes.fxb\",\"C:\\\\Banks\\\\Strings.fxb\"]}\n{\"type\":\"bank\",\"index\":0,\"total\":2,\"result\":{\"source\":\"C:\\\\Banks\\\\Rhodes.fxb\",\"fileName\":\"Rhodes.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Rhodes.fxb\",\"status\":\"imported\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":208,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":1,\"currentProgram\":null,\"chunkSize\":null}}}\n{\"type\":\"bank\",\"index\":1,\"total\":2,\"result\":{\"source\":\"C:\\\\Banks\\\\Strings.fxb\",\"fileName\":\"Strings.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Strings.fxb\",\"status\":\"overwritten\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":328,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":3,\"currentProgram\":null,\"chunkSize\":null}}}\n{\"type\":\"end\",\"result\":{\"plugin\":{\"name\":\"MySynth\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\",\"hasLoader\":true,\"hasVfxinfo\":true,\"hasWizard\":true,\"wizardId\":\"MySynth\",\"hasMeta\":true,\"pluginName\":\"MySynth.dll\",\"warnings\":[],\"compatible\":true,\"compatibilityIssues\":[]},\"presetsDir\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\",\"reference\":{\"source\":\"explicit\",\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"file\":null},\"results\":[{\"source\":\"C:\\\\Banks\\\\Rhodes.fxb\",\"fileName\":\"Rhodes.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Rhodes.fxb\",\"status\":\"imported\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":208,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":1,\"currentProgram\":null,\"chunkSize\":null}},{\"source\":\"C:\\\\Banks\\\\Strings.fxb\",\"fileName\":\"Strings.fxb\",\"target\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\\\\Strings.fxb\",\"status\":\"overwritten\",\"compatibility\":\"compatible\",\"warnings\":[],\"bank\":{\"kind\":\"FxBk\",\"endianness\":\"little\",\"byteSize\":328,\"version\":1,\"uniqueId\":\"MySy\",\"uniqueIdValue\":1299796857,\"fxVersion\":1000,\"numPrograms\":3,\"currentProgram\":null,\"chunkSize\":null}}]}}"
               }
             }
           },
@@ -1021,8 +1150,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -1187,8 +1319,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -1367,8 +1502,11 @@
                       "plugin": {
                         "name": "MySynth",
                         "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                        "installed": true,
+                        "hasLoader": true,
                         "hasVfxinfo": true,
+                        "hasWizard": true,
+                        "wizardId": "MySynth",
+                        "hasMeta": true,
                         "pluginName": "MySynth.dll",
                         "warnings": [],
                         "compatible": true,
@@ -1409,8 +1547,11 @@
                       "plugin": {
                         "name": "MySynth",
                         "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                        "installed": true,
+                        "hasLoader": true,
                         "hasVfxinfo": true,
+                        "hasWizard": true,
+                        "wizardId": "MySynth",
+                        "hasMeta": true,
                         "pluginName": "MySynth.dll",
                         "warnings": [],
                         "compatible": true,
@@ -1555,8 +1696,11 @@
                   "plugin": {
                     "name": "MySynth",
                     "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                    "installed": true,
+                    "hasLoader": true,
                     "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
                     "pluginName": "MySynth.dll",
                     "warnings": [],
                     "compatible": true,
@@ -1871,21 +2015,21 @@
         ]
       }
     },
-    "/library/uninstall": {
+    "/library/loader/remove": {
       "post": {
         "description": "Restaura `vfxinfo.tx_`, conserva el modificado como `vfxinfo.loader` y borra `fxbLoader.config`.",
-        "operationId": "LibraryController_uninstall",
+        "operationId": "LibraryController_removeLoader",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LibraryUninstallRequestDto"
+                "$ref": "#/components/schemas/LibraryLoaderRemoveRequestDto"
               },
               "examples": {
-                "desinstalacion": {
-                  "summary": "Desinstalar el cargador",
+                "sinCargador": {
+                  "summary": "Quitar el cargador",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
                     "plugin": "MySynth"
@@ -1912,14 +2056,17 @@
                   "$ref": "#/components/schemas/LibraryOperationResponseDto"
                 },
                 "examples": {
-                  "desinstalado": {
-                    "summary": "Desinstalación aplicada",
+                  "quitado": {
+                    "summary": "Cargador quitado",
                     "value": {
                       "plugin": {
                         "name": "MySynth",
                         "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                        "installed": false,
+                        "hasLoader": false,
                         "hasVfxinfo": true,
+                        "hasMeta": true,
+                        "hasWizard": true,
+                        "wizardId": "MySynth",
                         "pluginName": null,
                         "warnings": [],
                         "compatible": true,
@@ -1950,8 +2097,11 @@
                       "plugin": {
                         "name": "MySynth",
                         "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                        "installed": true,
+                        "hasLoader": true,
                         "hasVfxinfo": true,
+                        "hasWizard": true,
+                        "wizardId": "MySynth",
+                        "hasMeta": true,
                         "pluginName": "MySynth.dll",
                         "warnings": [],
                         "compatible": true,
@@ -2007,20 +2157,20 @@
             }
           },
           "409": {
-            "description": "No está instalado o falta `vfxinfo.tx_` para restaurar.",
+            "description": "No tiene el cargador o falta `vfxinfo.tx_` para restaurar.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryErrorDto"
                 },
                 "example": {
-                  "message": "MySynth no tiene fxbLoader instalado"
+                  "message": "MySynth no tiene el cargador"
                 }
               }
             }
           }
         },
-        "summary": "Desinstala fxbLoader de un plugin",
+        "summary": "Quita el cargador de un plugin",
         "tags": [
           "library"
         ]
@@ -2039,22 +2189,22 @@
                 "$ref": "#/components/schemas/LibraryBatchRequestDto"
               },
               "examples": {
-                "instalacion": {
-                  "summary": "Instalar varios plugins",
+                "cargador": {
+                  "summary": "Poner el cargador en varios plugins",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
-                    "action": "install",
+                    "action": "add",
                     "plugins": [
                       "MySynth",
                       "GrandPiano"
                     ]
                   }
                 },
-                "reconexion": {
-                  "summary": "Desinstalar varios plugins",
+                "sinCargador": {
+                  "summary": "Quitar el cargador en varios plugins",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
-                    "action": "uninstall",
+                    "action": "remove",
                     "plugins": [
                       "MySynth"
                     ]
@@ -2064,7 +2214,7 @@
                   "summary": "Ver el plan de cada plugin sin escribir (dryRun)",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
-                    "action": "install",
+                    "action": "add",
                     "plugins": [
                       "GrandPiano"
                     ],
@@ -2085,9 +2235,9 @@
                 },
                 "examples": {
                   "aplicado": {
-                    "summary": "Un plugin instalado y otro fallido",
+                    "summary": "Un plugin con el cargador y otro fallido",
                     "value": {
-                      "action": "install",
+                      "action": "add",
                       "dryRun": false,
                       "total": 2,
                       "succeeded": 1,
@@ -2095,13 +2245,16 @@
                       "results": [
                         {
                           "name": "MySynth",
-                          "status": "installed",
+                          "status": "added",
                           "message": null,
                           "entry": {
                             "name": "MySynth",
                             "path": "C:\\VFX\\Library\\plugs\\MySynth",
-                            "installed": true,
+                            "hasLoader": true,
                             "hasVfxinfo": true,
+                            "hasWizard": true,
+                            "wizardId": "MySynth",
+                            "hasMeta": true,
                             "pluginName": "MySynth.dll",
                             "warnings": [],
                             "compatible": true,
@@ -2137,7 +2290,7 @@
                         {
                           "name": "GrandPiano",
                           "status": "failed",
-                          "message": "GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)",
+                          "message": "GrandPiano ya tiene el cargador (usa force para volver a ponerlo)",
                           "entry": null,
                           "actions": []
                         }
@@ -2147,7 +2300,7 @@
                   "dryRun": {
                     "summary": "Solo el plan (`dryRun: true`)",
                     "value": {
-                      "action": "install",
+                      "action": "add",
                       "dryRun": true,
                       "total": 1,
                       "succeeded": 1,
@@ -2160,8 +2313,11 @@
                           "entry": {
                             "name": "GrandPiano",
                             "path": "C:\\VFX\\Library\\plugs\\GrandPiano",
-                            "installed": false,
+                            "hasLoader": false,
                             "hasVfxinfo": true,
+                            "hasWizard": false,
+                            "wizardId": null,
+                            "hasMeta": false,
                             "pluginName": null,
                             "warnings": [],
                             "compatible": true,
@@ -2210,9 +2366,9 @@
                 },
                 "examples": {
                   "actionInvalida": {
-                    "summary": "action que no es install ni uninstall",
+                    "summary": "action que no es add ni remove",
                     "value": {
-                      "message": "action debe ser \"install\" o \"uninstall\""
+                      "message": "action debe ser \"add\" o \"remove\""
                     }
                   },
                   "pluginsVacios": {
@@ -2251,7 +2407,7 @@
             }
           }
         },
-        "summary": "Instala o desinstala varios plugins de una vez",
+        "summary": "Pone o quita el cargador en varios plugins de una vez",
         "tags": [
           "library"
         ]
@@ -2270,11 +2426,11 @@
                 "$ref": "#/components/schemas/LibraryBatchRequestDto"
               },
               "examples": {
-                "instalacion": {
-                  "summary": "Instalar varios plugins",
+                "cargador": {
+                  "summary": "Poner el cargador en varios plugins",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
-                    "action": "install",
+                    "action": "add",
                     "plugins": [
                       "MySynth",
                       "GrandPiano"
@@ -2285,7 +2441,7 @@
                   "summary": "Ver el progreso de un dryRun",
                   "value": {
                     "libraryRoot": "C:\\VFX\\Library",
-                    "action": "uninstall",
+                    "action": "remove",
                     "plugins": [
                       "MySynth"
                     ],
@@ -2304,7 +2460,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "example": "{\"type\":\"start\",\"action\":\"install\",\"dryRun\":false,\"total\":2,\"plugins\":[\"MySynth\",\"GrandPiano\"]}\n{\"type\":\"plugin\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"status\":\"running\",\"message\":null}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"backup\",\"stepIndex\":0,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"copy\",\"stepIndex\":1,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"patch\",\"stepIndex\":2,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"write-config\",\"stepIndex\":3,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"create-dir\",\"stepIndex\":4,\"steps\":5}\n{\"type\":\"plugin\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"status\":\"installed\",\"message\":null}\n{\"type\":\"plugin\",\"index\":1,\"total\":2,\"name\":\"GrandPiano\",\"status\":\"running\",\"message\":null}\n{\"type\":\"plugin\",\"index\":1,\"total\":2,\"name\":\"GrandPiano\",\"status\":\"failed\",\"message\":\"GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)\"}\n{\"type\":\"end\",\"result\":{\"action\":\"install\",\"dryRun\":false,\"total\":2,\"succeeded\":1,\"failed\":1,\"results\":[{\"name\":\"MySynth\",\"status\":\"installed\",\"message\":null,\"entry\":{\"name\":\"MySynth\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\",\"installed\":true,\"hasVfxinfo\":true,\"pluginName\":\"MySynth.dll\",\"warnings\":[],\"compatible\":true,\"compatibilityIssues\":[]},\"actions\":[{\"kind\":\"backup\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\vfxinfo.tx_\",\"detail\":\"copia del vfxinfo.txt original\"},{\"kind\":\"copy\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\fxbLoader.dll\",\"detail\":\"C:\\\\fxbLoader\\\\vst\\\\fxbLoader.dll\"},{\"kind\":\"patch\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\vfxinfo.txt\",\"detail\":\"dll_name: MySynth/fxbLoader.dll\"},{\"kind\":\"write-config\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\fxbLoader.config\",\"detail\":\"pluginName = MySynth.dll\"},{\"kind\":\"create-dir\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\"}]},{\"name\":\"GrandPiano\",\"status\":\"failed\",\"message\":\"GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)\",\"entry\":null,\"actions\":[]}]}}"
+                "example": "{\"type\":\"start\",\"action\":\"add\",\"dryRun\":false,\"total\":2,\"plugins\":[\"MySynth\",\"GrandPiano\"]}\n{\"type\":\"plugin\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"status\":\"running\",\"message\":null}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"backup\",\"stepIndex\":0,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"copy\",\"stepIndex\":1,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"patch\",\"stepIndex\":2,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"write-config\",\"stepIndex\":3,\"steps\":5}\n{\"type\":\"step\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"step\":\"create-dir\",\"stepIndex\":4,\"steps\":5}\n{\"type\":\"plugin\",\"index\":0,\"total\":2,\"name\":\"MySynth\",\"status\":\"added\",\"message\":null}\n{\"type\":\"plugin\",\"index\":1,\"total\":2,\"name\":\"GrandPiano\",\"status\":\"running\",\"message\":null}\n{\"type\":\"plugin\",\"index\":1,\"total\":2,\"name\":\"GrandPiano\",\"status\":\"failed\",\"message\":\"GrandPiano ya tiene el cargador (usa force para volver a ponerlo)\"}\n{\"type\":\"end\",\"result\":{\"action\":\"add\",\"dryRun\":false,\"total\":2,\"succeeded\":1,\"failed\":1,\"results\":[{\"name\":\"MySynth\",\"status\":\"added\",\"message\":null,\"entry\":{\"name\":\"MySynth\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\",\"hasLoader\":true,\"hasVfxinfo\":true,\"hasWizard\":true,\"wizardId\":\"MySynth\",\"hasMeta\":true,\"pluginName\":\"MySynth.dll\",\"warnings\":[],\"compatible\":true,\"compatibilityIssues\":[]},\"actions\":[{\"kind\":\"backup\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\vfxinfo.tx_\",\"detail\":\"copia del vfxinfo.txt original\"},{\"kind\":\"copy\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\fxbLoader.dll\",\"detail\":\"C:\\\\fxbLoader\\\\vst\\\\fxbLoader.dll\"},{\"kind\":\"patch\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\vfxinfo.txt\",\"detail\":\"dll_name: MySynth/fxbLoader.dll\"},{\"kind\":\"write-config\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\fxbLoader.config\",\"detail\":\"pluginName = MySynth.dll\"},{\"kind\":\"create-dir\",\"path\":\"C:\\\\VFX\\\\Library\\\\plugs\\\\MySynth\\\\presets\"}]},{\"name\":\"GrandPiano\",\"status\":\"failed\",\"message\":\"GrandPiano ya tiene el cargador (usa force para volver a ponerlo)\",\"entry\":null,\"actions\":[]}]}}"
               }
             }
           },
@@ -2349,6 +2505,964 @@
         "summary": "Instala o desinstala varios plugins informando del progreso",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/library/inspect-package": {
+      "post": {
+        "description": "Analiza la ruta de origen para detectar plugins y bancos presentes, y evalúa colisiones contra la librería de destino activa.",
+        "operationId": "LibraryController_inspectPackage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectPackageDto"
+              },
+              "examples": {
+                "paquete": {
+                  "summary": "Inspeccionar .vfxlibrary externa",
+                  "value": {
+                    "packagePath": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary",
+                    "targetLibraryRoot": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resumen de plugins y bancos encontrados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectPackageResultDto"
+                },
+                "example": {
+                  "sourcePath": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary\\Novation V-Station demo.vfxlibrary",
+                  "resolvedKind": "vfxlibrary",
+                  "plugins": [
+                    {
+                      "name": "V-Station Demo",
+                      "sourceDir": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary\\plugs\\V-Station Demo",
+                      "dllName": "V-Station.dll",
+                      "hasVfxinfo": true,
+                      "vfxinfoId": 1316377392,
+                      "vfxinfoName": "V-Station Demo",
+                      "fileCount": 2,
+                      "totalSizeBytes": 6256046,
+                      "alreadyExistsInTarget": false,
+                      "matchedWizard": {
+                        "id": "1316377392",
+                        "name": "V-Station Demo",
+                        "vendor": "Novation",
+                        "isSynth": true
+                      }
+                    }
+                  ],
+                  "banks": [
+                    {
+                      "name": "000_Novation V-Station demo.vfxbank",
+                      "sourceDir": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary\\banks\\000_Novation V-Station demo.vfxbank",
+                      "presetCount": 6,
+                      "totalSizeBytes": 31362,
+                      "alreadyExistsInTarget": false,
+                      "chunkPluginId": 1316377392,
+                      "chunkPluginFourCc": "NvS0",
+                      "matchedWizardName": "V-Station Demo",
+                      "isConcordant": true,
+                      "canRepair": true,
+                      "deficiencies": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "La ruta no existe o es inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "packagePath es obligatorio y debe ser una ruta absoluta existente"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El directorio no contiene una estructura reconocible de librería o plugin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "El paquete no contiene subcarpetas plugs/ ni bancos reconocibles"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Inspecciona un paquete externo (.vfxlibrary o carpeta de plugin)",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/import-package": {
+      "post": {
+        "description": "Copia de forma atómica y segura los instrumentos y bancos seleccionados hacia `<targetLibraryRoot>/plugs/` y `<targetLibraryRoot>/banks/`.",
+        "operationId": "LibraryController_importPackage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportPackageDto"
+              },
+              "examples": {
+                "importar": {
+                  "summary": "Importar paquete completo con política skip",
+                  "value": {
+                    "packagePath": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary",
+                    "targetLibraryRoot": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage",
+                    "selectedPlugins": [
+                      "V-Station Demo"
+                    ],
+                    "selectedBanks": [
+                      "000_Novation V-Station demo.vfxbank"
+                    ],
+                    "collisionPolicy": "skip",
+                    "repairBanks": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de la importación con elementos copiados y omitidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPackageResultDto"
+                },
+                "example": {
+                  "targetLibraryRoot": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage",
+                  "importedPlugins": [
+                    "V-Station Demo"
+                  ],
+                  "skippedPlugins": [],
+                  "importedBanks": [
+                    "000_Novation V-Station demo.vfxbank"
+                  ],
+                  "skippedBanks": [],
+                  "repairedBanks": [],
+                  "totalCopiedBytes": 6287408
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rutas o parámetros inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "targetLibraryRoot debe ser una ruta absoluta a una librería VFX"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Importa plugins y bancos desde un paquete externo hacia la librería activa",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/inspect-dll": {
+      "post": {
+        "description": "Analiza la cabecera PE, arquitectura (32/64 bits) y exportaciones como `VSTPluginMain` o `main` sin ejecutar código nativo. Comprueba además si existe un wizard certificado coincidente.",
+        "operationId": "LibraryController_inspectDll",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryInspectDllDto"
+              },
+              "examples": {
+                "inspect": {
+                  "summary": "Inspección de DLL VST de 32 bits",
+                  "value": {
+                    "dllPath": "C:\\Vst\\Synth.dll"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Diagnóstico de la cabecera PE y compatibilidad VST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryInspectDllResponseDto"
+                },
+                "example": {
+                  "validPe": true,
+                  "bitness": 32,
+                  "is32BitCompatible": true,
+                  "isVstPlugin": true,
+                  "vstEntrypoint": "VSTPluginMain",
+                  "internalDllName": "Synth.dll",
+                  "suggestedName": "Synth",
+                  "suggestedId": "1398231096",
+                  "exportedNames": [
+                    "VSTPluginMain"
+                  ],
+                  "issues": [],
+                  "matchingWizard": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "La ruta al DLL es inválida o no es absoluta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "dllPath es obligatorio y debe ser una ruta absoluta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El archivo DLL no existe en disco",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "No existe el archivo DLL: \"C:\\Vst\\Synth.dll\""
+                }
+              }
+            }
+          }
+        },
+        "summary": "Inspecciona estáticamente un archivo DLL para detectar exportaciones VST y compatibilidad PE32",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/create-custom-plugin": {
+      "post": {
+        "description": "Copia el DLL dentro de `<libraryRoot>/plugs/<folderName>/`, genera `vfxinfo.txt` con la identidad VST, crea `presets/` y `fxbLoader.meta.json`, y opcionalmente exporta un `.vfxwizard` en el catálogo local.",
+        "operationId": "LibraryController_createCustomPlugin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreateCustomPluginDto"
+              },
+              "examples": {
+                "crear": {
+                  "summary": "Creación guiada de plugin VST2 personalizado",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "sourceDllPath": "C:\\Vst\\NewSynth.dll",
+                    "folderName": "NewSynth",
+                    "name": "New Synth Pro",
+                    "id": "12345678",
+                    "isSynth": true,
+                    "parameterCount": 32,
+                    "programCount": 16,
+                    "hasEditor": true,
+                    "editorWidth": 800,
+                    "editorHeight": 600,
+                    "vendor": "Custom Audio",
+                    "genre": "Synth",
+                    "saveAsWizard": false,
+                    "overwrite": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de la creación del plugin y rutas de los archivos generados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryCreateCustomPluginResponseDto"
+                },
+                "example": {
+                  "created": true,
+                  "pluginDir": "C:\\VFX\\Library\\plugs\\NewSynth",
+                  "dllRelativePath": "NewSynth/NewSynth.dll",
+                  "vfxinfoPath": "C:\\VFX\\Library\\plugs\\NewSynth\\vfxinfo.txt",
+                  "metaPath": "C:\\VFX\\Library\\plugs\\NewSynth\\fxbLoader.meta.json",
+                  "wizardPath": null,
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o rutas inválidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "folderName debe ser un nombre simple de directorio"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El archivo DLL origen no existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "No existe el archivo DLL origen: \"C:\\Vst\\NewSynth.dll\""
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La carpeta del plugin ya existe y no se especificó overwrite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "Ya existe una carpeta para el plugin en: \"C:\\VFX\\Library\\plugs\\NewSynth\""
+                }
+              }
+            }
+          }
+        },
+        "summary": "Crea un nuevo instrumento o efecto en la librería a partir de un DLL externo sin wizard previo",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/plugins/{id}/log": {
+      "get": {
+        "description": "Lee el archivo activo y rotados concatenados en orden cronológico. Si el archivo aún no existe, devuelve exists: false con lista vacía sin error.",
+        "operationId": "PluginLogController_readLog",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador o nombre de carpeta del plugin.",
+            "schema": {
+              "example": "MySynth",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "required": true,
+            "in": "query",
+            "description": "Directorio absoluto del plugin.",
+            "schema": {
+              "example": "C:\\VFX\\plugs\\MySynth",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot del log del plugin con entradas y texto concatenado. Un plugin sin log responde el mismo 200 con exists: false y listas vacías.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginLogSnapshotDto"
+                },
+                "examples": {
+                  "conEntradas": {
+                    "summary": "Plugin con dos operaciones en el archivo activo",
+                    "value": {
+                      "logPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.log",
+                      "exists": true,
+                      "size": 149,
+                      "totalEntries": 2,
+                      "entries": [
+                        {
+                          "timestamp": "2026-10-24T08:00:00.000Z",
+                          "action": "install",
+                          "summary": "Instalado fxbLoader.dll (MySynth.dll)",
+                          "raw": "[2026-10-24T08:00:00.000Z] [install] Instalado fxbLoader.dll (MySynth.dll)"
+                        },
+                        {
+                          "timestamp": "2026-10-24T08:05:00.000Z",
+                          "action": "import-banks",
+                          "summary": "Importados 2 de 2 banco(s) .fxb",
+                          "raw": "[2026-10-24T08:05:00.000Z] [import-banks] Importados 2 de 2 banco(s) .fxb"
+                        }
+                      ],
+                      "raw": "[2026-10-24T08:00:00.000Z] [install] Instalado fxbLoader.dll (MySynth.dll)\n[2026-10-24T08:05:00.000Z] [import-banks] Importados 2 de 2 banco(s) .fxb\n",
+                      "rotatedFiles": []
+                    }
+                  },
+                  "sinLog": {
+                    "summary": "Plugin que todavía no escribió su log",
+                    "value": {
+                      "logPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.log",
+                      "exists": false,
+                      "size": 0,
+                      "totalEntries": 0,
+                      "entries": [],
+                      "raw": "",
+                      "rotatedFiles": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "dir ausente o inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginLogPathErrorDto"
+                },
+                "example": {
+                  "message": "dir es obligatorio y debe ser una cadena"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Lee el log (fxbLoader.log) de un plugin",
+        "tags": [
+          "plugin-log"
+        ]
+      }
+    },
+    "/wizards": {
+      "get": {
+        "description": "Devuelve el listado paginado de wizards disponibles en el repositorio con filtros de búsqueda por nombre, fabricante o género.",
+        "operationId": "WizardController_list",
+        "parameters": [
+          {
+            "name": "query",
+            "required": false,
+            "in": "query",
+            "description": "Texto a buscar en nombre, fabricante, dll o ID",
+            "schema": {
+              "example": "SuperWave",
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar por género (Synth, Effect, etc.)",
+            "schema": {
+              "example": "Synth",
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Desplazamiento para paginación",
+            "schema": {
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Límite de elementos (1..100)",
+            "schema": {
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado de wizards paginado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardListResponseDto"
+                },
+                "example": {
+                  "total": 1,
+                  "offset": 0,
+                  "limit": 20,
+                  "items": [
+                    {
+                      "id": "1398231096",
+                      "name": "SuperWave P8",
+                      "vendor": "Superwave",
+                      "genre": "Synth",
+                      "nameAbbreviation": "P8",
+                      "isSynth": true,
+                      "dllName": "SuperWave P8/P8.dll",
+                      "hasRegistryKeys": true,
+                      "hasFilesToCopy": false,
+                      "hasDirsToCopy": false,
+                      "hasReadme": false,
+                      "sourcePath": "SuperWave P8_1398231096_Ver 1.6/SuperWave P8_1398231096_Ver 1.6.vfxwizard"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Listar wizards del repositorio",
+        "tags": [
+          "wizards"
+        ]
+      }
+    },
+    "/wizards/match": {
+      "get": {
+        "description": "Busca el mejor wizard disponible para un plugin según su ID VST, nombre o nombre del archivo DLL.",
+        "operationId": "WizardController_match",
+        "parameters": [
+          {
+            "name": "id",
+            "required": false,
+            "in": "query",
+            "description": "ID VST numérico del plugin",
+            "schema": {
+              "example": "1398231096",
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": false,
+            "in": "query",
+            "description": "Nombre del plugin",
+            "schema": {
+              "example": "SuperWave P8",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dllName",
+            "required": false,
+            "in": "query",
+            "description": "Nombre o ruta de la DLL",
+            "schema": {
+              "example": "P8.dll",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wizard coincidente o null si no se encuentra",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardRecordDto"
+                },
+                "example": {
+                  "id": "1398231096",
+                  "name": "SuperWave P8",
+                  "vendor": "Superwave",
+                  "genre": "Synth",
+                  "nameAbbreviation": "P8",
+                  "isSynth": true,
+                  "dllName": "SuperWave P8/P8.dll",
+                  "hasRegistryKeys": true,
+                  "hasFilesToCopy": false,
+                  "hasDirsToCopy": false,
+                  "hasReadme": false,
+                  "sourcePath": "SuperWave P8_1398231096_Ver 1.6/SuperWave P8_1398231096_Ver 1.6.vfxwizard",
+                  "version": "1",
+                  "dllVersion": "1.6",
+                  "hasEditor": true,
+                  "parameterCount": 89,
+                  "programCount": 64,
+                  "editorWidth": 800,
+                  "editorHeight": 529,
+                  "vendorUrl": "http://www.superwavesynths.co.uk",
+                  "vendorType": "Free",
+                  "notes": "Known Issues: None",
+                  "vendorNotes": "SuperWave P8 synthesizer",
+                  "created": "2010-11-12",
+                  "filesToCopy": [],
+                  "dirsToCopy": [],
+                  "filesToCreate": {},
+                  "symlinks": [],
+                  "registryKeys": "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Software\\Superwave]\r\n",
+                  "flags": {},
+                  "readme": null
+                }
+              }
+            }
+          }
+        },
+        "summary": "Buscar wizard coincidente para un plugin",
+        "tags": [
+          "wizards"
+        ]
+      }
+    },
+    "/wizards/{id}": {
+      "get": {
+        "description": "Devuelve toda la información, metadatos, dependencias y claves de registro de un wizard específico.",
+        "operationId": "WizardController_getById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID VST numérico del wizard",
+            "schema": {
+              "example": "1398231096",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalles completos del wizard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardRecordDto"
+                },
+                "example": {
+                  "id": "1398231096",
+                  "name": "SuperWave P8",
+                  "vendor": "Superwave",
+                  "genre": "Synth",
+                  "nameAbbreviation": "P8",
+                  "isSynth": true,
+                  "dllName": "SuperWave P8/P8.dll",
+                  "hasRegistryKeys": true,
+                  "hasFilesToCopy": false,
+                  "hasDirsToCopy": false,
+                  "hasReadme": false,
+                  "sourcePath": "SuperWave P8_1398231096_Ver 1.6/SuperWave P8_1398231096_Ver 1.6.vfxwizard",
+                  "version": "1",
+                  "dllVersion": "1.6",
+                  "hasEditor": true,
+                  "parameterCount": 89,
+                  "programCount": 64,
+                  "editorWidth": 800,
+                  "editorHeight": 529,
+                  "vendorUrl": "http://www.superwavesynths.co.uk",
+                  "vendorType": "Free",
+                  "notes": "Known Issues: None",
+                  "vendorNotes": "SuperWave P8 synthesizer",
+                  "created": "2010-11-12",
+                  "filesToCopy": [],
+                  "dirsToCopy": [],
+                  "filesToCreate": {},
+                  "symlinks": [],
+                  "registryKeys": "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Software\\Superwave]\r\n",
+                  "flags": {},
+                  "readme": null
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No se encontró el wizard con ese ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "Wizard no encontrado con ID: 9999"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Detalles completos de un wizard por su ID",
+        "tags": [
+          "wizards"
+        ]
+      }
+    },
+    "/wizards/apply-meta": {
+      "post": {
+        "description": "Rellena los campos comunes del catálogo extendido (fxbLoader.meta.json) del plugin con la información del wizard.",
+        "operationId": "WizardController_applyMeta",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WizardApplyMetaDto"
+              },
+              "examples": {
+                "ejemplo": {
+                  "summary": "Aplicar metadatos de SuperWave P8",
+                  "value": {
+                    "pluginDir": "C:\\VFX\\plugs\\SuperWave P8",
+                    "wizardId": "1398231096",
+                    "overwriteNotes": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Catálogo actualizado con los datos del wizard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginMetaSnapshotDto"
+                },
+                "example": {
+                  "metaPath": "C:\\VFX\\plugs\\MySynth\\fxbLoader.meta.json",
+                  "exists": true,
+                  "mtimeMs": 1760000000000.123,
+                  "size": 214,
+                  "common": {
+                    "id": "MySy",
+                    "name": "MySynth",
+                    "vendor": "ABD Synths",
+                    "vendor_url": "https://example.invalid/abd",
+                    "genre": "Synth",
+                    "name_abbreviation": "MySy",
+                    "notes": "Rhodes edición 2026",
+                    "created": "2026-01-15"
+                  },
+                  "extended": {
+                    "category": "electric-piano",
+                    "tags": {
+                      "family": "keys"
+                    }
+                  },
+                  "source": {
+                    "vfxinfo": false
+                  },
+                  "updated": "2026-10-24T09:12:03Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta no válida o parámetro ausente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "Se requiere pluginDir"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Aplicar metadatos del wizard al catálogo del plugin",
+        "tags": [
+          "wizards"
+        ]
+      }
+    },
+    "/wizards/create-vfxinfo": {
+      "post": {
+        "description": "Genera el archivo vfxinfo.txt en la carpeta del plugin a partir de los parámetros del wizard certificado.",
+        "operationId": "WizardController_createVfxinfo",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WizardCreateVfxinfoDto"
+              },
+              "examples": {
+                "ejemplo": {
+                  "summary": "Crear vfxinfo.txt para SuperWave P8",
+                  "value": {
+                    "pluginDir": "C:\\VFX\\plugs\\SuperWave P8",
+                    "wizardId": "1398231096",
+                    "force": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de la creación del vfxinfo.txt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardCreateVfxinfoResultDto"
+                },
+                "example": {
+                  "path": "C:\\VFX\\plugs\\SuperWave P8\\vfxinfo.txt",
+                  "created": true,
+                  "backedUp": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ruta no válida o wizard no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "Se requiere pluginDir"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Crear vfxinfo.txt desde un wizard",
+        "tags": [
+          "wizards"
+        ]
+      }
+    },
+    "/wizards/install": {
+      "post": {
+        "description": "Copia el DLL proporcionado por el usuario a la subcarpeta del plugin, genera el archivo vfxinfo.txt certificado, inicializa fxbLoader.meta.json y genera claves de registro si son requeridas.",
+        "operationId": "WizardController_install",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WizardInstallPluginDto"
+              },
+              "examples": {
+                "ejemplo": {
+                  "summary": "Instalar SuperWave P8",
+                  "value": {
+                    "wizardId": "1398231096",
+                    "libraryRoot": "D:\\_banks\\storage",
+                    "dllSourcePath": "C:\\Downloads\\P8.dll",
+                    "pluginFolderName": "SuperWave P8",
+                    "overwrite": false,
+                    "initializeBank": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plugin instalado exitosamente desde el wizard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardInstallPluginResponseDto"
+                },
+                "example": {
+                  "pluginName": "SuperWave P8",
+                  "pluginDir": "D:\\_banks\\storage\\plugs\\SuperWave P8",
+                  "dllName": "SuperWave P8/P8.dll",
+                  "dllPath": "D:\\_banks\\storage\\plugs\\SuperWave P8\\SuperWave P8\\P8.dll",
+                  "isCompatible32Bit": true,
+                  "vfxinfoCreated": true,
+                  "metaCreated": true,
+                  "registryFileCreated": true,
+                  "registryFilePath": "D:\\_banks\\storage\\plugs\\SuperWave P8\\registry_keys.reg",
+                  "requiredFiles": [],
+                  "requiredDirs": [],
+                  "warnings": [],
+                  "readme": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros obligatorios ausentes o DLL inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "El archivo DLL de origen no existe"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No se encontró el wizard especificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "Wizard no encontrado con ID: 1398231096"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El plugin ya existe en destino y no se especificó overwrite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WizardErrorDto"
+                },
+                "example": {
+                  "message": "El plugin \"SuperWave P8\" ya existe en la librería destino. Usa overwrite para sobrescribir."
+                }
+              }
+            }
+          }
+        },
+        "summary": "Instalar un plugin en la librería activa desde un Wizard",
+        "tags": [
+          "wizards"
         ]
       }
     },
@@ -2911,6 +4025,10 @@
     {
       "name": "system",
       "description": "Diálogos nativos y comprobación de rutas de la máquina donde corre el servidor"
+    },
+    {
+      "name": "wizards",
+      "description": "Repositorio de wizards certificados de SM Pro Audio / VFX para plugins VST"
     }
   ],
   "servers": [
@@ -3150,7 +4268,7 @@
           "message": {
             "type": "string",
             "description": "Estado que impide la operación.",
-            "example": "MySynth ya tiene fxbLoader instalado (usa force para reinstalar)"
+            "example": "MySynth ya tiene el cargador (usa force para volver a ponerlo)"
           },
           "current": {
             "description": "Solo si `fxbLoader.config` cambió entre la lectura y la escritura: snapshot vigente.",
@@ -3179,19 +4297,35 @@
             "description": "Ruta absoluta del directorio del plugin.",
             "example": "C:\\VFX\\Library\\plugs\\MySynth"
           },
-          "installed": {
+          "hasLoader": {
             "type": "boolean",
-            "description": "El escaneo del binario marca instalado si existe `fxbLoader.config`.",
+            "description": "El cargador está puesto si existe `fxbLoader.config`.",
             "example": true
           },
           "hasVfxinfo": {
             "type": "boolean",
-            "description": "Existe `vfxinfo.txt`; sin él, instalar responde 422.",
+            "description": "Existe `vfxinfo.txt`; sin él, poner el cargador responde 422.",
             "example": true
+          },
+          "hasWizard": {
+            "type": "boolean",
+            "description": "Existe un wizard oficial coincidente en la base de datos de wizards.",
+            "example": true
+          },
+          "wizardId": {
+            "type": "string",
+            "description": "Identificador del wizard coincidente si existe, o `null`.",
+            "nullable": true,
+            "example": "MySynth"
+          },
+          "hasMeta": {
+            "type": "boolean",
+            "description": "Existe `fxbLoader.meta.json`: el plugin ya tiene catálogo propio, aunque no tenga bancos configurados.",
+            "example": false
           },
           "pluginName": {
             "type": "string",
-            "description": "`pluginName` de `fxbLoader.config`, o `null` si no está instalado.",
+            "description": "`pluginName` de `fxbLoader.config`, o `null` si no tiene el cargador.",
             "nullable": true,
             "example": "MySynth.dll"
           },
@@ -3205,7 +4339,7 @@
           },
           "compatible": {
             "type": "boolean",
-            "description": "`true` si el binario del plugin y el `fxbLoader.dll` instalado son PE32 i386; `false` si es incompatible de forma comprobable (otra arquitectura, archivo vacío, truncado o sin cabecera PE); `null` si el DLL no existe o no se pudo leer.",
+            "description": "`true` si el binario del plugin y el `fxbLoader.dll` copiado son PE32 i386; `false` si es incompatible de forma comprobable (otra arquitectura, archivo vacío, truncado o sin cabecera PE); `null` si el DLL no existe o no se pudo leer.",
             "nullable": true,
             "example": true
           },
@@ -3221,8 +4355,11 @@
         "required": [
           "name",
           "path",
-          "installed",
+          "hasLoader",
           "hasVfxinfo",
+          "hasWizard",
+          "wizardId",
+          "hasMeta",
           "pluginName",
           "warnings",
           "compatible",
@@ -3536,6 +4673,124 @@
         ],
         "additionalProperties": false
       },
+      "PluginBanksSummaryDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "description": "Bancos válidos de la carpeta de presets, con el mismo tope que el panel de bancos (`MAX_REFERENCE_SCAN` archivos).",
+            "example": 2
+          },
+          "names": {
+            "description": "Nombres de esos bancos, en el mismo orden que el panel.",
+            "example": [
+              "Rhodes.fxb",
+              "Strings.fxb"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "names"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryScanPluginDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la carpeta dentro de `plugs\\`; es el identificador que aceptan los demás endpoints.",
+            "example": "MySynth"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta del directorio del plugin.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth"
+          },
+          "hasLoader": {
+            "type": "boolean",
+            "description": "El cargador está puesto si existe `fxbLoader.config`.",
+            "example": true
+          },
+          "hasVfxinfo": {
+            "type": "boolean",
+            "description": "Existe `vfxinfo.txt`; sin él, poner el cargador responde 422.",
+            "example": true
+          },
+          "hasWizard": {
+            "type": "boolean",
+            "description": "Existe un wizard oficial coincidente en la base de datos de wizards.",
+            "example": true
+          },
+          "wizardId": {
+            "type": "string",
+            "description": "Identificador del wizard coincidente si existe, o `null`.",
+            "nullable": true,
+            "example": "MySynth"
+          },
+          "hasMeta": {
+            "type": "boolean",
+            "description": "Existe `fxbLoader.meta.json`: el plugin ya tiene catálogo propio, aunque no tenga bancos configurados.",
+            "example": false
+          },
+          "pluginName": {
+            "type": "string",
+            "description": "`pluginName` de `fxbLoader.config`, o `null` si no tiene el cargador.",
+            "nullable": true,
+            "example": "MySynth.dll"
+          },
+          "warnings": {
+            "description": "Avisos al describir el plugin; no abortan el escaneo.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatible": {
+            "type": "boolean",
+            "description": "`true` si el binario del plugin y el `fxbLoader.dll` copiado son PE32 i386; `false` si es incompatible de forma comprobable (otra arquitectura, archivo vacío, truncado o sin cabecera PE); `null` si el DLL no existe o no se pudo leer.",
+            "nullable": true,
+            "example": true
+          },
+          "compatibilityIssues": {
+            "description": "Motivos de incompatibilidad o de la falta de verificación.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "banks": {
+            "description": "Bancos del plugin en `plugs\\<plugin>\\<programDirName>\\`. Si la carpeta o el `programDirName` no son utilizables, queda a cero y el motivo aparece en `warnings`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginBanksSummaryDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "hasLoader",
+          "hasVfxinfo",
+          "hasWizard",
+          "wizardId",
+          "hasMeta",
+          "pluginName",
+          "warnings",
+          "compatible",
+          "compatibilityIssues",
+          "banks"
+        ],
+        "additionalProperties": false
+      },
       "LibraryScanResponseDto": {
         "type": "object",
         "properties": {
@@ -3550,7 +4805,7 @@
             "example": "C:\\VFX\\Library\\plugs"
           },
           "loader": {
-            "description": "Validación del cargador que se instalaría; si no es PE32 i386, los plugins quedan incompatibles.",
+            "description": "Validación del cargador que se copiaría al plugin; si no es PE32 i386, los plugins quedan incompatibles.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/LoaderDllDto"
@@ -3561,7 +4816,7 @@
             "description": "Solo directorios, ordenados por nombre.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PluginEntryDto"
+              "$ref": "#/components/schemas/LibraryScanPluginDto"
             }
           }
         },
@@ -3573,38 +4828,23 @@
         ],
         "additionalProperties": false
       },
-      "LibraryInstallRequestDto": {
+      "LibraryDllPreferenceRequestDto": {
         "type": "object",
         "properties": {
-          "libraryRoot": {
+          "pluginDir": {
             "type": "string",
-            "description": "Raíz absoluta de la librería.",
-            "example": "C:\\VFX\\Library"
+            "description": "Carpeta absoluta del plugin.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth"
           },
-          "plugin": {
+          "dllName": {
             "type": "string",
-            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
-            "example": "MySynth"
-          },
-          "dllSourcePath": {
-            "type": "string",
-            "description": "DLL a copiar. Si se omite se usa `FXB_LOADER_DLL` y, en último término, `vst\\fxbLoader.dll` del repositorio.",
-            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
-          },
-          "force": {
-            "type": "boolean",
-            "description": "Reinstalar aunque `fxbLoader.config` ya exista (409 sin esto).",
-            "example": false
-          },
-          "dryRun": {
-            "type": "boolean",
-            "description": "Devuelve el plan de `actions` sin tocar el disco.",
-            "example": false
+            "description": "Valor nuevo de `dll_name`: ruta relativa al plugin de la DLL a usar, siempre dentro de la carpeta del plugin.",
+            "example": "Synth64.dll"
           }
         },
         "required": [
-          "libraryRoot",
-          "plugin"
+          "pluginDir",
+          "dllName"
         ],
         "additionalProperties": false
       },
@@ -3639,6 +4879,87 @@
         "required": [
           "kind",
           "path"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryDllPreferenceResponseDto": {
+        "type": "object",
+        "properties": {
+          "pluginDir": {
+            "type": "string",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth"
+          },
+          "previousDllName": {
+            "type": "string",
+            "description": "Valor de `dll_name` antes de guardar; `null` si ya apuntaba al cargador.",
+            "nullable": true,
+            "example": "MySynth/fxbLoader.dll"
+          },
+          "dllName": {
+            "type": "string",
+            "example": "Synth64.dll"
+          },
+          "backupFile": {
+            "type": "string",
+            "description": "Respaldo `vfxinfo.tx_` creado en esta operación, si procede.",
+            "nullable": true,
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "`false` si el `dll_name` ya era el pedido y no se escribió nada.",
+            "example": true
+          },
+          "actions": {
+            "example": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryActionDto"
+            }
+          }
+        },
+        "required": [
+          "pluginDir",
+          "previousDllName",
+          "dllName",
+          "backupFile",
+          "changed",
+          "actions"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryLoaderAddRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          },
+          "dllSourcePath": {
+            "type": "string",
+            "description": "DLL a copiar. Si se omite se usa `FXB_LOADER_DLL` y, en último término, `vst\\fxbLoader.dll` del repositorio.",
+            "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Volver a poner el cargador aunque `fxbLoader.config` ya exista (409 sin esto).",
+            "example": false
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Devuelve el plan de `actions` sin tocar el disco.",
+            "example": false
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin"
         ],
         "additionalProperties": false
       },
@@ -4502,7 +5823,7 @@
         ],
         "additionalProperties": false
       },
-      "LibraryUninstallRequestDto": {
+      "LibraryLoaderRemoveRequestDto": {
         "type": "object",
         "properties": {
           "libraryRoot": {
@@ -4539,10 +5860,10 @@
             "type": "string",
             "description": "Acción aplicada a todos los plugins indicados.",
             "enum": [
-              "install",
-              "uninstall"
+              "add",
+              "remove"
             ],
-            "example": "install"
+            "example": "add"
           },
           "plugins": {
             "description": "Carpetas de `plugs\\`, en el orden de procesado (en serie). Un fallo no detiene el lote: cada uno lleva su resultado. Como máximo 500 por petición.",
@@ -4557,12 +5878,12 @@
           },
           "dllSourcePath": {
             "type": "string",
-            "description": "DLL a copiar en la instalación; como en `install`, si se omite se usa la del repositorio.",
+            "description": "DLL que se copia con el cargador; como en `POST /library/loader/add`, si se omite se usa el del repositorio.",
             "example": "C:\\fxbLoader\\vst\\fxbLoader.dll"
           },
           "force": {
             "type": "boolean",
-            "description": "Reinstalar los que ya tengan `fxbLoader.config`; sin esto, cada uno falla con 409.",
+            "description": "Volver a poner el cargador en los que ya tengan `fxbLoader.config`; sin esto, cada uno falla con 409.",
             "example": false
           },
           "dryRun": {
@@ -4588,14 +5909,14 @@
           },
           "status": {
             "type": "string",
-            "description": "`installed`/`uninstalled` si se aplicó, `planned` si solo se calculó el plan con `dryRun`, `failed` si ese plugin no se pudo operar.",
+            "description": "`added`/`removed` si se aplicó, `planned` si solo se calculó el plan con `dryRun`, `failed` si ese plugin no se pudo operar.",
             "enum": [
-              "installed",
-              "uninstalled",
+              "added",
+              "removed",
               "planned",
               "failed"
             ],
-            "example": "installed"
+            "example": "added"
           },
           "message": {
             "type": "string",
@@ -4636,10 +5957,10 @@
           "action": {
             "type": "string",
             "enum": [
-              "install",
-              "uninstall"
+              "add",
+              "remove"
             ],
-            "example": "install"
+            "example": "add"
           },
           "dryRun": {
             "type": "boolean",
@@ -4679,31 +6000,759 @@
         ],
         "additionalProperties": false
       },
-      "PluginMetaPathErrorDto": {
+      "InspectPackageDto": {
         "type": "object",
         "properties": {
-          "message": {
+          "packagePath": {
             "type": "string",
-            "description": "Explicación del problema de ruta.",
-            "example": "el directorio no existe: C:\\VFX\\plugs\\NoExiste"
+            "description": "Ruta absoluta a la carpeta de la librería o paquete externo (.vfxlibrary)",
+            "example": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary"
+          },
+          "targetLibraryRoot": {
+            "type": "string",
+            "description": "Ruta absoluta de la librería VFX activa (para comprobar si ya existen plugins homónimos)",
+            "example": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage"
           }
         },
         "required": [
-          "message"
+          "packagePath",
+          "targetLibraryRoot"
         ],
         "additionalProperties": false
       },
-      "PluginMetaValidationErrorDto": {
+      "PackagePluginMatchedWizardDto": {
         "type": "object",
         "properties": {
-          "message": {
+          "id": {
             "type": "string",
-            "example": "Metadatos no válidos"
+            "description": "ID VST canónico del wizard",
+            "example": "1316377392"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del plugin según el wizard",
+            "example": "V-Station Demo"
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Fabricante del plugin",
+            "example": "Novation"
+          },
+          "isSynth": {
+            "type": "boolean",
+            "description": "Indica si es un instrumento sintetizador",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "isSynth"
+        ],
+        "additionalProperties": false
+      },
+      "PackagePluginSummaryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin",
+            "example": "V-Station Demo"
+          },
+          "sourceDir": {
+            "type": "string",
+            "description": "Ruta absoluta de origen",
+            "example": "D:\\_banks\\Novation V-Station demo.vfxlibrary\\plugs\\V-Station Demo"
+          },
+          "packageSource": {
+            "type": "string",
+            "description": "Subruta relativa o nombre del paquete contenedor de origen",
+            "example": "Novation V-Station demo.vfxlibrary"
+          },
+          "dllName": {
+            "type": "string",
+            "description": "Nombre del archivo DLL si existe",
+            "example": "V-Station.dll",
+            "nullable": true
+          },
+          "hasVfxinfo": {
+            "type": "boolean",
+            "description": "Indica si contiene archivo vfxinfo.txt",
+            "example": true
+          },
+          "vfxinfoId": {
+            "type": "number",
+            "description": "ID numérico VST leído de vfxinfo.txt",
+            "example": 1316377392,
+            "nullable": true
+          },
+          "vfxinfoName": {
+            "type": "string",
+            "description": "Nombre registrado en vfxinfo.txt",
+            "example": "V-Station Demo",
+            "nullable": true
+          },
+          "fileCount": {
+            "type": "number",
+            "description": "Número de archivos dentro de la carpeta",
+            "example": 2
+          },
+          "totalSizeBytes": {
+            "type": "number",
+            "description": "Tamaño total en bytes",
+            "example": 6256046
+          },
+          "alreadyExistsInTarget": {
+            "type": "boolean",
+            "description": "Indica si ya existe un plugin homónimo en la librería destino",
+            "example": false
+          },
+          "matchedWizard": {
+            "description": "Wizard oficial emparejado si existe en el catálogo",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PackagePluginMatchedWizardDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "sourceDir",
+          "dllName",
+          "hasVfxinfo",
+          "vfxinfoId",
+          "vfxinfoName",
+          "fileCount",
+          "totalSizeBytes",
+          "alreadyExistsInTarget"
+        ],
+        "additionalProperties": false
+      },
+      "PackageBankSummaryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la carpeta del banco",
+            "example": "000_Novation V-Station demo.vfxbank"
+          },
+          "sourceDir": {
+            "type": "string",
+            "description": "Ruta absoluta de origen del banco",
+            "example": "D:\\_banks\\Novation V-Station demo.vfxlibrary\\banks\\000_Novation V-Station demo.vfxbank"
+          },
+          "packageSource": {
+            "type": "string",
+            "description": "Subruta relativa o nombre del paquete contenedor de origen",
+            "example": "Novation V-Station demo.vfxlibrary"
+          },
+          "presetCount": {
+            "type": "number",
+            "description": "Cantidad de presets .vfxpreset dentro del banco",
+            "example": 6
+          },
+          "totalSizeBytes": {
+            "type": "number",
+            "description": "Tamaño total en bytes del banco",
+            "example": 31362
+          },
+          "alreadyExistsInTarget": {
+            "type": "boolean",
+            "description": "Indica si ya existe este banco en la librería destino",
+            "example": false
+          },
+          "chunkPluginId": {
+            "type": "number",
+            "nullable": true,
+            "description": "ID de plugin numérico detectado en los chunks del banco",
+            "example": 1316377392
+          },
+          "chunkPluginFourCc": {
+            "type": "string",
+            "nullable": true,
+            "description": "FourCC textual del plugin detectado en los chunks",
+            "example": "NvS0"
+          },
+          "matchedWizardName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Nombre del wizard oficial emparejado con los presets del banco",
+            "example": "V-Station Demo"
+          },
+          "isConcordant": {
+            "type": "boolean",
+            "description": "Indica si el banco es completamente concordante y no tiene carencias",
+            "example": true
+          },
+          "canRepair": {
+            "type": "boolean",
+            "description": "Indica si las carencias del banco son reparables automáticamente",
+            "example": true
+          },
+          "deficiencies": {
+            "description": "Lista de carencias o advertencias detectadas en los presets",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "sourceDir",
+          "presetCount",
+          "totalSizeBytes",
+          "alreadyExistsInTarget"
+        ],
+        "additionalProperties": false
+      },
+      "InspectPackageResultDto": {
+        "type": "object",
+        "properties": {
+          "sourcePath": {
+            "type": "string",
+            "description": "Ruta canónica resuelta del paquete",
+            "example": "D:\\_banks\\Novation V-Station demo.vfxlibrary\\Novation V-Station demo.vfxlibrary"
+          },
+          "resolvedKind": {
+            "type": "string",
+            "description": "Tipo de estructura detectada",
+            "enum": [
+              "vfxlibrary",
+              "plugin-folder"
+            ],
+            "example": "vfxlibrary"
+          },
+          "plugins": {
+            "description": "Plugins detectados listos para importar",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackagePluginSummaryDto"
+            }
+          },
+          "banks": {
+            "description": "Bancos detectados listos para importar",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageBankSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "sourcePath",
+          "resolvedKind",
+          "plugins",
+          "banks"
+        ],
+        "additionalProperties": false
+      },
+      "ImportPackageDto": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "Ruta absoluta al paquete o carpeta de origen",
+            "example": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\Novation V-Station demo.vfxlibrary"
+          },
+          "targetLibraryRoot": {
+            "type": "string",
+            "description": "Ruta absoluta a la librería de destino",
+            "example": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage"
+          },
+          "selectedPlugins": {
+            "description": "Nombres de los plugins seleccionados para importar (por defecto todos)",
+            "example": [
+              "V-Station Demo"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedBanks": {
+            "description": "Nombres de los bancos seleccionados para importar (por defecto todos)",
+            "example": [
+              "000_Novation V-Station demo.vfxbank"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "collisionPolicy": {
+            "type": "string",
+            "description": "Política en caso de que ya exista en destino",
+            "enum": [
+              "skip",
+              "overwrite"
+            ],
+            "default": "skip",
+            "example": "skip"
+          },
+          "repairBanks": {
+            "type": "boolean",
+            "description": "Si es true, repara y sincroniza automáticamente los IDs y descriptores del banco con el plugin destino al importar",
+            "example": true
+          }
+        },
+        "required": [
+          "packagePath",
+          "targetLibraryRoot"
+        ],
+        "additionalProperties": false
+      },
+      "ImportPackageSkippedItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre del elemento omitido",
+            "example": "V-Station Demo"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo por el que se omitió",
+            "example": "Ya existe en destino"
+          }
+        },
+        "required": [
+          "name",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "ImportPackageResultDto": {
+        "type": "object",
+        "properties": {
+          "targetLibraryRoot": {
+            "type": "string",
+            "description": "Ruta de la librería de destino",
+            "example": "D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage"
+          },
+          "importedPlugins": {
+            "description": "Nombres de los plugins importados exitosamente",
+            "example": [
+              "V-Station Demo"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skippedPlugins": {
+            "description": "Detalle de los plugins omitidos",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPackageSkippedItemDto"
+            }
+          },
+          "importedBanks": {
+            "description": "Nombres de los bancos importados exitosamente",
+            "example": [
+              "000_Novation V-Station demo.vfxbank"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skippedBanks": {
+            "description": "Detalle de los bancos omitidos",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPackageSkippedItemDto"
+            }
+          },
+          "repairedBanks": {
+            "description": "Nombres de los bancos que fueron reparados al importar",
+            "example": [
+              "000_Novation V-Station demo.vfxbank"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalCopiedBytes": {
+            "type": "number",
+            "description": "Total de bytes copiados",
+            "example": 6287408
+          }
+        },
+        "required": [
+          "targetLibraryRoot",
+          "importedPlugins",
+          "skippedPlugins",
+          "importedBanks",
+          "skippedBanks",
+          "totalCopiedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryInspectDllDto": {
+        "type": "object",
+        "properties": {
+          "dllPath": {
+            "type": "string",
+            "description": "Ruta absoluta al archivo DLL a analizar.",
+            "example": "C:\\Vst\\Synth.dll"
+          }
+        },
+        "required": [
+          "dllPath"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryInspectDllMatchingWizardDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "1398231096"
+          },
+          "name": {
+            "type": "string",
+            "example": "SuperWave P8"
+          },
+          "vendor": {
+            "type": "string",
+            "example": "Superwave"
+          },
+          "genre": {
+            "type": "string",
+            "example": "Synth"
+          },
+          "dllName": {
+            "type": "string",
+            "example": "SuperWave P8/P8.dll"
+          },
+          "isSynth": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "genre",
+          "dllName",
+          "isSynth"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryInspectDllResponseDto": {
+        "type": "object",
+        "properties": {
+          "validPe": {
+            "type": "boolean",
+            "description": "Indica si es un ejecutable PE válido.",
+            "example": true
+          },
+          "bitness": {
+            "type": "number",
+            "description": "Arquitectura en bits (32 o 64).",
+            "nullable": true,
+            "example": 32
+          },
+          "is32BitCompatible": {
+            "type": "boolean",
+            "description": "Compatible con hardware VFX Machine (PE32 de 32 bits).",
+            "example": true
+          },
+          "isVstPlugin": {
+            "type": "boolean",
+            "description": "Indica si exporta puntos de entrada VST (VSTPluginMain o main).",
+            "example": true
+          },
+          "vstEntrypoint": {
+            "type": "string",
+            "description": "Punto de entrada VST detectado en la tabla de exportación.",
+            "nullable": true,
+            "example": "VSTPluginMain"
+          },
+          "internalDllName": {
+            "type": "string",
+            "description": "Nombre interno de la DLL declarado en su tabla de exportación.",
+            "nullable": true,
+            "example": "Synth.dll"
+          },
+          "suggestedName": {
+            "type": "string",
+            "description": "Nombre recomendado para el instrumento.",
+            "example": "Synth"
+          },
+          "suggestedId": {
+            "type": "string",
+            "description": "ID VST numérico sugerido.",
+            "example": "1398231096"
+          },
+          "exportedNames": {
+            "description": "Lista de funciones exportadas detectadas en la cabecera PE.",
+            "example": [
+              "VSTPluginMain"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "issues": {
-            "description": "Reglas incumplidas: tipos, claves desconocidas y límites del formato.",
+            "description": "Problemas o avisos de compatibilidad detectados.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "matchingWizard": {
+            "description": "Wizard oficial coincidente en el catálogo si existe.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryInspectDllMatchingWizardDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "validPe",
+          "bitness",
+          "is32BitCompatible",
+          "isVstPlugin",
+          "vstEntrypoint",
+          "internalDllName",
+          "suggestedName",
+          "suggestedId",
+          "exportedNames",
+          "issues",
+          "matchingWizard"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryCreateCustomPluginDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Ruta absoluta a la librería VFX activa.",
+            "example": "C:\\VFX\\Library"
+          },
+          "sourceDllPath": {
+            "type": "string",
+            "description": "Ruta absoluta al archivo DLL de origen.",
+            "example": "C:\\Vst\\NewSynth.dll"
+          },
+          "folderName": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin bajo plugs/.",
+            "example": "NewSynth"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre visible del instrumento o efecto.",
+            "example": "New Synth Pro"
+          },
+          "id": {
+            "type": "string",
+            "description": "ID VST numérico o FourCC de 4 caracteres.",
+            "example": "12345678"
+          },
+          "isSynth": {
+            "type": "boolean",
+            "description": "`true` si es un sintetizador/generador; `false` si es un efecto de audio.",
+            "example": true
+          },
+          "parameterCount": {
+            "type": "number",
+            "description": "Número de parámetros VST (por defecto 16).",
+            "example": 16
+          },
+          "programCount": {
+            "type": "number",
+            "description": "Número de programas / patches VST (por defecto 16).",
+            "example": 16
+          },
+          "hasEditor": {
+            "type": "boolean",
+            "description": "Indica si el plugin dispone de editor gráfico (GUI).",
+            "example": true
+          },
+          "editorWidth": {
+            "type": "number",
+            "description": "Ancho de la ventana de GUI en píxeles.",
+            "example": 800
+          },
+          "editorHeight": {
+            "type": "number",
+            "description": "Alto de la ventana de GUI en píxeles.",
+            "example": 600
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Fabricante o autor del plugin.",
+            "example": "Custom Audio"
+          },
+          "genre": {
+            "type": "string",
+            "description": "Género musical o categoría (ej. Synth, Filter, Reverb).",
+            "example": "Synth"
+          },
+          "saveAsWizard": {
+            "type": "boolean",
+            "description": "Guarda además un archivo .vfxwizard en el catálogo local para reutilizarlo.",
+            "example": false
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Sobrescribe si la carpeta ya existe.",
+            "example": false
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "sourceDllPath",
+          "folderName",
+          "name",
+          "id",
+          "isSynth"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryCreateCustomPluginResponseDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "Indica si la creación se completó con éxito.",
+            "example": true
+          },
+          "pluginDir": {
+            "type": "string",
+            "description": "Ruta absoluta al directorio del plugin instalado.",
+            "example": "C:\\VFX\\Library\\plugs\\NewSynth"
+          },
+          "dllRelativePath": {
+            "type": "string",
+            "description": "Ruta relativa de la DLL dentro del plugin.",
+            "example": "NewSynth/NewSynth.dll"
+          },
+          "vfxinfoPath": {
+            "type": "string",
+            "description": "Ruta al archivo vfxinfo.txt generado.",
+            "example": "C:\\VFX\\Library\\plugs\\NewSynth\\vfxinfo.txt"
+          },
+          "metaPath": {
+            "type": "string",
+            "description": "Ruta al archivo fxbLoader.meta.json generado.",
+            "example": "C:\\VFX\\Library\\plugs\\NewSynth\\fxbLoader.meta.json"
+          },
+          "wizardPath": {
+            "type": "string",
+            "description": "Ruta al wizard guardado en disco si saveAsWizard fue true.",
+            "nullable": true,
+            "example": null
+          },
+          "warnings": {
+            "description": "Avisos o advertencias generadas durante la inspección.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "created",
+          "pluginDir",
+          "dllRelativePath",
+          "vfxinfoPath",
+          "metaPath",
+          "wizardPath",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "PluginLogEntryDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "Marca de tiempo en formato ISO-8601.",
+            "example": "2026-10-24T08:00:00.000Z"
+          },
+          "action": {
+            "type": "string",
+            "description": "Acción realizada.",
+            "example": "install"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Resumen legible de la operación.",
+            "example": "Instalado fxbLoader.dll"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detalle opcional de la operación.",
+            "example": "presets/Piano.fxb"
+          },
+          "raw": {
+            "type": "string",
+            "description": "Línea en bruto tal como se escribió en el archivo.",
+            "example": "[2026-10-24T08:00:00.000Z] [install] Instalado fxbLoader.dll"
+          }
+        },
+        "required": [
+          "timestamp",
+          "action",
+          "summary",
+          "raw"
+        ],
+        "additionalProperties": false
+      },
+      "PluginLogSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "logPath": {
+            "type": "string",
+            "description": "Ruta absoluta del archivo fxbLoader.log activo.",
+            "example": "C:\\VFX\\plugs\\MySynth\\fxbLoader.log"
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "Indica si existe el archivo activo o algún archivo rotado.",
+            "example": true
+          },
+          "size": {
+            "type": "number",
+            "description": "Tamaño en bytes del archivo activo.",
+            "example": 156
+          },
+          "totalEntries": {
+            "type": "number",
+            "description": "Total de entradas registradas acumuladas.",
+            "example": 2
+          },
+          "entries": {
+            "description": "Lista de entradas de log parsedas.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginLogEntryDto"
+            }
+          },
+          "raw": {
+            "type": "string",
+            "description": "Texto concatenado completo del log activo y rotados.",
+            "example": "[2026-10-24T08:00:00.000Z] [install] Instalado fxbLoader.dll\n"
+          },
+          "rotatedFiles": {
+            "description": "Nombres de archivos rotados existentes (.log.1 ... .log.7).",
             "example": [
-              "common.id: no puede estar vacío"
+              "fxbLoader.log.1"
             ],
             "type": "array",
             "items": {
@@ -4712,8 +6761,388 @@
           }
         },
         "required": [
-          "message",
-          "issues"
+          "logPath",
+          "exists",
+          "size",
+          "totalEntries",
+          "entries",
+          "raw",
+          "rotatedFiles"
+        ],
+        "additionalProperties": false
+      },
+      "PluginLogPathErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Explicación del problema con el directorio.",
+            "example": "dir es obligatorio y debe ser una cadena"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "WizardSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador único VST del plugin",
+            "example": "1398231096"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del plugin en el wizard",
+            "example": "SuperWave P8"
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Fabricante del plugin",
+            "example": "Superwave"
+          },
+          "genre": {
+            "type": "string",
+            "description": "Categoría o género",
+            "example": "Synth"
+          },
+          "nameAbbreviation": {
+            "type": "string",
+            "description": "Abreviatura para pantalla LCD",
+            "example": "P8"
+          },
+          "isSynth": {
+            "type": "boolean",
+            "description": "Indica si es un sintetizador/instrumento",
+            "example": true
+          },
+          "dllName": {
+            "type": "string",
+            "description": "Ruta relativa del DLL",
+            "example": "SuperWave P8/P8.dll"
+          },
+          "hasRegistryKeys": {
+            "type": "boolean",
+            "description": "Indica si incluye claves de registro de Windows",
+            "example": true
+          },
+          "hasFilesToCopy": {
+            "type": "boolean",
+            "description": "Indica si especifica archivos a copiar",
+            "example": false
+          },
+          "hasDirsToCopy": {
+            "type": "boolean",
+            "description": "Indica si especifica directorios a copiar",
+            "example": false
+          },
+          "hasReadme": {
+            "type": "boolean",
+            "description": "Indica si dispone de archivo de instrucciones readme.txt",
+            "example": false
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "Ruta relativa de origen dentro del repositorio",
+            "example": "SuperWave P8_1398231096_Ver 1.6/SuperWave P8_1398231096_Ver 1.6.vfxwizard"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "genre",
+          "nameAbbreviation",
+          "isSynth",
+          "dllName",
+          "hasRegistryKeys",
+          "hasFilesToCopy",
+          "hasDirsToCopy",
+          "hasReadme",
+          "sourcePath"
+        ],
+        "additionalProperties": false
+      },
+      "WizardListResponseDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "Número total de wizards que coinciden con el filtro",
+            "example": 1
+          },
+          "offset": {
+            "type": "number",
+            "description": "Desplazamiento aplicado",
+            "example": 0
+          },
+          "limit": {
+            "type": "number",
+            "description": "Límite de resultados",
+            "example": 20
+          },
+          "items": {
+            "description": "Lista de resúmenes de wizards",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WizardSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "WizardRecordDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador único VST del plugin",
+            "example": "1398231096"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del plugin en el wizard",
+            "example": "SuperWave P8"
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Fabricante del plugin",
+            "example": "Superwave"
+          },
+          "genre": {
+            "type": "string",
+            "description": "Categoría o género",
+            "example": "Synth"
+          },
+          "nameAbbreviation": {
+            "type": "string",
+            "description": "Abreviatura para pantalla LCD",
+            "example": "P8"
+          },
+          "isSynth": {
+            "type": "boolean",
+            "description": "Indica si es un sintetizador/instrumento",
+            "example": true
+          },
+          "dllName": {
+            "type": "string",
+            "description": "Ruta relativa del DLL",
+            "example": "SuperWave P8/P8.dll"
+          },
+          "hasRegistryKeys": {
+            "type": "boolean",
+            "description": "Indica si incluye claves de registro de Windows",
+            "example": true
+          },
+          "hasFilesToCopy": {
+            "type": "boolean",
+            "description": "Indica si especifica archivos a copiar",
+            "example": false
+          },
+          "hasDirsToCopy": {
+            "type": "boolean",
+            "description": "Indica si especifica directorios a copiar",
+            "example": false
+          },
+          "hasReadme": {
+            "type": "boolean",
+            "description": "Indica si dispone de archivo de instrucciones readme.txt",
+            "example": false
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "Ruta relativa de origen dentro del repositorio",
+            "example": "SuperWave P8_1398231096_Ver 1.6/SuperWave P8_1398231096_Ver 1.6.vfxwizard"
+          },
+          "version": {
+            "type": "string",
+            "description": "Versión del wizard",
+            "example": "1"
+          },
+          "dllVersion": {
+            "type": "string",
+            "description": "Versión del DLL",
+            "example": "1.6"
+          },
+          "hasEditor": {
+            "type": "boolean",
+            "description": "Dispone de editor gráfico propio",
+            "example": true
+          },
+          "parameterCount": {
+            "type": "number",
+            "description": "Número de parámetros del VST",
+            "example": 89
+          },
+          "programCount": {
+            "type": "number",
+            "description": "Número de programas/presets del VST",
+            "example": 64
+          },
+          "editorWidth": {
+            "type": "number",
+            "description": "Ancho del editor en píxeles",
+            "example": 800
+          },
+          "editorHeight": {
+            "type": "number",
+            "description": "Alto del editor en píxeles",
+            "example": 529
+          },
+          "vendorUrl": {
+            "type": "string",
+            "description": "URL del fabricante",
+            "example": "http://www.superwavesynths.co.uk"
+          },
+          "vendorType": {
+            "type": "string",
+            "description": "Tipo de distribución (Free, Commercial, etc.)",
+            "example": "Free"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notas de uso, rendimiento y problemas conocidos",
+            "example": "Known Issues: None"
+          },
+          "vendorNotes": {
+            "type": "string",
+            "description": "Notas descriptivas del fabricante",
+            "example": "SuperWave P8 synthesizer"
+          },
+          "created": {
+            "type": "string",
+            "description": "Fecha de creación del wizard",
+            "example": "2010-11-12"
+          },
+          "filesToCopy": {
+            "description": "Lista de archivos a copiar",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dirsToCopy": {
+            "description": "Lista de directorios a copiar",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filesToCreate": {
+            "type": "object",
+            "description": "Archivos de configuración a crear (nombre -> contenido)",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {}
+          },
+          "symlinks": {
+            "description": "Enlaces simbólicos requeridos",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registryKeys": {
+            "type": "string",
+            "description": "Bloque REGEDIT4 con las claves de registro",
+            "example": "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Software\\Superwave]\r\n"
+          },
+          "flags": {
+            "type": "object",
+            "description": "Banderas técnicas adicionales del wizard",
+            "additionalProperties": true,
+            "example": {}
+          },
+          "readme": {
+            "type": "string",
+            "description": "Instrucciones del archivo readme.txt si existe",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "genre",
+          "nameAbbreviation",
+          "isSynth",
+          "dllName",
+          "hasRegistryKeys",
+          "hasFilesToCopy",
+          "hasDirsToCopy",
+          "hasReadme",
+          "sourcePath",
+          "version",
+          "dllVersion",
+          "hasEditor",
+          "parameterCount",
+          "programCount",
+          "editorWidth",
+          "editorHeight",
+          "vendorUrl",
+          "vendorType",
+          "notes",
+          "vendorNotes",
+          "created",
+          "filesToCopy",
+          "dirsToCopy",
+          "filesToCreate",
+          "symlinks",
+          "registryKeys",
+          "flags",
+          "readme"
+        ],
+        "additionalProperties": false
+      },
+      "WizardErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Descripción legible del error",
+            "example": "Wizard no encontrado con ID: 9999"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "WizardApplyMetaDto": {
+        "type": "object",
+        "properties": {
+          "pluginDir": {
+            "type": "string",
+            "description": "Directorio absoluto del plugin en plugs\\",
+            "example": "C:\\VFX\\plugs\\SuperWave P8"
+          },
+          "wizardId": {
+            "type": "string",
+            "description": "ID VST del wizard a aplicar. Si se omite, se deduce automáticamente.",
+            "example": "1398231096"
+          },
+          "overwriteNotes": {
+            "type": "boolean",
+            "description": "Si es true, sobrescribe las notas existentes en el catálogo",
+            "default": false,
+            "example": false
+          }
+        },
+        "required": [
+          "pluginDir"
         ],
         "additionalProperties": false
       },
@@ -4851,6 +7280,235 @@
           "extended",
           "source",
           "updated"
+        ],
+        "additionalProperties": false
+      },
+      "WizardCreateVfxinfoDto": {
+        "type": "object",
+        "properties": {
+          "pluginDir": {
+            "type": "string",
+            "description": "Directorio absoluto del plugin en plugs\\",
+            "example": "C:\\VFX\\plugs\\SuperWave P8"
+          },
+          "wizardId": {
+            "type": "string",
+            "description": "ID VST del wizard a usar. Si se omite, se deduce automáticamente.",
+            "example": "1398231096"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Si es true y vfxinfo.txt ya existe, crea respaldo vfxinfo.tx_ y lo sobrescribe",
+            "default": false,
+            "example": false
+          }
+        },
+        "required": [
+          "pluginDir"
+        ],
+        "additionalProperties": false
+      },
+      "WizardCreateVfxinfoResultDto": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Ruta del archivo vfxinfo.txt creado o existente",
+            "example": "C:\\VFX\\plugs\\SuperWave P8\\vfxinfo.txt"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "Indica si el archivo fue creado en esta llamada",
+            "example": true
+          },
+          "backedUp": {
+            "type": "boolean",
+            "description": "Indica si se creó un respaldo vfxinfo.tx_",
+            "example": false
+          }
+        },
+        "required": [
+          "path",
+          "created",
+          "backedUp"
+        ],
+        "additionalProperties": false
+      },
+      "WizardInstallPluginDto": {
+        "type": "object",
+        "properties": {
+          "wizardId": {
+            "type": "string",
+            "description": "ID VST del wizard oficial a instalar",
+            "example": "1398231096"
+          },
+          "libraryRoot": {
+            "type": "string",
+            "description": "Ruta absoluta a la librería de destino",
+            "example": "D:\\_banks\\storage"
+          },
+          "dllSourcePath": {
+            "type": "string",
+            "description": "Ruta absoluta al binario .dll original del usuario",
+            "example": "C:\\Downloads\\P8.dll"
+          },
+          "pluginFolderName": {
+            "type": "string",
+            "description": "Nombre de la subcarpeta del plugin dentro de plugs\\. Si se omite, se usa el nombre del wizard.",
+            "example": "SuperWave P8"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Si es true y la carpeta del plugin ya existe, sobrescribe los archivos",
+            "default": false,
+            "example": false
+          },
+          "initializeBank": {
+            "type": "boolean",
+            "description": "Si es true, inicializa la subcarpeta presets\\ para bancos FXB",
+            "default": true,
+            "example": true
+          }
+        },
+        "required": [
+          "wizardId",
+          "libraryRoot",
+          "dllSourcePath"
+        ],
+        "additionalProperties": false
+      },
+      "WizardInstallPluginResponseDto": {
+        "type": "object",
+        "properties": {
+          "pluginName": {
+            "type": "string",
+            "description": "Nombre del plugin instalado",
+            "example": "SuperWave P8"
+          },
+          "pluginDir": {
+            "type": "string",
+            "description": "Ruta absoluta de la carpeta creada para el plugin",
+            "example": "D:\\_banks\\storage\\plugs\\SuperWave P8"
+          },
+          "dllName": {
+            "type": "string",
+            "description": "Nombre o ruta relativa del DLL según el wizard",
+            "example": "SuperWave P8/P8.dll"
+          },
+          "dllPath": {
+            "type": "string",
+            "description": "Ruta absoluta donde se copió el DLL",
+            "example": "D:\\_banks\\storage\\plugs\\SuperWave P8\\SuperWave P8\\P8.dll"
+          },
+          "isCompatible32Bit": {
+            "type": "boolean",
+            "description": "Indica si el binario DLL es un ejecutable PE32 i386 válido de 32 bits",
+            "example": true
+          },
+          "vfxinfoCreated": {
+            "type": "boolean",
+            "description": "Indica si se generó vfxinfo.txt certificado",
+            "example": true
+          },
+          "metaCreated": {
+            "type": "boolean",
+            "description": "Indica si se creó fxbLoader.meta.json con metadatos del wizard",
+            "example": true
+          },
+          "registryFileCreated": {
+            "type": "boolean",
+            "description": "Indica si se generó el archivo registry_keys.reg con claves de Windows",
+            "example": true
+          },
+          "registryFilePath": {
+            "type": "string",
+            "description": "Ruta del archivo registry_keys.reg creado si el wizard incluye claves de registro",
+            "nullable": true,
+            "example": "D:\\_banks\\storage\\plugs\\SuperWave P8\\registry_keys.reg"
+          },
+          "requiredFiles": {
+            "description": "Lista de archivos adicionales requeridos según el wizard",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredDirs": {
+            "description": "Lista de carpetas adicionales requeridas según el wizard",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Lista de avisos o advertencias sobre el binario o dependencias",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "readme": {
+            "type": "string",
+            "description": "Instrucciones adicionales del archivo readme.txt si las incluye el wizard",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "pluginName",
+          "pluginDir",
+          "dllName",
+          "dllPath",
+          "isCompatible32Bit",
+          "vfxinfoCreated",
+          "metaCreated",
+          "registryFileCreated",
+          "registryFilePath",
+          "requiredFiles",
+          "requiredDirs",
+          "warnings",
+          "readme"
+        ],
+        "additionalProperties": false
+      },
+      "PluginMetaPathErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Explicación del problema de ruta.",
+            "example": "el directorio no existe: C:\\VFX\\plugs\\NoExiste"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "PluginMetaValidationErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Metadatos no válidos"
+          },
+          "issues": {
+            "description": "Reglas incumplidas: tipos, claves desconocidas y límites del formato.",
+            "example": [
+              "common.id: no puede estar vacío"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "message",
+          "issues"
         ],
         "additionalProperties": false
       },

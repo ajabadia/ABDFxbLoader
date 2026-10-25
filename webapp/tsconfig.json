@@ -22,5 +22,5 @@
   // ficheros no pueden pasar por la configuración del servidor, que no tiene
   // lib DOM. Los que sí son puros (batch, bank-import, recents) se incluyen al
   // importarlos desde `src/client/index.ts`.
-  "exclude": ["src/ui/browser"]
+  "exclude": ["src/ui/browser", "src/ui/table.ts"]
 }

@@ -2,11 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "./dist-test"
+    "outDir": "./dist-test",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
-  // La UI de navegador se compila aparte (tsconfig.ui.json): usa DOM y no
-  // forma parte del servidor. `src/ui/batch.ts` sí se compila: lo prueban los
-  // tests sin tocar el DOM.
-  "exclude": ["src/ui/browser"]
+  // La UI de navegador que toca el DOM (`main.ts` y `dom.ts`) se compila
+  // aparte (tsconfig.ui.json). El resto sí entra: `src/ui/batch.ts` y
+  // `src/ui/browser/api.ts` no usan DOM y los prueban los tests.
+  "exclude": ["src/ui/browser/main.ts", "src/ui/browser/dom.ts"]
 }

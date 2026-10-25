@@ -76,30 +76,30 @@ test('POST /library/batch instala varios plugins y devuelve el resultado de cada
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Bass'],
       dllSourcePath: lib.dllSource,
     })
     .expect(200);
 
-  assert.equal(response.body.action, 'install');
+  assert.equal(response.body.action, 'add');
   assert.equal(response.body.dryRun, false);
   assert.equal(response.body.total, 2);
   assert.equal(response.body.succeeded, 2);
   assert.equal(response.body.failed, 0);
   assert.deepEqual(statuses(response.body), [
-    ['Synth', 'installed'],
-    ['Bass', 'installed'],
+    ['Synth', 'added'],
+    ['Bass', 'added'],
   ]);
 
   for (const result of response.body.results as {
     name: string;
     message: string | null;
-    entry: { installed: boolean; pluginName: string | null };
+    entry: { hasLoader: boolean; pluginName: string | null };
     actions: { kind: string }[];
   }[]) {
     assert.equal(result.message, null);
-    assert.equal(result.entry.installed, true);
+    assert.equal(result.entry.hasLoader, true);
     assert.equal(result.entry.pluginName, `${result.name}.dll`);
     assert.deepEqual(
       result.actions.map((action) => action.kind),
@@ -124,7 +124,7 @@ test('POST /library/batch conserva el orden y un fallo no detiene el lote', asyn
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Fantasma', 'Synth', '../Fuera'],
       dllSourcePath: lib.dllSource,
     })
@@ -135,13 +135,13 @@ test('POST /library/batch conserva el orden y un fallo no detiene el lote', asyn
   assert.equal(response.body.failed, 2);
   assert.deepEqual(statuses(response.body), [
     ['Fantasma', 'failed'],
-    ['Synth', 'installed'],
+    ['Synth', 'added'],
     ['../Fuera', 'failed'],
   ]);
 
   const [missing, installed, traversal] = response.body.results as {
     message: string | null;
-    entry: { installed: boolean } | null;
+    entry: { hasLoader: boolean } | null;
     actions: unknown[];
   }[];
   assert.match(missing?.message ?? '', /no existe el plugin "Fantasma"/);
@@ -149,7 +149,7 @@ test('POST /library/batch conserva el orden y un fallo no detiene el lote', asyn
   assert.deepEqual(missing?.actions, []);
   assert.match(traversal?.message ?? '', /nombre de plugin no válido/);
   assert.equal(installed?.message, null, 'el resultado correcto no lleva mensaje');
-  assert.equal(installed?.entry?.installed, true);
+  assert.equal(installed?.entry?.hasLoader, true);
 
   // El plugin bueno sí quedó instalado y no se creó nada para los fallidos.
   assert.equal(existsSync(path.join(lib.pluginDir('Synth'), FXB_CONFIG_FILENAME)), true);
@@ -162,7 +162,7 @@ test('POST /library/batch conserva el orden y un fallo no detiene el lote', asyn
 
 test('POST /library/batch reinstala con force y sin él devuelve 409 por plugin', async (t) => {
   const lib = await makeLibrary(t);
-  const batch = { libraryRoot: lib.root, action: 'install', plugins: ['Synth', 'Bass'], dllSourcePath: lib.dllSource };
+  const batch = { libraryRoot: lib.root, action: 'add', plugins: ['Synth', 'Bass'], dllSourcePath: lib.dllSource };
 
   await http().post('/library/batch').send(batch).expect(200);
 
@@ -173,14 +173,14 @@ test('POST /library/batch reinstala con force y sin él devuelve 409 por plugin'
     ['Bass', 'failed'],
   ]);
   for (const result of conflicted.body.results as { message: string | null }[]) {
-    assert.match(result.message ?? '', /ya tiene fxbLoader instalado \(usa force para reinstalar\)/);
+    assert.match(result.message ?? '', /ya tiene el cargador \(usa force para volver a ponerlo\)/);
   }
 
   const forced = await http().post('/library/batch').send({ ...batch, force: true }).expect(200);
   assert.equal(forced.body.failed, 0);
   assert.deepEqual(statuses(forced.body), [
-    ['Synth', 'installed'],
-    ['Bass', 'installed'],
+    ['Synth', 'added'],
+    ['Bass', 'added'],
   ]);
   // El respaldo de la reinstalación sigue siendo el original.
   for (const name of ['Synth', 'Bass']) {
@@ -195,7 +195,7 @@ test('POST /library/batch con dryRun devuelve el plan de cada plugin sin escribi
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Bass'],
       dllSourcePath: lib.dllSource,
       dryRun: true,
@@ -211,7 +211,7 @@ test('POST /library/batch con dryRun devuelve el plan de cada plugin sin escribi
     (dry.body.results[0].actions as { kind: string }[]).map((action) => action.kind),
     ['backup', 'copy', 'patch', 'write-config', 'create-dir'],
   );
-  assert.equal(dry.body.results[0].entry.installed, false);
+  assert.equal(dry.body.results[0].entry.hasLoader, false);
 
   // Nada en el disco.
   for (const name of ['Synth', 'Bass']) {
@@ -225,12 +225,12 @@ test('POST /library/batch con dryRun devuelve el plan de cada plugin sin escribi
   // Como no dejó estado, la instalación real sigue funcionando.
   await http()
     .post('/library/batch')
-    .send({ libraryRoot: lib.root, action: 'install', plugins: ['Synth'], dllSourcePath: lib.dllSource })
+    .send({ libraryRoot: lib.root, action: 'add', plugins: ['Synth'], dllSourcePath: lib.dllSource })
     .expect(200);
 
   const dryUninstall = await http()
     .post('/library/batch')
-    .send({ libraryRoot: lib.root, action: 'uninstall', plugins: ['Synth'], dryRun: true })
+    .send({ libraryRoot: lib.root, action: 'remove', plugins: ['Synth'], dryRun: true })
     .expect(200);
   assert.equal(dryUninstall.body.dryRun, true);
   assert.deepEqual(statuses(dryUninstall.body), [['Synth', 'planned']]);
@@ -245,18 +245,18 @@ test('POST /library/batch desinstala varios plugins y restaura cada vfxinfo', as
   const lib = await makeLibrary(t);
   await http()
     .post('/library/batch')
-    .send({ libraryRoot: lib.root, action: 'install', plugins: ['Synth', 'Bass'], dllSourcePath: lib.dllSource })
+    .send({ libraryRoot: lib.root, action: 'add', plugins: ['Synth', 'Bass'], dllSourcePath: lib.dllSource })
     .expect(200);
 
   const response = await http()
     .post('/library/batch')
-    .send({ libraryRoot: lib.root, action: 'uninstall', plugins: ['Synth', 'Bass'] })
+    .send({ libraryRoot: lib.root, action: 'remove', plugins: ['Synth', 'Bass'] })
     .expect(200);
 
-  assert.equal(response.body.action, 'uninstall');
+  assert.equal(response.body.action, 'remove');
   assert.deepEqual(statuses(response.body), [
-    ['Synth', 'uninstalled'],
-    ['Bass', 'uninstalled'],
+    ['Synth', 'removed'],
+    ['Bass', 'removed'],
   ]);
   assert.deepEqual(
     (response.body.results[0].actions as { kind: string }[]).map((action) => action.kind),
@@ -274,21 +274,21 @@ test('POST /library/batch desinstala varios plugins y restaura cada vfxinfo', as
   // Desinstalar otra vez: cada plugin falla por su cuenta, sin cancelar el lote.
   const again = await http()
     .post('/library/batch')
-    .send({ libraryRoot: lib.root, action: 'uninstall', plugins: ['Synth', 'Bass'] })
+    .send({ libraryRoot: lib.root, action: 'remove', plugins: ['Synth', 'Bass'] })
     .expect(200);
   assert.equal(again.body.failed, 2);
-  assert.match(again.body.results[0].message, /Synth no tiene fxbLoader instalado/);
+  assert.match(again.body.results[0].message, /Synth no tiene el cargador/);
 });
 
 test('POST /library/batch rechaza la petición entera si el lote no es válido', async (t) => {
   const lib = await makeLibrary(t);
-  const batch = { libraryRoot: lib.root, action: 'install', plugins: ['Synth'], dllSourcePath: lib.dllSource };
+  const batch = { libraryRoot: lib.root, action: 'add', plugins: ['Synth'], dllSourcePath: lib.dllSource };
 
   const badAction = await http()
     .post('/library/batch')
     .send({ ...batch, action: 'borrar' })
     .expect(400);
-  assert.match(badAction.body.message, /action debe ser "install" o "uninstall"/);
+  assert.match(badAction.body.message, /action debe ser "add" o "remove"/);
 
   const empty = await http()
     .post('/library/batch')
@@ -321,7 +321,7 @@ test('POST /library/batch rechaza un lote por encima del tope sin tocar ningún 
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: tooMany,
       dllSourcePath: lib.dllSource,
     })
@@ -339,7 +339,7 @@ test('POST /library/batch rechaza un lote por encima del tope sin tocar ningún 
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: atLimit,
       dllSourcePath: lib.dllSource,
     })
@@ -349,7 +349,7 @@ test('POST /library/batch rechaza un lote por encima del tope sin tocar ningún 
   assert.equal(accepted.body.succeeded, 1);
   assert.equal(accepted.body.failed, MAX_PLUGINS_PER_BATCH - 1);
   assert.equal(accepted.body.results[0].name, 'Synth');
-  assert.equal(accepted.body.results[0].status, 'installed');
+  assert.equal(accepted.body.results[0].status, 'added');
   assert.equal(accepted.body.results[1].name, 'Extra0');
   assert.equal(accepted.body.results[1].status, 'failed');
 });
@@ -363,7 +363,7 @@ test('POST /library/batch con un cargador que no es PE32 no toca ningún plugin'
     .post('/library/batch')
     .send({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Bass'],
       dllSourcePath: wrongLoader,
     })

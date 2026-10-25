@@ -43,6 +43,8 @@ import {
   LIBRARY_DISCARD_NO_BACKUP_EXAMPLE,
   LIBRARY_DISCARD_TRASH_ERROR_EXAMPLE,
   LIBRARY_DLL_ERROR_EXAMPLE,
+  LIBRARY_DLL_PREFERENCE_ERROR_EXAMPLE,
+  LIBRARY_DLL_PREFERENCE_EXAMPLE,
   LIBRARY_EXPORT_EXAMPLE,
   LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
   LIBRARY_IMPORT_EXAMPLE,
@@ -53,10 +55,10 @@ import {
   LIBRARY_INSPECT_INVALID_EXAMPLE,
   LIBRARY_INSPECT_PATH_ERROR_EXAMPLE,
   LIBRARY_INSPECT_WITHOUT_PLUGIN_EXAMPLE,
-  LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
-  LIBRARY_INSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
-  LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+  LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE,
+  LIBRARY_LOADER_ADD_EXAMPLE,
   LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
   LIBRARY_LIBRARY_MISSING_ERROR_EXAMPLE,
   LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
@@ -66,9 +68,13 @@ import {
   LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
   LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
-  LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_UNINSTALL_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_EXAMPLE,
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
+  LIBRARY_CREATE_CUSTOM_PLUGIN_EXAMPLE,
+  LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE,
+  LIBRARY_INSPECT_DLL_EXAMPLE,
+  LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE,
   LibraryBankConvertRequestDto,
   LibraryBankConvertResponseDto,
   LibraryBankDiscardBackupRequestDto,
@@ -87,18 +93,25 @@ import {
   LibraryBatchRequestDto,
   LibraryBatchResponseDto,
   LibraryConflictErrorDto,
+  LibraryCreateCustomPluginDto,
+  LibraryCreateCustomPluginResponseDto,
+  LibraryDllPreferenceRequestDto,
+  LibraryDllPreferenceResponseDto,
   LibraryErrorDto,
-  LibraryInstallRequestDto,
+  LibraryInspectDllDto,
+  LibraryInspectDllResponseDto,
+  LibraryLoaderAddRequestDto,
   LibraryOperationResponseDto,
   LibraryScanRequestDto,
   LibraryScanResponseDto,
-  LibraryUninstallRequestDto,
+  LibraryLoaderRemoveRequestDto,
 } from './library.dto';
 import { defaultLoaderDllPath } from './loader-dll';
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import type { BankImportStreamEvent } from '../client/bank-import-stream';
 import { LibraryService } from './library.service';
 import {
+  DllPreferenceError,
   LibraryOperationError,
   LibraryPathError,
   PluginNotFoundError,
@@ -209,8 +222,8 @@ function readBankImportInput(body: Record<string, unknown>): BankImportInput {
 
 function readBatchAction(body: Record<string, unknown>): BatchAction {
   const value = body['action'];
-  if (value === 'install' || value === 'uninstall') return value;
-  throw new BadRequestException('action debe ser "install" o "uninstall"');
+  if (value === 'add' || value === 'remove') return value;
+  throw new BadRequestException('action debe ser "add" o "remove"');
 }
 
 function readBatchPlugins(body: Record<string, unknown>): string[] {
@@ -240,6 +253,11 @@ function readBatchInput(body: Record<string, unknown>): BatchInput {
 }
 
 function mapDomainError(error: unknown): never {
+  if (error instanceof DllPreferenceError) {
+    // La preferencia inválida es un contenido rechazable del cliente: como
+    // `vfxinfo.txt` sin `dll_name`, es 422 y no 400.
+    throw new UnprocessableEntityException({ message: error.message });
+  }
   if (error instanceof PluginNotFoundError) {
     throw new NotFoundException({ message: error.message });
   }
@@ -259,11 +277,26 @@ function mapDomainError(error: unknown): never {
   throw error;
 }
 
+import { LibraryImportService } from './library-import.service';
+import {
+  IMPORT_PACKAGE_EXAMPLE,
+  IMPORT_PACKAGE_RESULT_EXAMPLE,
+  INSPECT_PACKAGE_EXAMPLE,
+  INSPECT_PACKAGE_RESULT_EXAMPLE,
+  ImportPackageDto,
+  ImportPackageResultDto,
+  InspectPackageDto,
+  InspectPackageResultDto,
+} from './library-import.dto';
+
 @ApiTags('library')
 @ApiExtraModels(LibraryErrorDto, LibraryConflictErrorDto, LibraryBanksImportErrorDto)
 @Controller('library')
 export class LibraryController {
-  constructor(private readonly service: LibraryService) {}
+  constructor(
+    private readonly service: LibraryService,
+    private readonly importService: LibraryImportService,
+  ) {}
 
   @Post('scan')
   @HttpCode(HttpStatus.OK)
@@ -326,19 +359,81 @@ export class LibraryController {
     }
   }
 
-  @Post('install')
+  @Post('plugin-dll-preference')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Instala fxbLoader en un plugin',
+    summary: 'Guarda la preferencia local de DLL de un plugin',
+    description:
+      'Escribe el valor pedido en la línea `dll_name` de `vfxinfo.txt` del plugin. La DLL ' +
+      'debe existir dentro de la carpeta del plugin: la ruta origen nunca se altera. Si el ' +
+      'respaldo `vfxinfo.tx_` todavía no existe se crea en este primer guardado; si el ' +
+      'valor pedido ya es el vigente no se toca nada (`changed: false`).',
+  })
+  @ApiBody({
+    type: LibraryDllPreferenceRequestDto,
+    examples: {
+      cambio: {
+        summary: 'Guardar una DLL concreta del plugin',
+        value: {
+          pluginDir: 'C:\\VFX\\Library\\plugs\\MySynth',
+          dllName: 'Synth64.dll',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Preferencia guardada (o ya vigente). `actions` describe los pasos hechos.',
+    type: LibraryDllPreferenceResponseDto,
+    example: LIBRARY_DLL_PREFERENCE_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`pluginDir` ausente o no absoluto.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      ruta: {
+        summary: 'pluginDir no es absoluto',
+        value: { message: 'pluginDir debe ser una ruta absoluta: "MySynth"' },
+      },
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      '`dllName` vacío, con NUL, absoluto, fuera del plugin, sin archivo en disco, o ' +
+      '`vfxinfo.txt` ausente o sin línea `dll_name`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      fuera: {
+        summary: 'dllName sale de la carpeta del plugin',
+        value: LIBRARY_DLL_PREFERENCE_ERROR_EXAMPLE,
+      },
+    },
+  })
+  async updateDllPreference(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input = {
+      pluginDir: requireString(record, 'pluginDir'),
+      dllName: requireString(record, 'dllName'),
+    };
+    try {
+      return await this.service.updateDllPreference(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('loader/add')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Pone el cargador en un plugin',
     description:
       'Respalda `vfxinfo.txt` como `vfxinfo.tx_`, copia el DLL, reescribe `dll_name` ' +
       'y crea `fxbLoader.config` + `presets\\`.',
   })
   @ApiBody({
-    type: LibraryInstallRequestDto,
+    type: LibraryLoaderAddRequestDto,
     examples: {
-      instalacion: {
-        summary: 'Instalar con el DLL del repositorio',
+      cargador: {
+        summary: 'Poner el cargador usando el DLL del repositorio',
         value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
       },
       simulacion: {
@@ -351,13 +446,13 @@ export class LibraryController {
     description: 'Operación aplicada y estado resultante del plugin.',
     type: LibraryOperationResponseDto,
     examples: {
-      instalado: {
-        summary: 'Instalación aplicada',
-        value: LIBRARY_INSTALL_EXAMPLE,
+      puesto: {
+        summary: 'Cargador puesto',
+        value: LIBRARY_LOADER_ADD_EXAMPLE,
       },
       dryRun: {
         summary: 'Solo el plan (`dryRun: true`)',
-        value: LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
+        value: LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE,
       },
     },
   })
@@ -382,7 +477,7 @@ export class LibraryController {
   })
   @ApiConflictResponse({
     description:
-      'El plugin ya está instalado (usa `force`) o `fxbLoader.config` cambió entre la ' +
+      'El plugin ya tiene el cargador (usa `force`) o `fxbLoader.config` cambió entre la ' +
       'lectura y la escritura.',
     // `anyOf`: ambos errores comparten `message` y no son mutuamente
     // excluyentes, así que `oneOf` rechazaría ejemplos válidos.
@@ -395,10 +490,10 @@ export class LibraryController {
     examples: {
       yaInstalado: {
         summary: 'Ya tiene el cargador',
-        value: LIBRARY_INSTALL_CONFLICT_EXAMPLE,
+        value: LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE,
       },
       configCambiada: {
-        summary: 'Config modificada por la DLL durante la instalación',
+        summary: 'Config modificada por la DLL mientras se ponía el cargador',
         value: {
           message: 'El archivo cambió en disco desde la última lectura',
           current: FXB_CONFIG_SNAPSHOT_EXAMPLE,
@@ -427,7 +522,7 @@ export class LibraryController {
       },
     },
   })
-  async install(@Body() body: unknown) {
+  async addLoader(@Body() body: unknown) {
     const record = asRecord(body);
     const input: InstallInput = {
       libraryRoot: requireString(record, 'libraryRoot'),
@@ -459,7 +554,7 @@ export class LibraryController {
     type: LibraryBanksListRequestDto,
     examples: {
       plugin: {
-        summary: 'Bancos de un plugin instalado',
+        summary: 'Bancos de un plugin con el cargador',
         value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
       },
     },
@@ -1116,19 +1211,19 @@ export class LibraryController {
     }
   }
 
-  @Post('uninstall')
+  @Post('loader/remove')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Desinstala fxbLoader de un plugin',
+    summary: 'Quita el cargador de un plugin',
     description:
       'Restaura `vfxinfo.tx_`, conserva el modificado como `vfxinfo.loader` y borra ' +
       '`fxbLoader.config`.',
   })
   @ApiBody({
-    type: LibraryUninstallRequestDto,
+    type: LibraryLoaderRemoveRequestDto,
     examples: {
-      desinstalacion: {
-        summary: 'Desinstalar el cargador',
+      sinCargador: {
+        summary: 'Quitar el cargador',
         value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth' },
       },
       simulacion: {
@@ -1141,13 +1236,13 @@ export class LibraryController {
     description: 'Plugin restaurado; el DLL y los bancos se conservan.',
     type: LibraryOperationResponseDto,
     examples: {
-      desinstalado: {
-        summary: 'Desinstalación aplicada',
-        value: LIBRARY_UNINSTALL_EXAMPLE,
+      quitado: {
+        summary: 'Cargador quitado',
+        value: LIBRARY_LOADER_REMOVE_EXAMPLE,
       },
       dryRun: {
         summary: 'Solo el plan (`dryRun: true`)',
-        value: { ...LIBRARY_UNINSTALL_EXAMPLE, plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE, dryRun: true },
+        value: { ...LIBRARY_LOADER_REMOVE_EXAMPLE, plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE, dryRun: true },
       },
     },
   })
@@ -1162,11 +1257,11 @@ export class LibraryController {
     example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
   })
   @ApiConflictResponse({
-    description: 'No está instalado o falta `vfxinfo.tx_` para restaurar.',
+    description: 'No tiene el cargador o falta `vfxinfo.tx_` para restaurar.',
     type: LibraryErrorDto,
-    example: LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
+    example: LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE,
   })
-  async uninstall(@Body() body: unknown) {
+  async removeLoader(@Body() body: unknown) {
     const record = asRecord(body);
     const input: UninstallInput = {
       libraryRoot: requireString(record, 'libraryRoot'),
@@ -1183,7 +1278,7 @@ export class LibraryController {
   @Post('batch')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Instala o desinstala varios plugins de una vez',
+    summary: 'Pone o quita el cargador en varios plugins de una vez',
     description:
       'El lote que antes hacía la UI con una petición por plugin pasa al servidor: se procesa ' +
       'en serie y en el orden recibido, y cada plugin devuelve su propio resultado. Un fallo ' +
@@ -1193,23 +1288,23 @@ export class LibraryController {
   @ApiBody({
     type: LibraryBatchRequestDto,
     examples: {
-      instalacion: {
-        summary: 'Instalar varios plugins',
+      cargador: {
+        summary: 'Poner el cargador en varios plugins',
         value: {
           libraryRoot: 'C:\\VFX\\Library',
-          action: 'install',
+          action: 'add',
           plugins: ['MySynth', 'GrandPiano'],
         },
       },
-      reconexion: {
-        summary: 'Desinstalar varios plugins',
-        value: { libraryRoot: 'C:\\VFX\\Library', action: 'uninstall', plugins: ['MySynth'] },
+      sinCargador: {
+        summary: 'Quitar el cargador en varios plugins',
+        value: { libraryRoot: 'C:\\VFX\\Library', action: 'remove', plugins: ['MySynth'] },
       },
       simulacion: {
         summary: 'Ver el plan de cada plugin sin escribir (dryRun)',
         value: {
           libraryRoot: 'C:\\VFX\\Library',
-          action: 'install',
+          action: 'add',
           plugins: ['GrandPiano'],
           dryRun: true,
         },
@@ -1223,7 +1318,7 @@ export class LibraryController {
     type: LibraryBatchResponseDto,
     examples: {
       aplicado: {
-        summary: 'Un plugin instalado y otro fallido',
+        summary: 'Un plugin con el cargador y otro fallido',
         value: LIBRARY_BATCH_EXAMPLE,
       },
       dryRun: {
@@ -1239,7 +1334,7 @@ export class LibraryController {
     schema: { $ref: getSchemaPath(LibraryErrorDto) },
     examples: {
       actionInvalida: {
-        summary: 'action que no es install ni uninstall',
+        summary: 'action que no es add ni remove',
         value: LIBRARY_BATCH_ACTION_ERROR_EXAMPLE,
       },
       pluginsVacios: {
@@ -1284,11 +1379,11 @@ export class LibraryController {
   @ApiBody({
     type: LibraryBatchRequestDto,
     examples: {
-      instalacion: {
-        summary: 'Instalar varios plugins',
+      cargador: {
+        summary: 'Poner el cargador en varios plugins',
         value: {
           libraryRoot: 'C:\\VFX\\Library',
-          action: 'install',
+          action: 'add',
           plugins: ['MySynth', 'GrandPiano'],
         },
       },
@@ -1296,7 +1391,7 @@ export class LibraryController {
         summary: 'Ver el progreso de un dryRun',
         value: {
           libraryRoot: 'C:\\VFX\\Library',
-          action: 'uninstall',
+          action: 'remove',
           plugins: ['MySynth'],
           dryRun: true,
         },
@@ -1368,5 +1463,167 @@ export class LibraryController {
     }
 
     if (!closed) response.end();
+  }
+
+  @Post('inspect-package')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Inspecciona un paquete externo (.vfxlibrary o carpeta de plugin)',
+    description:
+      'Analiza la ruta de origen para detectar plugins y bancos presentes, ' +
+      'y evalúa colisiones contra la librería de destino activa.',
+  })
+  @ApiBody({
+    type: InspectPackageDto,
+    examples: {
+      paquete: {
+        summary: 'Inspeccionar .vfxlibrary externa',
+        value: INSPECT_PACKAGE_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Resumen de plugins y bancos encontrados',
+    type: InspectPackageResultDto,
+    example: INSPECT_PACKAGE_RESULT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'La ruta no existe o es inválida',
+    type: LibraryErrorDto,
+    example: { message: 'packagePath es obligatorio y debe ser una ruta absoluta existente' },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El directorio no contiene una estructura reconocible de librería o plugin',
+    type: LibraryErrorDto,
+    example: { message: 'El paquete no contiene subcarpetas plugs/ ni bancos reconocibles' },
+  })
+  async inspectPackage(@Body() body: InspectPackageDto): Promise<InspectPackageResultDto> {
+    try {
+      return await this.importService.inspect(body);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('import-package')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Importa plugins y bancos desde un paquete externo hacia la librería activa',
+    description:
+      'Copia de forma atómica y segura los instrumentos y bancos seleccionados ' +
+      'hacia `<targetLibraryRoot>/plugs/` y `<targetLibraryRoot>/banks/`.',
+  })
+  @ApiBody({
+    type: ImportPackageDto,
+    examples: {
+      importar: {
+        summary: 'Importar paquete completo con política skip',
+        value: IMPORT_PACKAGE_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la importación con elementos copiados y omitidos',
+    type: ImportPackageResultDto,
+    example: IMPORT_PACKAGE_RESULT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Rutas o parámetros inválidos',
+    type: LibraryErrorDto,
+    example: { message: 'targetLibraryRoot debe ser una ruta absoluta a una librería VFX' },
+  })
+  async importPackage(@Body() body: ImportPackageDto): Promise<ImportPackageResultDto> {
+    try {
+      return await this.importService.importPackage(body);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('inspect-dll')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Inspecciona estáticamente un archivo DLL para detectar exportaciones VST y compatibilidad PE32',
+    description:
+      'Analiza la cabecera PE, arquitectura (32/64 bits) y exportaciones como `VSTPluginMain` o `main` ' +
+      'sin ejecutar código nativo. Comprueba además si existe un wizard certificado coincidente.',
+  })
+  @ApiBody({
+    type: LibraryInspectDllDto,
+    examples: {
+      inspect: {
+        summary: 'Inspección de DLL VST de 32 bits',
+        value: LIBRARY_INSPECT_DLL_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Diagnóstico de la cabecera PE y compatibilidad VST',
+    type: LibraryInspectDllResponseDto,
+    example: LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'La ruta al DLL es inválida o no es absoluta',
+    type: LibraryErrorDto,
+    example: { message: 'dllPath es obligatorio y debe ser una ruta absoluta' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El archivo DLL no existe en disco',
+    type: LibraryErrorDto,
+    example: { message: 'No existe el archivo DLL: "C:\\Vst\\Synth.dll"' },
+  })
+  async inspectDll(@Body() body: LibraryInspectDllDto): Promise<LibraryInspectDllResponseDto> {
+    try {
+      return await this.service.inspectDll(body);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('create-custom-plugin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Crea un nuevo instrumento o efecto en la librería a partir de un DLL externo sin wizard previo',
+    description:
+      'Copia el DLL dentro de `<libraryRoot>/plugs/<folderName>/`, genera `vfxinfo.txt` con la identidad VST, ' +
+      'crea `presets/` y `fxbLoader.meta.json`, y opcionalmente exporta un `.vfxwizard` en el catálogo local.',
+  })
+  @ApiBody({
+    type: LibraryCreateCustomPluginDto,
+    examples: {
+      crear: {
+        summary: 'Creación guiada de plugin VST2 personalizado',
+        value: LIBRARY_CREATE_CUSTOM_PLUGIN_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la creación del plugin y rutas de los archivos generados',
+    type: LibraryCreateCustomPluginResponseDto,
+    example: LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Parámetros o rutas inválidas',
+    type: LibraryErrorDto,
+    example: { message: 'folderName debe ser un nombre simple de directorio' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El archivo DLL origen no existe',
+    type: LibraryErrorDto,
+    example: { message: 'No existe el archivo DLL origen: "C:\\Vst\\NewSynth.dll"' },
+  })
+  @ApiConflictResponse({
+    description: 'La carpeta del plugin ya existe y no se especificó overwrite',
+    type: LibraryErrorDto,
+    example: { message: 'Ya existe una carpeta para el plugin en: "C:\\VFX\\Library\\plugs\\NewSynth"' },
+  })
+  async createCustomPlugin(
+    @Body() body: LibraryCreateCustomPluginDto,
+  ): Promise<LibraryCreateCustomPluginResponseDto> {
+    try {
+      return await this.service.createCustomPlugin(body);
+    } catch (error) {
+      mapDomainError(error);
+    }
   }
 }

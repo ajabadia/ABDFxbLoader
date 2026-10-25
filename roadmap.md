@@ -1,21 +1,50 @@
-# Web vfxLibrary Manager — Plan 2026-10-22
+# Web vfxLibrary Manager — Hoja de Ruta y Plan de Desarrollo
 
-> Ejecución nativa, inline. El plano ya está guardado en `docs/superpowers/plans/2026-10-22-web-vfxlibrary-manager.md`; este roadmap es la cara ejecutable que le sigue.
+> Ejecución nativa, modular e incremental. Este documento recoge las fases completadas, los archivos creados y las próximas tareas planificadas para la gestión completa de librerías VFX, cargadores fxbLoader, metadatos, asistentes (wizards) e importación de paquetes.
 
-## Objetivo
+## Resumen Ejecutivo de Fases
 
-Añadir a la web de fxbLoader un **catálogo de metadatos extendido por plugin** y un **log por plugin**, sin tocar la convención existente de `vfxinfo.txt`, ni `fxbLoader.config`, ni el formato de los `.fxb`.
+- **Fase I: Catálogo Extendido y Logging por Plugin [HECHO]**
+  - Esquema y persistencia de `fxbLoader.meta.json` con control optimista (`mtimeMs`).
+  - Historial `fxbLoader.log` rotado por tamaño (1 MiB, hasta 7 rotados) integrado en todas las operaciones.
+- **Fase II: Mejoras de Usabilidad y Mantenimiento [HECHO]**
+  - Filtrado en tiempo real con 4 ejes de 3 estados (instalación, bancos, wizard, compatibilidad).
+  - Paginación embebida y selectores visuales de `defaultFxbName` y `loadFxbBank`.
+- **Fase III.A: Repositorio e Indexación de Wizards Oficiales [HECHO]**
+  - 268 wizards oficiales de SM Pro Audio / VFX indexados desde catálogo empaquetado `wizards-catalog.json`.
+  - Drawer `#plugin-wizard`, generación de `vfxinfo.txt` con 1 clic, historial independiente `#log-drawer` y corrección de scroll.
+- **Fase III.B: Importador de Instrumentos y Paquetes (.vfxlibrary) [HECHO]**
+  - Servicio e interfaz deslizante `#import-package-drawer` para inspeccionar e importar paquetes externos hacia la librería activa (`_banks\storage`).
+### Seguimiento acordado: edición DLL e historial de importación
 
-Los metadatos y el log viven **dentro de la carpeta del plugin**:
+**Fase III.E: Preferencia local de DLL por plugin [HECHO]**
 
-- `<plugin>/fxbLoader.meta.json` → catálogo extendido, esquema JSON con validación.
-- `<plugin>/fxbLoader.log[.N]` → historial por plugin, rotado por tamaño.
+- El catálogo de cada plugin expone la preferencia de DLL (`dll_name`): editable con **Guardar preferencia** / **Cancelar**, borrador visible (etiqueta y contorno) mientras hay cambios sin guardar.
+- Guardar valida que la DLL exista dentro de la carpeta del plugin (422 si no), respalda el `vfxinfo.txt` original como `vfxinfo.tx_` solo la primera vez, reescribe solo la línea `dll_name` (CRLF del resto intacto) y deja entrada `[dll-preference]` en el log del plugin.
+- Al abrir el importador con un borrador activo: aviso con «Continuar sin cambios» (descarta el borrador y usa la preferencia guardada) o «Cancelar» (conserva el borrador); **no se guarda desde el aviso**.
+- `POST /library/plugin-dll-preference`, DTOs OpenAPI, cliente tipado y suite `plugin-dll-preference.test.ts` (517 unitarias/integración en verde).
+- E2E de navegador contra el servidor real: borrador/estados del panel, guardado con `vfxinfo.tx_` intacto (el instalador ya crea el respaldo del original) y aviso al abrir el importador («Cancelar» conserva, «Continuar sin cambios» descarta).
+- **Fase posterior que no se debe olvidar:** analizar junto con el historial de importación la auditoría durable de asociaciones (campo, valor anterior/nuevo), su vínculo con importaciones/reimportaciones y políticas de colisión; la auditoría no se implementa en la fase inicial de edición DLL y el historial de importación sigue siendo de solo lectura.
 
-`vfxinfo.txt` sigue siendo fuente de los campos rígidos del plugin; la app no lo valida igual que lo valida el cargador y no lo transforma salvo donde el cargador lo exige.
+**Fase posterior que no se debe olvidar:** analizar junto con el historial de importación la auditoría durable de asociaciones (campo, valor anterior/nuevo) y su vínculo con importaciones/reimportaciones y políticas de colisión. La auditoría no se implementa en la fase inicial de edición DLL.
+
+- **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
+- **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [PLANIFICADO]**
+- **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [PLANIFICADO]**
+
+## Objetivos Arquitectónicos
+
+Añadir a la web de fxbLoader una gestión completa de plugins, presets y compatibilidad sin alterar las convenciones requeridas por el hardware de SM Pro Audio / VFX ni romper la compatibilidad de `vfxinfo.txt` o los archivos `.fxb`.
+
+Estructura de almacenamiento por plugin en `plugs/<Plugin>/`:
+- `fxbLoader.meta.json` → catálogo extendido, esquema JSON validado.
+- `fxbLoader.log[.N]` → historial de operaciones, rotado por tamaño.
+- `vfxinfo.txt` → descriptor de plataforma VFX (campos rígidos).
+- `presets/` → bancos `.fxb` gestionados.
 
 ## Qué ya existe y qué aprovecha este plano
 
-- `PluginEntry` de `POST /library/scan` ya lleva `name`, `path`, `installed`, `hasVfxinfo`, `pluginName`, warnings.
+- `PluginEntry` de `POST /library/scan` ya lleva `name`, `path`, `hasLoader`, `hasVfxinfo`, `pluginName`, warnings.
 - `vfxinfo.ts` ya lee/parchea `vfxinfo.txt` y el respaldo `vfxinfo.tx_`.
 - `fxb-config.service.ts` ya escribe atómicamente y hace control optimista con `mtimeMs`.
 - `atomic-file.ts` ya tiene `writeFileAtomic` / `copyFileAtomic`.
@@ -73,7 +102,7 @@ Todos ellos son verificables por archivos reales y por la API, no solo por unitt
 
 ## Archivos bajo este plano
 
-Nuevos:
+Nuevos implementados:
 
 - `webapp/src/plugin-metadata/`
   - `plugin-metadata.types.ts`
@@ -81,62 +110,244 @@ Nuevos:
   - `plugin-metadata.service.ts`
   - `plugin-metadata.controller.ts`
   - `plugin-metadata.dto.ts`
+  - `plugin-meta.constants.ts`
   - `index.ts`
 
 - `webapp/src/plugin-log/`
   - `plugin-log.types.ts`
   - `plugin-log.service.ts`
-  - `plugin-log.controller.ts` (si se decide exponer consulta/rotación; si no, queda como servicio interno)
+  - `plugin-log.controller.ts`
   - `index.ts`
 
+- `webapp/src/wizard/`
+  - `wizard.types.ts`
+  - `wizard-parser.ts`
+  - `wizard.service.ts`
+  - `wizard.controller.ts`
+  - `wizard.dto.ts`
+  - `wizards-catalog.json`
+  - `index.ts`
+
+- `webapp/src/library/` (extensiones)
+  - `library-import.types.ts`
+  - `library-import.service.ts`
+  - `library-import.dto.ts`
+
+- `webapp/scripts/`
+  - `sync-wizards.mjs`
+
 - `webapp/test/`
-  - `plugin-metadata.service.test.ts`
-  - `plugin-metadata.controller.test.ts`
+  - `plugin-meta.service.test.ts`
+  - `plugin-meta.controller.test.ts`
   - `plugin-log.service.test.ts`
-  - casos correspondientes en `library.service.test.ts` y, si aplica, integración estilo `vfx-library.integration.test.ts`
+  - `plugin-log.controller.test.ts`
+  - `wizard.service.test.ts`
+  - `library-import.service.test.ts`
+  - `ui.dom.test.ts`, `ui.markup.test.ts`, `ui.styles.test.ts`
+  - Casos en `library.service.test.ts` y `library.controller.test.ts`
 
 Modificados:
 
-- `webapp/src/app.module.ts` → registrar módulos de metadatos y/o log.
-- `webapp/src/library/library.service.ts` → puntos de registro en las operaciones públicas.
-- `webapp/src/ui/browser/main.ts` → mostrar catálogo + log en el contexto del plugin.
-- `webapp/src/client/` y `openapi.json` según los endpoints que se definan.
-- `webapp/src/library/library.controller.ts` si el escaneo necesita `hasMetadata` sin abrir el archivo.
+- `webapp/src/app.module.ts` → registrar módulos de metadatos, log y wizards.
+- `webapp/src/library/library.module.ts` → registrar y proveer `LibraryImportService`.
+- `webapp/src/library/library.controller.ts` → endpoints de inspección e importación de paquetes (`inspect-package`, `import-package`).
+- `webapp/src/library/library.service.ts` → puntos de registro en las operaciones públicas hacia `PluginLogService`.
+- `webapp/src/ui/browser/main.ts` → paneles deslizantes de Catálogo, Wizard, Historial e Importador de paquetes; filtrado por 4 ejes de 3 estados, paginación embebida y resolución de scroll en tablas.
+- `webapp/public/index.html` → estructura semántica y accesible para `#meta`, `#plugin-wizard`, `#log-drawer`, `#wizards` e `#import-package-drawer`.
+- `webapp/public/styles.css` → diseño de drawers, badges, estados, paginación y menús contextuales.
+- `webapp/src/client/` y `webapp/openapi.json` sincronizados y tipados rigurosamente con `additionalProperties: false`.
 
 ## Roadmap de tareas
 
-### Tarea A — Esquema y archivo propio por plugin
+### Tarea A — Esquema y archivo propio por plugin [HECHO]
 
-- Escribir el test que falla: plugin con `vfxinfo.txt` y sin archivo propio → catálogo por defecto, `exists: false`.
-- Implementar esquema + servicio de lectura/escritura atómica dentro de `pluginDir`.
-- Verificar que pasa y que el esquema valida campo común + extendido sin romper nada.
+- [x] Escribir el test que falla: plugin con `vfxinfo.txt` y sin archivo propio → catálogo por defecto, `exists: false`.
+- [x] Implementar esquema + servicio de lectura/escritura atómica dentro de `pluginDir`.
+- [x] Verificar que pasa y que el esquema valida campo común + extendido sin romper nada.
 
-### Tarea B — Catálogo por plugin en la API y en la vista
+### Tarea B — Catálogo por plugin en la API y en la vista [HECHO]
 
-- Endpoint propio `GET/PUT` del archivo propio, con control optimista (`mtimeMs`) estilo `fxbLoader.config`.
-- Exponer, si tiene sentido, `hasMetadata` desde el escaneo sin abrir el archivo.
-- Vista: entrada del catálogo en el panel del plugin, mostrando campos comunes + extendidos, sin saturar la fila de lista.
-- Actualizar OpenAPI + cliente si el contrato lo requiere.
+- [x] Endpoint propio `GET/PUT` del archivo propio (`plugin-meta.controller.ts`), con control optimista (`mtimeMs`) estilo `fxbLoader.config`.
+- [x] DTOs, validaciones Swagger/OpenAPI y suite de tests de controlador e integración HTTP.
+- [x] Integración en la vista: panel de catálogo en el detalle del plugin (`src/ui/browser/main.ts`), permitiendo ver y editar campos comunes + extendidos de forma amigable.
+- [x] Actualizar cliente tipado frontend tras consolidar endpoints (`plugins.meta.read` y `write`).
+- [x] Evaluar `hasMetadata` en el escaneo: innecesario en la lista general dado que la UI y cliente abren bajo demanda y reportan `exists: false` sin penalizar el escaneo.
 
-### Tarea C — Log por plugin rotado por tamaño
+### Tarea C — Log por plugin rotado por tamaño [HECHO]
 
-- Servicio de log por plugin con los umbrales canónicos del documento de decisión de rotación: 1 MiB de rotación, máximo 7 archivos rotados, entrada truncada por la derecha, concatenación ordenada para consulta.
-- Test propio: primera operación en plugin nuevo, rotación al exceder tamaño, política de degradación sin interrumpir la operación.
+- [x] Servicio de log por plugin con los umbrales canónicos del documento de decisión de rotación: 1 MiB de rotación, máximo 7 archivos rotados (`fxbLoader.log.1` ... `.log.7`), entrada truncada por la derecha, concatenación ordenada para consulta.
+- [x] Test propio: primera operación en plugin nuevo, rotación al exceder tamaño, política de degradación sin interrumpir la operación.
 
-### Tarea D — Puntos de registro en las operaciones existentes
+### Tarea D — Puntos de registro en las operaciones existentes [HECHO]
 
-- Instalar/desinstalar, importar bancos, convertir/ restaurar/ descartar respaldo, exportar banco → entrada de log al final.
-- Verificar que la operación sigue siendo válida si el log falla.
-- Tests unitarios/integración que cubran los puntos clave.
+- [x] Instalar/desinstalar, importar bancos, convertir/restaurar/descartar respaldo, exportar banco → entrada de log al final.
+- [x] Verificar que la operación sigue siendo válida si el log falla.
+- [x] Tests unitarios/integración que cubran los puntos clave.
 
-### Tarea E — Verificación en la vista real
+### Tarea E — Verificación en la vista real [HECHO]
 
-- Plugin de prueba con `vfxinfo.txt`, archivo propio y log.
-- Verificar en la app (repo local o Playwright si se decide automatizar) que la vista muestra campos rígidos, catálogo extendido, bancos, `fxbLoader.config` y el último trazo del log.
-- Ajustar tipos derivados si cambian los endpoints.
+- [x] Plugin de prueba con `vfxinfo.txt`, archivo propio y log.
+- [x] Verificar en la app (repo local o Playwright) que la vista muestra campos rígidos, catálogo extendido, bancos, `fxbLoader.config` y el último trazo del log.
+- [x] Ajustar tipos derivados si cambian los endpoints (OpenAPI, cliente tipado y auditorías DOM/CSS).
+
+---
+
+## Fase II: Mejoras de Usabilidad y Mantenimiento
+
+- [x] **Búsqueda y filtrado en lista de plugins:**
+  - Caja de búsqueda en tiempo real por texto (nombre de plugin, dll, ruta).
+  - Cuatro ejes de filtro (instalación, bancos, wizard y compatibilidad), cada uno con un chip que abre sus tres estados: positivo, negativo y «todos». El chip se tiñe (verde el positivo, ámbar el negativo, gris «todos») y `aria-pressed` anuncia si el eje filtra.
+  - Contador dinámico de resultados visibles (`X de Y plugin(s)`) y mensaje cuando ningún plugin coincide.
+- [x] **Selectores visuales en el editor de `fxbLoader.config`:**
+  - Desplegable interactivo para `defaultFxbName` con los `.fxb` descubiertos en `presets/` en el panel de bancos.
+  - Checkbox / selector para `loadFxbBank` con persistencia atómica y control de concurrencia optimista (`mtimeMs`).
+- [x] **Limpieza y consolidación de arranque:**
+  - `start.bat` probado con compilación selectiva, verificación de huérfanos y liberación de puertos.
+  - `.gitignore` actualizado con carpetas de respaldo locales (`_backup-*`, `_encoding-backup-*`, `_banks/`).
+
+
+---
+
+## Fase III: Gestión de Wizards de V-Machine / VFX
+
+> **Objetivo:** Gestionar el repositorio oficial de wizards existentes (`_banks/wizards`, con 261+ sintetizadores y efectos catalogados) para autocompletar catálogos, generar `vfxinfo.txt` faltantes e inspeccionar dependencias; y posteriormente ofrecer un asistente para plugins nuevos sin wizard previo (con apoyo de desensamblado de la herramienta oficial si es necesario).
+
+### Fase III.A: Repositorio e Indexación de Wizards Existentes [HECHO]
+
+- [x] **Parser de Wizards (`wizard-parser.ts`):**
+  - Soporte de sintaxis clave-valor y bloques multilínea delimitados por `...` (`notes:`, `vendor_notes:`, `dirs_to_copy:`, `files_to_copy:`, `registry_keys:`, `symlinks:`, `files_to_create:`).
+  - Extracción de metadatos (`id`, `name`, `name_abbreviation`, `vendor`, `vendor_url`, `genre`, `notes`, `created`) y parámetros VST (`dll_name`, `dll_version`, `is_synth`, `has_editor`, `parameter_count`, `program_count`, `editor_width`, `editor_height`).
+  - Extracción de directivas de hardware / Wine: carpetas de muestras (`dirs_to_copy`), archivos complementarios (`files_to_copy`), claves de registro de Windows (`REGEDIT4` en `registry_keys`) y enlaces simbólicos (`symlinks`).
+- [x] **Servicio de Repositorio e Indexación (`wizard.service.ts`):**
+  - Lectura e indexación en memoria de `_banks/wizards`:
+    - Base de datos oficial `wizard_database_20101112/` (261 carpetas con archivos `.vfxwizard`).
+    - Wizards avanzados en carpetas dedicadas (`Arturia-Minimoog`, `GForce-MTronPro`, `Native-Instruments-B4`, `Toontrack-EZDrummer`, `Independence-2-Free`, `TruePianos`, `Rob-Papen-BLUE`). Total: 268 wizards indexados.
+  - Generación y sincronización de catálogo empaquetado `wizards-catalog.json` (`scripts/sync-wizards.mjs`) para no depender de escaneo en caliente de carpetas en producción.
+  - Motor de matching con plugins de la librería por `id` numérico VST, coincidencia normalizada de nombre y nombre base de DLL.
+- [x] **Endpoints REST OpenAPI (`wizard.controller.ts`):**
+  - `GET /wizards`: Lista paginada y con búsqueda/filtros de los 268 wizards catalogados.
+  - `GET /wizards/:id`: Detalles completos de un wizard (parámetros, notas, dependencias, claves `.reg`).
+  - `GET /wizards/match`: Búsqueda del mejor wizard para un plugin dado su `id`, `name` o `dllName`.
+  - `POST /wizards/apply-meta`: Inyecta los metadatos del wizard en el `fxbLoader.meta.json` del plugin.
+  - `POST /wizards/create-vfxinfo`: Genera el archivo `vfxinfo.txt` en la carpeta del plugin cuando esté ausente o forzado con respaldo `.tx_`.
+- [x] **Integración en la Interfaz Web y Experiencia Visual:**
+  - **Indicador de Wizard en la tabla**: Columna dedicada *"Wizard"* con badge interactivo (`disponible` / `—`) y filtros rápidos en la barra superior (*"Con wizard"* / *"Sin wizard"*).
+  - **Pestaña deslizante del Wizard (`#plugin-wizard`)**: Drawer responsive alineado con Catálogo y Bancos que muestra parámetros VST, directivas Wine/registro, dependencias y notas del asistente.
+  - **Utilidad `vfxinfo.txt` de 1 clic**: Botón para crear o regenerar el archivo `vfxinfo.txt` oficial desde las directivas certificadas del wizard.
+  - **Historial independiente (`#log-drawer`)**: Extracción de los logs a su propio panel deslizante con menú de acción dedicado en `···`.
+  - **Alineación y corrección de scroll vertical**: Detección inteligente de límites de tabla (`drop-up`) y altura mínima de tabla (`min-height: 220px`) para evitar la aparición de barras de desplazamiento vertical al abrir menús de acciones.
+- [x] **Pruebas unitarias, de integración y E2E:**
+  - Pruebas del parser con archivos reales de `_banks/wizards`.
+  - Pruebas del indexador, motor de matching, controladores y navegador Playwright (474 unitarias y 13 de navegador pasadas con 0 fallos).
+
+---
+
+### Fase III.B: Importador de Instrumentos y Paquetes (`.vfxlibrary`) a la Librería Activa [HECHO]
+
+> **Objetivo:** Permitir importar nuevos instrumentos y sus bancos correspondientes desde paquetes externos (como `Novation V-Station demo.vfxlibrary`, `MDAPiano.vfxlibrary` o carpetas sueltas con estructura `plugs/` + `banks/`) directamente a la librería actualmente seleccionada en la aplicación (por ejemplo `_banks\storage`).
+
+- [x] **Servicio de Inspección e Importación de Paquetes (`library-import.service.ts`):**
+  - Resolución inteligente de la raíz del paquete (soporta tanto carpetas simples de plugin como estructuras anidadas o directas `.vfxlibrary` con `plugs/` y `banks/`).
+  - Detección e inspección de plugins: extracción de DLL, lectura rápida de `vfxinfo.txt` (`id`, `name`), conteo de archivos y bytes totales.
+  - Detección e inspección de bancos: conteo de presets `.vfxpreset` y cálculo de tamaño total en bytes.
+  - Evaluación precisa de colisiones contra la librería de destino activa (`alreadyExistsInTarget`).
+  - Copia atómica y recursiva segura con política configurable de colisión (`skip` para conservar existentes, `overwrite` para actualizar).
+  - Emisión de log y trazabilidad en el subsistema de logs por plugin (`PluginLogService`).
+- [x] **Endpoints REST OpenAPI (`library.controller.ts`):**
+  - `POST /library/inspect-package`: Inspecciona una ruta externa y devuelve un resumen detallado con los plugins, bancos y colisiones detectadas.
+  - `POST /library/import-package`: Ejecuta la importación selectiva con política de colisión y devuelve los elementos copiados y omitidos.
+  - DTOs completos (`library-import.dto.ts`) con tipado Swagger estricto, tipos primitivos en campos anulables y ejemplos cerrados con `additionalProperties: false`.
+  - Regeneración de `openapi.json` y del cliente tipado (`FxbClient.library.inspectPackage` y `importPackage`).
+- [x] **Interfaz Gráfica / Asistente Deslizante (`#import-package-drawer`):**
+  - Botón *"Importar"* en la cabecera superior con acceso directo.
+  - Selector de carpeta de origen con diálogo nativo (`client.system.pick`).
+  - Botón de inspección y panel de previsualización que muestra:
+    - Tipo de paquete detectado (`.vfxlibrary` o carpeta de plugin) y ruta resuelta.
+    - Detección recursiva profunda en subdirectorios de `plugs/` (ej. `plugs/<vendor>/<plugin>/`) y `banks/` (ej. `banks/<categoría>/<banco>.vfxbank`), así como paquetes individuales sin carpeta `plugs/` (como volcados de KVR con `vfxinfo.txt`).
+    - Exclusión automática de carpetas de soporte (`wizards/`, `node_modules`, `_backup*`) en escaneos de directorios raíz.
+    - Diseño compacto sin huecos verticales innecesarios (`min-height: 0` en tablas del drawer con scroll vertical contenido hasta 260px) y anchos de columna fijos para casillas, IDs de `vfxinfo.txt`, tamaños y badges de estado.
+    - Tabla de plugins encontrados con casillas de selección, DLL, vfxinfo, tamaño y estado en destino (badge *"Nuevo"* / *"Ya existe"*).
+    - Tabla de bancos encontrados con casillas de selección, número de presets, tamaño y estado en destino.
+    - Selector de política de colisión (*Omitir existentes* / *Sobrescribir existentes*).
+    - Botón de ejecución *"Importar a la librería"* con refresco automático de la tabla principal y reporte de bytes copiados.
+  - Atajos de teclado (Escape), cierre por clic en el fondo oscuro (`#drawer-backdrop`) y navegación accesible por Tab.
+- [x] **Utilidad Transversal de Validación y Reparación de Bancos (`vfx-bank-validator.ts`):**
+  - Módulo utilitario transversal desacoplado para auditar la integridad técnica y la concordancia de bancos `.vfxbank` respecto al plugin y su Wizard certificado.
+  - Inspección de cabeceras binarias de chunks (`!VFXCHUNKMAGIC!\0` en offsets 0..15, FourCC uint32 LE en offset 40).
+  - Verificación cruzada entre el ID de plugin en `preset.vfx`, el ID binario en `channel_X_slot_Y_<id>.chunk` y el ID del Wizard oficial certificado.
+  - Detección exhaustiva de carencias: `MISSING_DESCRIPTOR`, `MISSING_CHUNK`, `CHUNK_MAGIC_INVALID`, `CHUNK_ID_MISMATCH`, `DESCRIPTOR_ID_MISMATCH`.
+  - Reparación automática de bancos desalineados: corrección de nombres de chunks, reescritura binaria de la cabecera (offset 40) con el FourCC objetivo y regeneración limpia del descriptor `preset.vfx`.
+  - Integración en la previsualización del importador: indicación del Wizard oficial emparejado en plugins y estado de concordancia (`Concordante`, `Reparable`, `Inconcordante`) en cada banco candidato.
+  - Opción de reparación en caliente durante la importación (`repairBanks: true`), alineando automáticamente los bancos con el ID del plugin destino antes de instalarlos en la librería.
+- [x] **Verificación y Cobertura de Pruebas:**
+  - Suite unitaria dedicada `library-import.service.test.ts` con paquetes reales (`Novation V-Station demo`, `MDAPiano`, KVR TruePianos y pruebas con subcarpetas anidadas en `plugs/Vendor/Plugin`).
+  - Suite transversal `vfx-bank-validator.test.ts` verificando diagnóstico en bancos reales, detección de carencias y reparación end-to-end con reescritura de cabeceras binarias.
+  - Validación completa de ejemplos OpenAPI (13/13 pasados en `openapi.examples.test.ts`).
+  - Auditoría estricta de DOM y CSS (35/35 pasados sin selectores, IDs o clases muertas).
+  - Suite de tests unitarios/integración completa.
+  - Suite E2E de navegador con Playwright.
+
+---
+
+### Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]
+
+> **Objetivo:** Adquirir y dar de alta instrumentos en la librería activa directamente a partir del catálogo oficial de 268 wizards, ahorrando la configuración manual cuando el usuario dispone del DLL original.
+
+- [x] **Flujo de Alta desde Wizard:**
+  - Endpoint `POST /wizards/install` y método cliente `client.wizards.install` implementados y tipados de extremo a extremo.
+  - Desde el repositorio de wizards (columna *"Acción"* en cada fila) y desde el drawer de detalle de wizard de un plugin (`#plugin-wizard`): botón *"Instalar con DLL…"*.
+  - Diálogo de selección nativo de Windows / SO (`client.system.pick` con filtro de archivos DLL).
+  - Inspección PE32 obligatoria: valida binario de 32 bits (i386) y emite advertencias detalladas si se detecta un binario de 64 bits incompatible con hardware VFX.
+  - El backend crea automáticamente la carpeta `<libraryRoot>/plugs/<NombreRecomendado>/` de forma atómica.
+  - Copia atómica del DLL a su ruta relativa esperada (ej. `SuperWave P8/P8.dll`), genera el `vfxinfo.txt` oficial y crea `fxbLoader.meta.json` sincronizado sin conflictos.
+  - Vuelca automáticamente archivos de claves de registro (`registry_keys.reg`) si el wizard las define, así como instrucciones (`wizard_readme.txt`).
+  - Registro de auditoría atómico en `fxbLoader.log` mediante `PluginLogService`.
+- [x] **Creación de Estructura Inicial:**
+  - Inicialización automática del directorio `presets/` para almacenamiento inmediato de bancos `.fxb` y presets `.fxp`.
+- [x] **Validación y Tests Exhaustivos:**
+  - Tests unitarios en `test/wizard.service.test.ts` con DLLs PE32 y PE64 sintéticas, detección de errores 404/400/409 y verificación de archivos creados.
+  - Tests de contratos OpenAPI y ejemplos sincronizados.
+  - Integración completa con la interfaz web y auditoría estricta de selectores y accesibilidad.
+
+---
+
+### Fase III.D: Asistente para Plugins Nuevos sin Wizard (y Análisis del Binario)
+
+> **Objetivo:** Ofrecer un proceso de importación y creación de asistentes para cualquier plugin VST que no tenga wizard previo, evitando tener que redactar a mano el `vfxinfo.txt` ni adivinar sus parámetros.
+
+- [ ] **Asistente Guiado de Creación de Plugin:**
+  - Formulario asistido para dar de alta un VST nuevo a partir de un archivo `.dll` suelto.
+  - Validación básica del ejecutable PE (32-bit Windows DLL, exportación de `VSTPluginMain` o `main`).
+- [ ] **Extracción Automática de Metadatos VST / Herramienta Oficial:**
+  - Desensamblado y análisis de la herramienta oficial de SM Pro Audio / VFX (*VFX Application / Wizard Editor*) para replicar cómo la máquina oficial detecta automáticamente:
+    - FourCC / VST Unique ID (`cMagic` / `id`).
+    - Número de parámetros (`numParams`) y programas (`numPrograms`).
+    - Canales de entrada/salida de audio.
+    - Indicador de sintetizador (`isSynth`) y dimensiones de la GUI personalizada (`width x height`).
+  - Generación de un nuevo registro de wizard para que pueda ser guardado en la base de datos local y reutilizado en futuras instalaciones.
+
+---
+
+## Fase IV: Creación y Gestión Avanzada de Bancos (`.fxb` / `.fxp`)
+
+> **Objetivo:** Ampliar las capacidades de gestión de presets permitiendo no solo importar y convertir bancos existentes, sino crearlos, descomponerlos y editarlos directamente desde la web sin depender de un DAW externo.
+
+- [ ] **Generador de bancos FXB:**
+  - Creación de archivos `.fxb` válidos desde cero con la cabecera estándar de Steinberg (`CcnK` / `FBCh` o `FxBk`).
+  - Asignación del FourCC / VST Unique ID correspondiente al plugin objetivo para asegurar compatibilidad.
+- [ ] **Empaquetador y extractor `.fxp` ↔ `.fxb`:**
+  - Importación por lotes de presets individuales (`.fxp`) para combinarlos en un banco unificado (`.fxb`).
+  - Extracción de un banco `.fxb` hacia una colección de archivos `.fxp` individuales con nombre normalizado.
+- [ ] **Inspector y editor de programas:**
+  - Editor de la tabla de nombres de programas dentro de bancos FXB.
+  - Reordenación, clonación y eliminación de programas individuales dentro de un banco.
+  - Verificación cruzada entre el FourCC del banco y el `id` o binario del VST para alertar antes de intentar cargarlo si el preset no pertenece a ese plugin.
+
+---
 
 ## Revisión
 
 Antes de cada tarea, la pregunta de cierre es la misma: ¿esto es verificable por archivos reales y por la API, o solo por unittest? Si solo por unittest, el plano pide más anclaje.
 
-La decisión pendiente del plano original —execución nativa vs. subagentes— queda resuelta aquí: **nativa, inline**, porque las tareas son pequeñas, los límites de módulo ya existen (`library`, `fxb-config`) y las decisiones abiertas ahora son explícitas en este documento.
+La decisión de ejecución se mantiene: **nativa, inline**, porque las tareas son modulares, los límites de dominio ya existen (`library`, `fxb-config`, `plugin-meta`, `wizard` y futuros `library-import` y `fxb-builder`) y las decisiones quedan registradas en este documento.
+

@@ -10,8 +10,14 @@ export interface PluginEntry {
   /** Ruta absoluta del directorio del plugin. */
   path: string;
   /** El escaneo del binario usa la presencia de `fxbLoader.config`. */
-  installed: boolean;
+  hasLoader: boolean;
   hasVfxinfo: boolean;
+  /** Existe un wizard compatible en la base de datos de wizards. */
+  hasWizard: boolean;
+  /** Identificador del wizard correspondiente si existe match, o `null`. */
+  wizardId: string | null;
+  /** Existe `fxbLoader.meta.json`: el plugin ya tiene catálogo propio. */
+  hasMeta: boolean;
   /** `pluginName` leído de `fxbLoader.config`, o `null` si no está instalado. */
   pluginName: string | null;
   warnings: string[];
@@ -26,6 +32,18 @@ export interface PluginEntry {
   compatibilityIssues: string[];
 }
 
+/**
+ * Resumen de bancos de un plugin para la tabla del escaneo, tomado de la misma
+ * lista que devuelve el panel de bancos: solo cuentan los `.fxb` válidos y se
+ * respeta el tope de `MAX_REFERENCE_SCAN` archivos.
+ */
+export interface PluginBanksSummary {
+  /** Bancos encontrados en la carpeta de presets. */
+  count: number;
+  /** Nombres de esos bancos, en el mismo orden que el panel. */
+  names: string[];
+}
+
 /** Estado del `fxbLoader.dll` que se instalaría. */
 export interface LoaderDllInfo {
   path: string;
@@ -36,12 +54,17 @@ export interface LoaderDllInfo {
   issues: string[];
 }
 
+/** Entrada del escaneo: el plugin y el resumen de bancos que pinta la tabla. */
+export interface ScanPluginEntry extends PluginEntry {
+  banks: PluginBanksSummary;
+}
+
 export interface LibraryScanResult {
   libraryRoot: string;
   plugsPath: string;
   /** DLL validada al escanear; el lote y las instalaciones la exigen PE32. */
   loader: LoaderDllInfo;
-  plugins: PluginEntry[];
+  plugins: ScanPluginEntry[];
 }
 
 export type LibraryActionKind =
@@ -69,17 +92,17 @@ export interface LibraryStep {
 }
 
 /**
- * Aviso de cada paso interno de `install`/`uninstall`. `runBatch` lo usa para
- * emitir un evento `step` por paso sin que la vista espere al resultado final.
+ * Aviso de cada paso interno de `addLoader`/`removeLoader`. `runBatch` lo usa
+ * para emitir un evento `step` por paso sin que la vista espere al resultado.
  */
 export type StepListener = (step: LibraryStep) => void;
 
 export interface InstallInput {
   libraryRoot: string;
   plugin: string;
-  /** Ruta del `fxbLoader.dll` a instalar; debe ser PE32 i386. */
+  /** Ruta del `fxbLoader.dll` a copiar; debe ser PE32 i386. */
   dllSourcePath: string;
-  /** Reinstalar aunque `fxbLoader.config` ya exista. */
+  /** Volver a ponerlo aunque `fxbLoader.config` ya exista. */
   force?: boolean;
   /** Calcular el plan sin escribir nada. */
   dryRun?: boolean;
@@ -103,17 +126,17 @@ export interface UninstallResult {
   dryRun: boolean;
 }
 
-/** Operación de lote: instalar o desinstalar varios plugins de una vez. */
-export type BatchAction = 'install' | 'uninstall';
+/** Operación de lote: poner o quitar el cargador en varios plugins de una vez. */
+export type BatchAction = 'add' | 'remove';
 
 export interface BatchInput {
   libraryRoot: string;
   action: BatchAction;
   /** Carpetas de `plugs\\`, en el orden en que se deben procesar. */
   plugins: string[];
-  /** Ruta del cargador; solo se usa con `action: 'install'`. */
+  /** Ruta del cargador; solo se usa con `action: 'add'`. */
   dllSourcePath: string;
-  /** Reinstalar los que ya tengan `fxbLoader.config`. */
+  /** Volver a ponerlo en los que ya tengan `fxbLoader.config`. */
   force?: boolean;
   /** Calcular el plan de cada plugin sin escribir nada. */
   dryRun?: boolean;
@@ -121,8 +144,8 @@ export interface BatchInput {
 
 export type BatchPluginStatus =
   /** Operación aplicada, o plan calculado si la petición era un `dryRun`. */
-  | 'installed'
-  | 'uninstalled'
+  | 'added'
+  | 'removed'
   | 'planned'
   /** El plugin no se pudo operar; el motivo va en `message`. */
   | 'failed';
@@ -407,6 +430,34 @@ export class PluginStateError extends Error {
   }
 }
 
+/** Entrada para la preferencia local de DLL de un plugin. */
+export interface DllPreferenceInput {
+  pluginDir: string;
+  /** Valor nuevo de `dll_name`; relativo al plugin y siempre dentro de él. */
+  dllName: string;
+}
+
+/** Resultado de guardar la preferencia local de DLL en `vfxinfo.txt`. */
+export interface DllPreferenceResult {
+  pluginDir: string;
+  /** Valor que tenía la línea `dll_name` antes de guardar; `null` si ya apuntaba al cargador. */
+  previousDllName: string | null;
+  /** Valor guardado. */
+  dllName: string;
+  /** Respaldo `vfxinfo.tx_` creado o conservado, si procede. */
+  backupFile: string | null;
+  /** `false` si el archivo no cambió porque ya era el valor pedido. */
+  changed: boolean;
+  actions: readonly LibraryAction[];
+}
+
+export class DllPreferenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DllPreferenceError';
+  }
+}
+
 /** La operación no se puede completar con el contenido actual de los archivos. */
 export class LibraryOperationError extends Error {
   constructor(message: string) {
@@ -414,3 +465,57 @@ export class LibraryOperationError extends Error {
     this.name = 'LibraryOperationError';
   }
 }
+
+export interface LibraryInspectDllInput {
+  dllPath: string;
+}
+
+export interface LibraryInspectDllResult {
+  validPe: boolean;
+  bitness: number | null;
+  is32BitCompatible: boolean;
+  isVstPlugin: boolean;
+  vstEntrypoint: 'VSTPluginMain' | 'main' | null;
+  internalDllName: string | null;
+  suggestedName: string;
+  suggestedId: string;
+  exportedNames: string[];
+  issues: string[];
+  matchingWizard: {
+    id: string;
+    name: string;
+    vendor: string;
+    genre: string;
+    dllName: string;
+    isSynth: boolean;
+  } | null;
+}
+
+export interface LibraryCreateCustomPluginInput {
+  libraryRoot: string;
+  sourceDllPath: string;
+  folderName: string;
+  name: string;
+  id: string;
+  isSynth: boolean;
+  parameterCount?: number;
+  programCount?: number;
+  hasEditor?: boolean;
+  editorWidth?: number;
+  editorHeight?: number;
+  vendor?: string;
+  genre?: string;
+  saveAsWizard?: boolean;
+  overwrite?: boolean;
+}
+
+export interface LibraryCreateCustomPluginResult {
+  created: boolean;
+  pluginDir: string;
+  dllRelativePath: string;
+  vfxinfoPath: string;
+  metaPath: string;
+  wizardPath: string | null;
+  warnings: string[];
+}
+

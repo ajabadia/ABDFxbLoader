@@ -64,6 +64,15 @@ export interface CssAudit {
 const AT_RULE_WITHOUT_SELECTORS = /^@(?:keyframes|-webkit-keyframes|font-face)\b/;
 
 /**
+ * Atributos booleanos que el navegador mantiene sin que estén en el marcado:
+ * al abrir un `<details>` aparece `open` y al cerrarlo desaparece. Un selector
+ * que los usa no se puede comprobar contra el HTML estático, pero tampoco es
+ * una regla muerta.
+ */
+const NATIVE_STATE_ATTRIBUTES = new Set(['open']);
+const DYNAMIC_DATA_ATTRIBUTES = new Set(['data-direction']);
+
+/**
  * Selectores de las reglas de un CSS, en orden y con su línea. Ignora los
  * preludios de at-rules (`@media`, `@supports`) y el interior de `@keyframes`,
  * cuyos pasos (`from`, `50%`) no son selectores de elementos.
@@ -316,7 +325,7 @@ function classTokens(value: string): string[] {
  * Clases que la vista escribe o consulta, con el primer sitio donde aparecen:
  *
  * - `classList.add/remove/toggle/replace/contains(...)`, todos sus argumentos
- *   menos los que son comparaciones (`toggle('on', plugin.installed)`);
+ *   menos los que son comparaciones (`toggle('on', plugin.hasLoader)`);
  * - `className = …`, también con plantilla (`\`status ${kind}\`` aporta
  *   `status` y deja la variable sin resolver);
  * - `setAttribute('class', …)`;
@@ -498,7 +507,8 @@ export function auditCss(
       audit.total += 1;
       const names = selectorNames(selector);
       const unknown = names.filter(
-        (name) => !staticNames.has(name) && !fromSource.has(name),
+        (name) =>
+          !NATIVE_STATE_ATTRIBUTES.has(name) && !DYNAMIC_DATA_ATTRIBUTES.has(name) && !staticNames.has(name) && !fromSource.has(name),
       );
 
       if (unknown.length > 0) {
@@ -521,6 +531,13 @@ export function auditCss(
       }
       if (found > 0) {
         audit.structural += 1;
+        continue;
+      }
+
+      // Un estado nativo (`details[open]`) solo existe cuando el usuario abre el
+      // desplegable: el HTML de partida no puede demostrarlo ni desmentirlo.
+      if (names.some((name) => NATIVE_STATE_ATTRIBUTES.has(name))) {
+        audit.unverified += 1;
         continue;
       }
 

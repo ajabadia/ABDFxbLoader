@@ -4,15 +4,169 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>fxbLoader · Librería VFX</title>
+    <!-- Marca de fxbLoader: baldosa del acento con «fx» trazadas, legible a 16 px. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%23b4532a%22/><g fill=%22none%22 stroke=%22%23fff%22 stroke-width=%223.2%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M11 24.6V12.6a3.6 3.6 0 0 1 3.6-3.6h1.4%22/><path d=%22M8.2 15.8h6.6%22/><path d=%22M18.9 14.4l6.8 10.2M25.7 14.4l-6.8 10.2%22/></g></svg>"
+    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <!--
+      Iconos de la vista: un sprite con trazo `currentColor` y sin relleno, para
+      que cada botón herede el color del texto y el tema. Los usa `#icon-…`.
+    -->
+    <svg class="icon-sprite" aria-hidden="true" focusable="false" hidden>
+      <symbol id="icon-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7.4" />
+        <path d="M20.8 20.8l-4.05-4.05" />
+      </symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path d="M21.5 18.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h4.7l2 2.8h8.3a2 2 0 0 1 2 2z" />
+      </symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24">
+        <path d="M13 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" />
+        <path d="M13 2.5v6h6" />
+      </symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="M18 6L6 18M6 6l12 12" />
+      </symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24">
+        <path d="M21 15.5v3.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3.5" />
+        <path d="M7.5 10.5L12 15l4.5-4.5" />
+        <path d="M12 15V3.5" />
+      </symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M21 15.5v3.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3.5" />
+        <path d="M16.5 7.5L12 3l-4.5 4.5" />
+        <path d="M12 3v11.5" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M3.5 6.5h17" />
+        <path d="M18.5 6.5l-.9 13.2a2 2 0 0 1-2 1.8H8.4a2 2 0 0 1-2-1.8L5.5 6.5" />
+        <path d="M9.5 6.5V4.6a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.9" />
+        <path d="M10 10.5v7M14 10.5v7" />
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path d="M6.5 4.2 19.5 12l-13 7.8z" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M21.5 4v6h-6" />
+        <path d="M20 15a8.6 8.6 0 1 1-2-8.9L21.5 10" />
+      </symbol>
+      <symbol id="icon-restore" viewBox="0 0 24 24">
+        <path d="M2.5 4v6h6" />
+        <path d="M4.4 15a8.6 8.6 0 1 0 2-8.9L2.5 10" />
+      </symbol>
+      <symbol id="icon-undo" viewBox="0 0 24 24">
+        <path d="M9 14.5L4 9.5l5-5" />
+        <path d="M20 20.5v-7a4 4 0 0 0-4-4H4" />
+      </symbol>
+      <symbol id="icon-list" viewBox="0 0 24 24">
+        <path d="M8.5 6.5h12M8.5 12h12M8.5 17.5h12" />
+        <path d="M4 6.5h.01M4 12h.01M4 17.5h.01" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="M20 6.5L9.4 17.1 4 11.7" />
+      </symbol>
+      <symbol id="icon-ban" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.6" />
+        <path d="M5.9 5.9l12.2 12.2" />
+      </symbol>
+      <symbol id="icon-save" viewBox="0 0 24 24">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <path d="M17 21v-7.5H7V21" />
+        <path d="M7 3v4.5h7.5" />
+      </symbol>
+      <symbol id="icon-repeat" viewBox="0 0 24 24">
+        <path d="M17.5 2.5L21 6l-3.5 3.5" />
+        <path d="M3.5 11.5v-2A3.5 3.5 0 0 1 7 6h14" />
+        <path d="M6.5 21.5L3 18l3.5-3.5" />
+        <path d="M20.5 12.5v2a3.5 3.5 0 0 1-3.5 3.5H3" />
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="icon-tag" viewBox="0 0 24 24">
+        <path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z" />
+        <path d="M7 7h.01" />
+      </symbol>
+      <symbol id="icon-banks" viewBox="0 0 24 24">
+        <ellipse cx="12" cy="5.8" rx="8" ry="2.8" />
+        <path d="M4 5.8v12c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8v-12" />
+        <path d="M4 11.8c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8" />
+      </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <path d="M9 5.5l6.5 6.5-6.5 6.5" />
+      </symbol>
+      <symbol id="icon-chevron-left" viewBox="0 0 24 24">
+        <path d="M15 18.5l-6.5-6.5 6.5-6.5" />
+      </symbol>
+    </svg>
+
     <header class="top">
       <div class="brand">
         <h1>fxbLoader</h1>
         <p class="sub">Librería VFX</p>
       </div>
-      <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
+      <div class="top-actions">
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          title="Tema: Sistema (clic para cambiar a Oscuro)"
+          aria-label="Cambiar tema de color"
+        >
+          <!-- Dos dibujos: sol para el tema claro y luna para el oscuro. Con
+          «Sistema» se enseña el que toque; `applyTheme` cambia el visible. -->
+          <svg
+            data-icon="light"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+          >
+            <circle cx="12" cy="12" r="4.2" />
+            <path
+              d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"
+            />
+          </svg>
+          <svg
+            data-icon="dark"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            hidden
+          >
+            <path d="M20.1 15.1a8.1 8.1 0 1 1-11.2-11 8.5 8.5 0 1 0 11.2 11z" />
+          </svg>
+        </button>
+        <button
+          id="wizards-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Explorador de Wizards SM Pro Audio / VFX"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Wizards
+        </button>
+        <button
+          id="import-pkg-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Importar instrumentos o paquetes (.vfxlibrary) a la librería activa"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar
+        </button>
+        <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
+      </div>
     </header>
 
     <main>
@@ -26,6 +180,7 @@
             autocomplete="off"
             spellcheck="false"
             list="library-root-recents"
+            aria-describedby="root-warning"
             required
           />
           <button
@@ -33,13 +188,22 @@
             type="button"
             title="Elegir la carpeta con el diálogo del sistema"
           >
-            Elegir carpeta…
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Elegir carpeta…
           </button>
-          <button id="scan-button" class="primary" type="submit">Escanear</button>
+          <button id="scan-button" class="primary" type="submit">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Escanear
+          </button>
         </div>
         <datalist id="library-root-recents"></datalist>
+        <p id="root-warning" class="warning" hidden>
+          La carpeta debe contener <code>plugs\</code>. Poner el cargador modifica
+          <code>vfxinfo.txt</code> y crea <code>fxbLoader.config</code>; quitarlo
+          restaura el respaldo <code>vfxinfo.tx_</code>.
+        </p>
         <details>
-          <summary>Opciones avanzadas</summary>
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Opciones avanzadas
+          </summary>
           <label for="dll-source">DLL del cargador (vacío = la del servidor)</label>
           <div class="row">
             <input
@@ -54,7 +218,7 @@
               type="button"
               title="Elegir el fxbLoader.dll con el diálogo del sistema"
             >
-              Elegir DLL…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg>Elegir DLL…
             </button>
           </div>
           <datalist id="dll-source-recents"></datalist>
@@ -65,7 +229,7 @@
               type="button"
               title="Olvidar las rutas sugeridas; lo escrito en los campos no cambia"
             >
-              Vaciar historial de rutas
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>Vaciar historial de rutas
             </button>
           </div>
         </details>
@@ -83,17 +247,13 @@
 
         <div class="batch">
           <div class="batch-actions">
-            <button id="install-all" class="primary" type="button" disabled>
-              Instalar todos
-            </button>
-            <button id="uninstall-all" class="danger" type="button" disabled>
-              Desinstalar todos
-            </button>
+            <button id="install-all" class="primary" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span class="label">Poner cargador a todos</span></button>
+            <button id="uninstall-all" class="danger" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg><span class="label">Quitar cargador a todos</span></button>
             <button id="batch-cancel" type="button" hidden>
-              Cancelar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cancelar
             </button>
-            <button id="batch-resume" type="button" hidden>Reanudar</button>
-            <button id="retry-all" type="button" hidden>Reintentar fallidos</button>
+            <button id="batch-resume" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg><span class="label">Reanudar</span></button>
+            <button id="retry-all" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span class="label">Reintentar fallidos</span></button>
           </div>
           <p id="batch-status" class="status" role="status" aria-live="polite"></p>
           <progress
@@ -107,9 +267,136 @@
           <p id="batch-step" class="batch-step" hidden></p>
           <p id="batch-clock" class="batch-clock" hidden></p>
           <details id="batch-errors" class="batch-errors" hidden>
-            <summary id="batch-errors-summary"></summary>
+            <summary>
+              <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg><span id="batch-errors-label"></span>
+            </summary>
             <ul id="batch-error-list" class="batch-error-list"></ul>
           </details>
+        </div>
+
+        <div class="filter-bar">
+          <input
+            id="plugin-filter"
+            type="search"
+            placeholder="Filtrar plugins por nombre…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Filtrar plugins"
+          />
+          <!-- Un control por eje con tres estados: positivo, negativo y «todos».
+          Así «con» y «sin» no son dos chips sueltos, y cada eje se combina con
+          los demás y con la búsqueda por nombre. -->
+          <div class="filter-chips" role="group" aria-label="Filtros de la tabla">
+            <div class="filter-menu">
+              <button
+                id="filter-install"
+                class="filter-btn"
+                type="button"
+                data-axis="install"
+                data-tone="neutral"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="filter-install-menu"
+                aria-pressed="false"
+                title="Filtro del cargador: con y sin cargador. Abrir las opciones"
+              >
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg><span class="filter-btn-text">Con y sin cargador</span>
+              </button>
+              <div
+                id="filter-install-menu"
+                class="filter-menu-list"
+                role="menu"
+                aria-label="Filtro del cargador"
+                hidden
+              >
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="install" data-value="installed" data-tone="positive">Con cargador</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="install" data-value="uninstalled" data-tone="negative">Sin cargador</button>
+                <button type="button" role="menuitemradio" aria-checked="true" data-axis="install" data-value="all" data-tone="neutral">Con y sin cargador</button>
+              </div>
+            </div>
+            <div class="filter-menu">
+              <button
+                id="filter-banks"
+                class="filter-btn"
+                type="button"
+                data-axis="banks"
+                data-tone="neutral"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="filter-banks-menu"
+                aria-pressed="false"
+                title="Filtro de bancos: con y sin bancos. Abrir las opciones"
+              >
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-banks"></use></svg><span class="filter-btn-text">Con y sin bancos</span>
+              </button>
+              <div
+                id="filter-banks-menu"
+                class="filter-menu-list"
+                role="menu"
+                aria-label="Filtro de bancos"
+                hidden
+              >
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="banks" data-value="with-banks" data-tone="positive">Con bancos</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="banks" data-value="without-banks" data-tone="negative">Sin bancos</button>
+                <button type="button" role="menuitemradio" aria-checked="true" data-axis="banks" data-value="all" data-tone="neutral">Con y sin bancos</button>
+              </div>
+            </div>
+            <div class="filter-menu">
+              <button
+                id="filter-wizard"
+                class="filter-btn"
+                type="button"
+                data-axis="wizard"
+                data-tone="neutral"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="filter-wizard-menu"
+                aria-pressed="false"
+                title="Filtro de wizard: con y sin wizard. Abrir las opciones"
+              >
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg><span class="filter-btn-text">Con y sin wizard</span>
+              </button>
+              <div
+                id="filter-wizard-menu"
+                class="filter-menu-list"
+                role="menu"
+                aria-label="Filtro de wizard"
+                hidden
+              >
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="wizard" data-value="with-wizard" data-tone="positive">Con wizard</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="wizard" data-value="without-wizard" data-tone="negative">Sin wizard</button>
+                <button type="button" role="menuitemradio" aria-checked="true" data-axis="wizard" data-value="all" data-tone="neutral">Con y sin wizard</button>
+              </div>
+            </div>
+            <div class="filter-menu">
+              <button
+                id="filter-compat"
+                class="filter-btn"
+                type="button"
+                data-axis="compat"
+                data-tone="neutral"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="filter-compat-menu"
+                aria-pressed="false"
+                title="Filtro de compatibilidad: compatibles e incompatibles. Abrir las opciones"
+              >
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-ban"></use></svg><span class="filter-btn-text">Compatibles e incompatibles</span>
+              </button>
+              <div
+                id="filter-compat-menu"
+                class="filter-menu-list"
+                role="menu"
+                aria-label="Filtro de compatibilidad"
+                hidden
+              >
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="compat" data-value="compatible" data-tone="positive">Ningún incompatible</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-axis="compat" data-value="incompatible" data-tone="negative">Solo incompatibles</button>
+                <button type="button" role="menuitemradio" aria-checked="true" data-axis="compat" data-value="all" data-tone="neutral">Compatibles e incompatibles</button>
+              </div>
+            </div>
+          </div>
+          <span id="filter-count" class="filter-count"></span>
         </div>
 
         <div class="table-wrap">
@@ -121,19 +408,54 @@
                 <th>Compatibilidad</th>
                 <th>pluginName</th>
                 <th>vfxinfo.txt</th>
+                <th>Wizard</th>
+                <th>Bancos</th>
+                <th>Catálogo</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="plugins"></tbody>
           </table>
         </div>
+
+        <div id="pagination" class="pagination" hidden>
+          <div class="pagination-size">
+            <label for="page-size" class="pagination-label">Mostrar:</label>
+            <select id="page-size" class="pagination-select" aria-label="Plugins por página">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+            </select>
+            <span class="pagination-unit">por página</span>
+          </div>
+          <div class="pagination-nav">
+            <button id="page-prev" class="pagination-btn" type="button" aria-label="Página anterior">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-chevron-left"></use></svg>Anterior
+            </button>
+            <span id="page-info" class="pagination-info" aria-live="polite"></span>
+            <button id="page-next" class="pagination-btn" type="button" aria-label="Página siguiente">
+              Siguiente<svg class="icon icon-right" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>
+            </button>
+          </div>
+        </div>
       </section>
 
-      <section id="banks" class="card" hidden aria-labelledby="banks-title">
+      <section
+        id="banks"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="banks-title"
+        tabindex="-1"
+        hidden
+      >
         <div class="summary">
           <!-- #banks-title solo lo referencia aria-labelledby de #banks: la vista no lo toca. -->
           <h2 id="banks-title">Bancos de <span id="banks-plugin"></span></h2>
-          <button id="banks-close" type="button">Cerrar</button>
+          <button id="banks-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
         </div>
 
         <p class="banks-path">
@@ -150,20 +472,22 @@
             <input id="load-fxb" type="checkbox" />
             Cargar el banco al abrir el plugin
           </label>
-          <button id="default-save" class="primary" type="button">Guardar</button>
+          <button id="default-save" class="primary" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar
+          </button>
           <button
             id="default-convert"
             type="button"
             title="Convierte el banco por defecto en su mismo archivo y guarda el original como banco.fxb.orig"
           >
-            Convertir orden de bytes
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-repeat"></use></svg>Convertir orden de bytes
           </button>
           <button
             id="default-restore"
             type="button"
             title="Devuelve el banco por defecto al contenido de banco.fxb.orig sin tocar el respaldo"
           >
-            Restaurar original
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-restore"></use></svg>Restaurar original
           </button>
           <button
             id="default-discard"
@@ -171,7 +495,7 @@
             type="button"
             title="Envía el respaldo .orig del banco por defecto a la Papelera de reciclaje para poder recuperarlo"
           >
-            Descartar respaldo
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>Descartar respaldo
           </button>
         </div>
 
@@ -195,7 +519,9 @@
         </div>
 
         <details class="import">
-          <summary>Importar bancos .fxb</summary>
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Importar bancos .fxb
+          </summary>
           <label for="import-paths">Rutas absolutas, una por línea</label>
           <textarea
             id="import-paths"
@@ -216,7 +542,7 @@
               type="button"
               title="Elegir los bancos .fxb con el diálogo del sistema"
             >
-              Añadir archivos…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>Añadir archivos…
             </button>
           </div>
           <div class="import-row">
@@ -224,8 +550,12 @@
               <input id="import-overwrite" type="checkbox" checked />
               Sobrescribir un banco con el mismo nombre
             </label>
-            <button id="import-button" class="primary" type="button">Importar</button>
-            <button id="import-cancel" type="button" hidden>Cancelar</button>
+            <button id="import-button" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar
+            </button>
+            <button id="import-cancel" type="button" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cancelar
+            </button>
           </div>
           <progress
             id="import-progress"
@@ -239,7 +569,9 @@
         </details>
 
         <details class="export">
-          <summary>Exportar un banco en otro orden de bytes</summary>
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Exportar un banco en otro orden de bytes
+          </summary>
           <div class="import-row">
             <div class="field">
               <label for="export-bank">Banco importado</label>
@@ -256,7 +588,9 @@
               <input id="export-overwrite" type="checkbox" />
               Sobrescribir si ya existe
             </label>
-            <button id="export-button" class="primary" type="button">Exportar</button>
+            <button id="export-button" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg>Exportar
+            </button>
           </div>
           <p class="note">
             Se guarda al lado del original como <code>banco-le.fxb</code> o
@@ -266,16 +600,38 @@
         </details>
       </section>
 
-      <section id="meta" class="card" hidden aria-labelledby="meta-title">
+      <section
+        id="meta"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="meta-title"
+        tabindex="-1"
+        hidden
+      >
         <div class="summary">
           <h2 id="meta-title">Catálogo de <span id="meta-plugin"></span></h2>
-          <button id="meta-close" type="button">Cerrar</button>
+          <button id="meta-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
         </div>
 
         <p class="banks-path">
           <code id="meta-path"></code>
           <span id="meta-exists" class="note"></span>
         </p>
+
+        <p id="meta-origin" class="note"></p>
+
+        <div id="meta-wizard-banner" class="wizard-banner" hidden>
+          <div class="wizard-banner-info">
+            <span class="badge badge-wizard">Wizard disponible</span>
+            <span id="meta-wizard-title" class="wizard-title"></span>
+          </div>
+          <button id="meta-wizard-apply" class="primary" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Rellenar desde Wizard
+          </button>
+        </div>
 
         <div class="meta-grid">
           <div class="field">
@@ -318,19 +674,339 @@
           <textarea id="meta-extended" rows="6" spellcheck="false"></textarea>
         </div>
 
+        <div id="meta-dll-actions" class="row meta-dll">
+          <div class="field">
+            <label for="meta-dll">Preferencia de DLL (dll_name)</label>
+            <input id="meta-dll" autocomplete="off" spellcheck="false" />
+            <p id="meta-dll-note" class="note"></p>
+          </div>
+          <button id="meta-dll-save" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar preferencia
+          </button>
+          <button id="meta-dll-cancel" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg>Cancelar
+          </button>
+        </div>
+
         <div class="row">
-          <button id="meta-save" class="primary" type="button">Guardar</button>
-          <button id="meta-reload" type="button">Descartar cambios</button>
+          <button id="meta-save" class="primary" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar
+          </button>
+          <button id="meta-reload" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg>Descartar cambios
+          </button>
         </div>
 
         <p id="meta-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
-      <p class="hint">
-        La carpeta debe contener <code>plugs\</code>. Instalar modifica
-        <code>vfxinfo.txt</code> y crea <code>fxbLoader.config</code>; desinstalar restaura
-        el respaldo <code>vfxinfo.tx_</code>.
-      </p>
+      <section
+        id="plugin-wizard"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plugin-wizard-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="plugin-wizard-title">Wizard de <span id="plugin-wizard-plugin"></span></h2>
+          <button id="plugin-wizard-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p id="plugin-wizard-empty" class="note" hidden>
+          No existe ningún wizard oficial certificado para este plugin en la base de datos de SM Pro Audio / VFX.
+        </p>
+
+        <div id="plugin-wizard-content">
+          <div class="summary">
+            <div>
+              <span id="plugin-wizard-name" class="badge"></span>
+              <span id="plugin-wizard-source" class="note"></span>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="field">
+              <label>Fabricante</label>
+              <p id="plugin-wizard-vendor" class="note"></p>
+            </div>
+            <div class="field">
+              <label>Género</label>
+              <p id="plugin-wizard-genre" class="note"></p>
+            </div>
+            <div class="field">
+              <label>ID VST (FourCC)</label>
+              <p id="plugin-wizard-id" class="note"></p>
+            </div>
+            <div class="field">
+              <label>DLL original</label>
+              <p id="plugin-wizard-dll" class="note"></p>
+            </div>
+            <div class="field">
+              <label>Dimensiones UI</label>
+              <p id="plugin-wizard-dimensions" class="note"></p>
+            </div>
+            <div class="field">
+              <label>Parámetros / Canales</label>
+              <p id="plugin-wizard-params" class="note"></p>
+            </div>
+            <div class="field">
+              <label>Flags VST</label>
+              <p id="plugin-wizard-flags" class="note"></p>
+            </div>
+          </div>
+
+          <div id="plugin-wizard-files-wrap" class="field" hidden>
+            <label>Archivos y dependencias requeridas</label>
+            <pre id="plugin-wizard-files" class="wizard-code"></pre>
+          </div>
+
+          <div id="plugin-wizard-registry-wrap" class="field" hidden>
+            <label>Directivas de registro (Wine)</label>
+            <pre id="plugin-wizard-registry" class="wizard-code"></pre>
+          </div>
+
+          <div id="plugin-wizard-notes-wrap" class="field" hidden>
+            <label>Notas de compatibilidad</label>
+            <p id="plugin-wizard-notes" class="note"></p>
+          </div>
+
+          <div id="plugin-wizard-readme-wrap" class="field" hidden>
+            <label>Instrucciones (README)</label>
+            <pre id="plugin-wizard-readme" class="wizard-code"></pre>
+          </div>
+
+          <div class="row">
+            <button id="plugin-wizard-vfxinfo-btn" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg><span id="plugin-wizard-vfxinfo-label">Crear vfxinfo.txt desde Wizard</span>
+            </button>
+            <button id="plugin-wizard-apply-btn" type="button" title="Aplica fabricante, género y notas al catálogo fxbLoader.meta.json del plugin">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Aplicar a Catálogo
+            </button>
+            <button id="plugin-wizard-install-btn" type="button" title="Instala o reinstala este instrumento en la librería activa desde el Wizard">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Instalar con DLL…
+            </button>
+          </div>
+        </div>
+
+        <p id="plugin-wizard-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section
+        id="log-drawer"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="log-drawer-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="log-drawer-title">Historial de <span id="log-plugin"></span></h2>
+          <button id="log-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p class="banks-path">
+          <code id="log-path"></code>
+          <span id="log-exists" class="note"></span>
+        </p>
+        <p id="log-summary" class="note"></p>
+        <div id="log-table" class="log-table"></div>
+        <section id="log-record-detail" class="log-record-detail" aria-labelledby="log-record-detail-title" hidden>
+          <div class="log-record-detail-head">
+            <h3 id="log-record-detail-title"></h3>
+            <button id="log-record-detail-close" type="button" aria-label="Cerrar detalle del registro">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            </button>
+          </div>
+          <dl id="log-record-detail-fields" class="log-record-detail-fields"></dl>
+          <p class="log-record-detail-foot">Solo lectura</p>
+        </section>
+        <p id="log-rotated" class="note"></p>
+
+        <p id="log-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="wizards" class="card drawer" hidden aria-labelledby="wizards-title">
+        <div class="summary">
+          <h2 id="wizards-title">Repositorio de Wizards</h2>
+          <button id="wizards-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p class="note">268 wizards oficiales certificados de SM Pro Audio / VFX con metadatos VST, configuraciones y Wine.</p>
+
+        <div class="filter-bar">
+          <input
+            id="wizards-filter"
+            type="search"
+            placeholder="Buscar por nombre, fabricante, DLL o ID…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Filtrar wizards"
+          />
+          <span id="wizards-count" class="filter-count"></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Plugin</th>
+                <th>Fabricante</th>
+                <th>Género</th>
+                <th>DLL</th>
+                <th>ID</th>
+                <th>Configuración</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="wizards-rows"></tbody>
+          </table>
+        </div>
+
+        <p id="wizards-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section
+        id="import-package-drawer"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-package-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="import-package-title">Importar instrumentos (.vfxlibrary)</h2>
+          <button id="import-package-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p class="note">
+          Inspecciona e incorpora nuevos instrumentos desde paquetes <code>.vfxlibrary</code> o carpetas de plugin hacia la librería activa.
+        </p>
+
+        <div class="field">
+          <label for="import-package-path">Ruta del paquete o carpeta a importar</label>
+          <div class="row">
+            <input
+              id="import-package-path"
+              placeholder="D:\_banks\Novation V-Station demo.vfxlibrary"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              id="import-package-browse"
+              type="button"
+              title="Elegir carpeta con el diálogo del sistema"
+            >
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Elegir carpeta…
+            </button>
+            <button id="import-package-inspect-btn" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Inspeccionar
+            </button>
+          </div>
+        </div>
+
+        <div id="import-package-preview" hidden>
+          <div class="summary">
+            <span id="import-package-kind" class="badge"></span>
+            <span id="import-package-source" class="note"></span>
+          </div>
+
+          <div id="import-package-plugins-wrap" class="field">
+            <label>Plugins detectados</label>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><input id="import-package-all-plugs" type="checkbox" checked title="Seleccionar todos los plugins" /></th>
+                    <th>Plugin</th>
+                    <th>DLL</th>
+                    <th>vfxinfo.txt</th>
+                    <th>Tamaño</th>
+                    <th>En destino</th>
+                  </tr>
+                </thead>
+                <tbody id="import-package-plugins-rows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="import-package-banks-wrap" class="field">
+            <label>Bancos detectados</label>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><input id="import-package-all-banks" type="checkbox" checked title="Seleccionar todos los bancos" /></th>
+                    <th>Banco</th>
+                    <th>Presets</th>
+                    <th>Concordancia</th>
+                    <th>Tamaño</th>
+                    <th>En destino</th>
+                  </tr>
+                </thead>
+                <tbody id="import-package-banks-rows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="import-package-policy">En caso de conflicto con plugins o bancos existentes</label>
+              <select id="import-package-policy">
+                <option value="skip" selected>Omitir existentes (conservar los de la librería)</option>
+                <option value="overwrite">Sobrescribir existentes con los del paquete</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
+            <label class="check" for="import-package-repair">
+              <input id="import-package-repair" type="checkbox" checked />
+              <span>Reparar bancos (alinear IDs de chunks y descriptores con el plugin destino)</span>
+            </label>
+          </div>
+
+          <div class="row">
+            <button id="import-package-execute-btn" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar a la librería
+            </button>
+          </div>
+        </div>
+
+        <p id="import-package-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <dialog
+        id="dialog-dll-draft"
+        class="modal-dll-draft"
+        aria-labelledby="dialog-dll-draft-title"
+        aria-describedby="dialog-dll-draft-text"
+      >
+        <h3 id="dialog-dll-draft-title">Preferencia de DLL sin guardar</h3>
+        <p id="dialog-dll-draft-text">
+          El catálogo tiene una preferencia de DLL modificada que todavía no está guardada.
+          «Continuar sin cambios» la descarta y usa la preferencia guardada; «Cancelar»
+          conserva el borrador. Desde aquí no se guarda: vuelve al catálogo y usa Guardar
+          preferencia.
+        </p>
+        <div class="row">
+          <button id="dialog-dll-draft-continue" class="primary" type="button">Continuar sin cambios</button>
+          <button id="dialog-dll-draft-cancel" type="button">Cancelar</button>
+        </div>
+      </dialog>
+
+      <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
     </main>
 
     <template id="row-template">
@@ -339,11 +1015,41 @@
         <td><span class="badge" data-field="status"></span></td>
         <td><span class="badge" data-field="compatibility"></span></td>
         <td data-field="pluginName"></td>
-        <td data-field="vfxinfo"></td>
+        <td><span class="badge" data-field="vfxinfo"></span></td>
+        <td>
+          <button type="button" class="badge badge-action" data-field="wizard"></button>
+        </td>
+        <td>
+          <button type="button" class="badge badge-action" data-field="banks"></button>
+        </td>
+        <td>
+          <button type="button" class="badge badge-action" data-field="meta"></button>
+        </td>
         <td class="actions">
-          <button type="button" data-action="banks">Bancos</button>
-          <button type="button" data-action="meta">Catálogo</button>
-          <button type="button" data-action="toggle"></button>
+          <div class="row-menu">
+            <button
+              type="button"
+              class="row-menu-btn"
+              data-action="menu"
+              title="Acciones del plugin"
+              aria-label="Acciones del plugin"
+            >···</button>
+            <div class="row-menu-dropdown" hidden>
+              <button type="button" data-action="toggle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span class="label"></span></button>
+              <button type="button" data-action="banks">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Bancos
+              </button>
+              <button type="button" data-action="meta">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Catálogo
+              </button>
+              <button type="button" data-action="wizard">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg>Wizard
+              </button>
+              <button type="button" data-action="log">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg>Historial
+              </button>
+            </div>
+          </div>
         </td>
       </tr>
     </template>

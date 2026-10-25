@@ -20,7 +20,7 @@ import {
   type LibraryBanksImportResponse,
   type LibraryBanksListResponse,
   type LibraryBatchResponse,
-  type LibraryInstallResponse,
+  type LibraryLoaderAddResponse,
   type LibraryScanResponse,
   type PluginMetaSnapshotResponse,
 } from '../src/client';
@@ -35,7 +35,7 @@ import { buildBank } from './helpers/fxb-bank';
  */
 function typeChecks(client: FxbClient): void {
   // @ts-expect-error `plugin` es obligatorio en install
-  void client.library.install({ libraryRoot: 'C:\\VFX\\Library' });
+  void client.library.addLoader({ libraryRoot: 'C:\\VFX\\Library' });
   // @ts-expect-error `libraryRoot` es una cadena
   void client.library.scan({ libraryRoot: 42 });
   // @ts-expect-error el scan devuelve plugins, no un plugin suelto
@@ -189,14 +189,14 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   const scan: LibraryScanResponse = await client.library.scan({ libraryRoot: data.root });
   assert.equal(calls, 1);
   assert.deepEqual(
-    scan.plugins.map((plugin) => [plugin.name, plugin.installed, plugin.pluginName]),
+    scan.plugins.map((plugin) => [plugin.name, plugin.hasLoader, plugin.pluginName]),
     [['Synth', false, null]],
   );
   assert.equal(scan.loader.valid, true);
   assert.equal(scan.loader.bitness, 32);
   assert.equal(scan.plugins[0]?.compatible, true);
 
-  const dry: LibraryInstallResponse = await client.library.install({
+  const dry: LibraryLoaderAddResponse = await client.library.addLoader({
     libraryRoot: data.root,
     plugin: 'Synth',
     dllSourcePath: data.dll,
@@ -208,21 +208,21 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
     ['backup', 'copy', 'patch', 'write-config', 'create-dir'],
   );
 
-  const installed: LibraryInstallResponse = await client.library.install({
+  const added: LibraryLoaderAddResponse = await client.library.addLoader({
     libraryRoot: data.root,
     plugin: 'Synth',
     dllSourcePath: data.dll,
   });
-  assert.equal(installed.plugin.installed, true);
-  assert.equal(installed.plugin.pluginName, 'Synth.dll');
+  assert.equal(added.plugin.hasLoader, true);
+  assert.equal(added.plugin.pluginName, 'Synth.dll');
 
   await assert.rejects(
-    client.library.install({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll }),
+    client.library.addLoader({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll }),
     (error: unknown) => {
       assert.equal(isFxbApiError(error), true);
       assert.equal((error as FxbApiError).status, 409);
       const body = (error as FxbApiError).body as { message?: string };
-      assert.match(String(body.message), /ya tiene fxbLoader/);
+      assert.match(String(body.message), /ya tiene el cargador/);
       return true;
     },
   );
@@ -230,19 +230,19 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   // El lote pasa por el servidor y devuelve el resultado de cada plugin.
   const batched: LibraryBatchResponse = await client.library.batch({
     libraryRoot: data.root,
-    action: 'install',
+    action: 'add',
     plugins: ['Synth'],
     dllSourcePath: data.dll,
     force: true,
   });
-  assert.equal(batched.action, 'install');
+  assert.equal(batched.action, 'add');
   assert.equal(batched.total, 1);
   assert.equal(batched.succeeded, 1);
   assert.equal(batched.failed, 0);
   assert.equal(batched.results[0]?.name, 'Synth');
-  assert.equal(batched.results[0]?.status, 'installed');
+  assert.equal(batched.results[0]?.status, 'added');
   assert.equal(batched.results[0]?.message, null);
-  assert.equal(batched.results[0]?.entry?.installed, true);
+  assert.equal(batched.results[0]?.entry?.hasLoader, true);
 
   // El mismo lote leyendo el progreso NDJSON: los eventos llegan en orden y el
   // resultado es el del evento `end`.
@@ -250,7 +250,7 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
   const streamed = await client.library.batchStream(
     {
       libraryRoot: data.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth'],
       dllSourcePath: data.dll,
       force: true,
@@ -265,13 +265,13 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
     'Synth:patch',
     'Synth:write-config',
     'Synth:create-dir',
-    'Synth:installed',
+    'Synth:added',
     'end',
   ]);
   assert.equal(streamed.succeeded, 1);
   assert.deepEqual(
     streamed.results.map((result) => [result.name, result.status]),
-    [['Synth', 'installed']],
+    [['Synth', 'added']],
   );
 
   const inspected = await client.library.inspectBank({
@@ -466,13 +466,13 @@ test('el cliente tipado recorre scan, install, import, uninstall y config', asyn
     },
   );
 
-  const uninstalled = await client.library.uninstall({
+  const removed = await client.library.removeLoader({
     libraryRoot: data.root,
     plugin: 'Synth',
   });
-  assert.equal(uninstalled.plugin.installed, false);
+  assert.equal(removed.plugin.hasLoader, false);
   assert.deepEqual(
-    uninstalled.actions.map((action) => action.kind),
+    removed.actions.map((action) => action.kind),
     ['restore', 'restore', 'delete'],
   );
 });
@@ -584,7 +584,7 @@ test('batchStream entrega cada evento según llega, sin esperar al final', async
   const seen: string[] = [];
   let finished = false;
   const pending = client.library.batchStream(
-    { libraryRoot: 'C:\VFX\Library', action: 'install', plugins: ['Synth'] },
+    { libraryRoot: 'C:\VFX\Library', action: 'add', plugins: ['Synth'] },
     { onEvent: (event) => seen.push(label(event)) },
   );
   void pending.then(
@@ -598,7 +598,7 @@ test('batchStream entrega cada evento según llega, sin esperar al final', async
 
   // El primer evento llega partido en dos trozos, como puede pasar por TCP.
   stream.push(
-    '{"type":"start","action":"install","dryRun":false,"total":1,"plugins":["Synth"]}\n{"type":"plug',
+    '{"type":"start","action":"add","dryRun":false,"total":1,"plugins":["Synth"]}\n{"type":"plug',
   );
   await tick();
   assert.deepEqual(seen, ['start'], 'el start se entrega con el lote aún abierto');
@@ -610,8 +610,8 @@ test('batchStream entrega cada evento según llega, sin esperar al final', async
   assert.equal(finished, false);
 
   stream.push(
-    '{"type":"end","result":{"action":"install","dryRun":false,"total":1,"succeeded":1,' +
-      '"failed":0,"results":[{"name":"Synth","status":"installed","message":null}]}}\n',
+    '{"type":"end","result":{"action":"add","dryRun":false,"total":1,"succeeded":1,' +
+      '"failed":0,"results":[{"name":"Synth","status":"added","message":null}]}}\n',
   );
   stream.close();
 
@@ -701,10 +701,10 @@ test('batchStream falla si el flujo se corta sin evento end', async () => {
 
   const pending = client.library.batchStream({
     libraryRoot: 'C:\VFX\Library',
-    action: 'install',
+    action: 'add',
     plugins: ['Synth'],
   });
-  stream.push('{"type":"start","action":"install","dryRun":false,"total":1,"plugins":["Synth"]}\n');
+  stream.push('{"type":"start","action":"add","dryRun":false,"total":1,"plugins":["Synth"]}\n');
   stream.close();
 
   await assert.rejects(pending, (error: unknown) => {

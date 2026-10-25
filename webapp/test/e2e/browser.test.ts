@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -11,6 +11,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { MAX_BANKS_PER_REQUEST } from '../../src/client/bank-limits';
 import { MAX_PLUGINS_PER_BATCH } from '../../src/client/batch-stream';
 import { parseFxbBank } from '../../src/library/fxb-bank';
+import { pe32Dll } from '../helpers/pe';
 import { MAX_RECENTS } from '../../src/ui/recents';
 
 /**
@@ -87,6 +88,15 @@ async function waitForText(page: Page, selector: string, text: string | RegExp):
 
 function pluginRow(page: Page): Locator {
   return page.locator('#plugins tr').filter({ hasText: PLUGIN });
+}
+
+/** Despliega el menú «···» de la fila y pulsa la opción elegida. */
+async function clickRowAction(
+  row: Locator,
+  action: 'toggle' | 'banks' | 'meta',
+): Promise<void> {
+  await row.locator('[data-action="menu"]').click();
+  await row.locator(`[data-action="${action}"]`).click();
 }
 
 /**
@@ -181,18 +191,18 @@ test(
 
       const row = pluginRow(page);
       assert.equal(await row.count(), 1, `no hay fila para ${PLUGIN}`);
-      assert.equal(await row.locator('[data-field="status"]').textContent(), 'no instalado');
+      assert.equal(await row.locator('[data-field="status"]').textContent(), 'sin cargador');
       assert.equal(await row.locator('[data-field="compatibility"]').textContent(), 'compatible');
-      assert.equal(await row.locator('[data-action="toggle"]').textContent(), 'Instalar');
+      assert.equal(await row.locator('[data-action="toggle"]').textContent(), 'Poner cargador');
 
       /* 2. Instalación -------------------------------------------------- */
-      await row.locator('[data-action="toggle"]').click();
-      await waitForText(page, '#status', `Instalado en ${PLUGIN}.`);
+      await clickRowAction(row, 'toggle');
+      await waitForText(page, '#status', `Cargador puesto en ${PLUGIN}.`);
       await waitForText(page, '#summary-text', '1 de 3 con el cargador');
 
       const installedRow = pluginRow(page);
-      assert.equal(await installedRow.locator('[data-field="status"]').textContent(), 'instalado');
-      assert.equal(await installedRow.locator('[data-action="toggle"]').textContent(), 'Desinstalar');
+      assert.equal(await installedRow.locator('[data-field="status"]').textContent(), 'con cargador');
+      assert.equal(await installedRow.locator('[data-action="toggle"]').textContent(), 'Quitar cargador');
 
       // El disco lo confirma: el DLL copiado es el del repositorio.
       const pluginDir = path.join(library, 'plugs', PLUGIN);
@@ -214,7 +224,11 @@ test(
       assert.equal(await blockedRow.locator('[data-action="toggle"]').isDisabled(), true);
 
       /* 3. Bancos: abrir, importar y fijar el banco por defecto --------- */
-      await installedRow.locator('[data-action="banks"]').click();
+      // Sin abrir nada, la columna ya dice que el plugin no tiene bancos, y la
+      // pastilla abre el cajón igual que la opción del menú de la fila.
+      const banksPill = installedRow.locator('button[data-field="banks"]');
+      assert.equal(await banksPill.textContent(), 'sin bancos');
+      await banksPill.click();
       await page.locator('#banks').waitFor({ state: 'visible' });
       await waitForText(page, '#banks-rows', 'La carpeta de bancos está vacía');
       await waitForText(page, '#banks-plugin', PLUGIN);
@@ -229,6 +243,14 @@ test(
       await page.click('#import-button');
       await waitForText(page, '#banks-status', '1 banco(s) importados.');
       await waitForText(page, '#import-results', 'importado');
+      // La pastilla se refresca con lo que acaba de leer el panel: cuenta el
+      // banco importado y lo lista en el tooltip, sin volver a escanear.
+      assert.equal(await installedRow.locator('[data-field="banks"]').textContent(), '1 banco');
+      assert.ok(
+        ((await installedRow.locator('[data-field="banks"]').getAttribute('title')) ?? '').includes(
+          BANK,
+        ),
+      );
       assert.equal(await page.locator('#import-results .import-result.rejected').count(), 0);
 
       // La carpeta escaneada y el banco importado quedan como sugerencias.
@@ -292,6 +314,20 @@ test(
       assert.match(config, new RegExp(`^defaultFxbName = ${BANK.replace(/\./g, '\\.')}\\r?$`, 'm'));
       assert.match(config, /^loadFxbBank = yes\r?$/m);
       assert.match(config, /^programDirName = presets\r?$/m);
+
+      // Un 409 al guardar el banco por defecto tampoco se sustituye por un texto
+      // fijo: la vista enseña el mensaje del API y aplica la configuración que
+      // vino en el error. Se reescribe el mismo archivo por detrás para mover su
+      // mtime sin cambiar el contenido, así el resto del recorrido sigue igual.
+      const configPath = path.join(pluginDir, 'fxbLoader.config');
+      await writeFile(configPath, await readFile(configPath));
+      await page.click('#default-save');
+      await waitForText(page, '#banks-status', 'El archivo cambió en disco desde la última lectura');
+      assert.match(
+        (await page.locator('#banks-status').textContent()) ?? '',
+        /revisa los valores actualizados/,
+      );
+      assert.equal(await page.inputValue('#default-bank'), BANK);
 
       /* 3b. Convertir el banco por defecto en el sitio ------------------ */
       const originalBank = parseFxbBank(await readFile(OBXD_BANK)).bank;
@@ -377,10 +413,28 @@ test(
       assert.equal(await page.locator('#banks-rows tr.is-default').count(), 1);
 
       /* 3e. Catálogo del plugin: leer, guardar y releer ---------------- */
-      await pluginRow(page).locator('[data-action="meta"]').click();
+      // Los paneles son cajones: el de bancos tapa la fila hasta que se cierra.
+      await page.click('#banks-close');
+      await page.locator('#banks').waitFor({ state: 'hidden' });
+      // El escaneo también cuenta los bancos: tras releer la librería la fila
+      // sigue diciendo «1 banco», sin abrir el panel.
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
+      assert.equal(await pluginRow(page).locator('[data-field="banks"]').textContent(), '1 banco');
+      // La pastilla de la columna abre el cajón del catálogo sin pasar por «···».
+      const metaPill = pluginRow(page).locator('button[data-field="meta"]');
+      assert.equal(await metaPill.evaluate((el) => el.tagName), 'BUTTON');
+      await metaPill.click();
       await page.locator('#meta').waitFor({ state: 'visible' });
+      await page.locator('#drawer-backdrop').waitFor({ state: 'visible' });
       await waitForText(page, '#meta-plugin', PLUGIN);
-      await waitForText(page, '#meta-status', /no tiene catálogo/);
+      // El panel dice de dónde salen los valores y que falta el id: el fixture
+      // trae `name` en el vfxinfo pero no `id`, y sin ambos no se puede guardar.
+      await waitForText(page, '#meta-origin', /no trae id/);
+      // La tabla dice que ese plugin aún no tiene catálogo, sin abrir el panel.
+      assert.equal(await pluginRow(page).locator('[data-field="meta"]').textContent(), 'falta');
+      assert.equal(await page.inputValue('#meta-name'), 'OB-Xd');
+      assert.equal(await page.inputValue('#meta-id'), '');
       assert.equal(await page.locator('#meta-save').isDisabled(), false);
 
       await page.fill('#meta-id', 'OBXd');
@@ -390,6 +444,8 @@ test(
       await page.fill('#meta-extended', '{ "family": "synth" }');
       await page.click('#meta-save');
       await waitForText(page, '#meta-status', 'Catálogo guardado.');
+      // Guardarlo actualiza la columna de la fila; no hace falta volver a escanear.
+      assert.equal(await pluginRow(page).locator('[data-field="meta"]').textContent(), 'presente');
 
       // El archivo queda en el directorio del plugin con lo que se escribió.
       const metaPath = path.join(pluginDir, 'fxbLoader.meta.json');
@@ -406,11 +462,37 @@ test(
       assert.match(meta.updated, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
       assert.equal(await page.locator('#meta-path').textContent(), metaPath);
 
-      // «Descartar cambios» vuelve a lo guardado sin escribir nada.
+      // Un 409 del API tampoco se sustituye por un texto fijo: la vista enseña
+      // el mensaje del servidor y relee el archivo para no guardar con un
+      // `mtimeMs` viejo.
+      const external = {
+        ...meta,
+        common: { ...meta.common, notes: 'Cambiado fuera de la app' },
+      };
+      await writeFile(metaPath, JSON.stringify(external, null, 2) + '\n', 'utf8');
+      await page.fill('#meta-notes', 'Guardado que llega tarde');
+      await page.click('#meta-save');
+      await waitForText(page, '#meta-status', 'El archivo propio cambió en disco desde la última lectura');
+      assert.match((await page.locator('#meta-status').textContent()) ?? '', /vuelve a guardar/);
+      assert.equal(await page.inputValue('#meta-notes'), 'Cambiado fuera de la app');
+
+      // Un 400 de validación llega con su `message` y la lista de `issues`; el
+      // estado los pinta debajo (su CSS conserva los saltos de línea).
+      await page.fill('#meta-notes', 'x'.repeat(256));
+      await page.click('#meta-save');
+      await waitForText(page, '#meta-status', 'Metadatos no válidos');
+      assert.equal(
+        await page.locator('#meta-status').textContent(),
+        'Metadatos no válidos\ncommon.notes: 256 caracteres; el máximo es 255',
+      );
+
+      // «Descartar cambios» vuelve a lo guardado sin escribir nada, y con el
+      // archivo ya en disco la nota de origen desaparece.
       await page.fill('#meta-name', 'Sin guardar');
       await page.click('#meta-reload');
       await page.waitForFunction(`document.querySelector('#meta-status').textContent === ''`);
       assert.equal(await page.inputValue('#meta-name'), 'OB-Xd E2E');
+      assert.equal(await page.locator('#meta-origin').textContent(), '');
       assert.equal(
         (JSON.parse(await readFile(metaPath, 'utf8')) as { common: { name: string } }).common.name,
         'OB-Xd E2E',
@@ -418,6 +500,106 @@ test(
 
       await page.click('#meta-close');
       assert.equal(await page.locator('#meta').isHidden(), true);
+
+      // El log del plugin: ruta, resumen, entradas y rotados, desde su propio cajón.
+      await pluginRow(page).locator('[data-action="menu"]').click();
+      await pluginRow(page).locator('[data-action="log"]').click();
+      await waitForText(page, '#log-path', /fxbLoader\.log$/);
+
+      // El recorrido deja cinco operaciones en el historial: poner el cargador,
+      // importar el banco, convertirlo, restaurarlo y descartar el respaldo. La
+      // tabla se contrasta con el archivo, no con un número fijo: si una de esas
+      // operaciones deja de registrarse, el test lo sigue detectando.
+      const logEntries = (await readFile(path.join(pluginDir, 'fxbLoader.log'), 'utf8'))
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+        .map((line) => {
+          const match = line.match(/^\[([^\]]+)\] \[([^\]]+)\] (.*)$/);
+          return {
+            timestamp: match?.[1] ?? '',
+            action: match?.[2] ?? '',
+            summary: match?.[3] ?? '',
+          };
+        });
+      assert.deepEqual(
+        logEntries.map((entry) => entry.action),
+        ['install', 'import-banks', 'convert-bank', 'restore-bank', 'discard-backup'],
+        'faltó registrar alguna operación del recorrido',
+      );
+
+      const logActions = (): Promise<string[]> =>
+        page.locator('#log-table tbody td.table-action').allTextContents();
+      // Mismo comparador que la tabla: fecha descendente y, a igual marca, el
+      // orden del archivo (el sort de la tabla es estable).
+      const newestFirst = [...logEntries]
+        .map((entry, index) => ({ entry, index }))
+        .sort(
+          (a, b) =>
+            Date.parse(b.entry.timestamp) - Date.parse(a.entry.timestamp) || a.index - b.index,
+        )
+        .map((item) => item.entry.action);
+
+      await waitForText(page, '#log-table tbody', /Instalado fxbLoader\.dll/);
+      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length);
+      assert.deepEqual(
+        await logActions(),
+        newestFirst,
+        'la tabla debe abrir con la entrada más reciente primero',
+      );
+      assert.equal(await page.locator('#log-table th').count(), 5, 'la tabla añade una columna sin título para acciones');
+      assert.equal(await page.locator('#log-table thead th.table-actions-heading').textContent(), '');
+      assert.equal(await page.locator('#log-table .row-menu-btn').count(), logEntries.length);
+      await page.locator('#log-table .row-menu-btn').first().click();
+      assert.equal(await page.locator('#log-table .row-menu-dropdown:not([hidden])').count(), 1);
+      assert.equal(await page.locator('#log-table .row-menu-dropdown:not([hidden]) [data-action="view-record"]').textContent(), 'Ver registro');
+      await page.locator('#log-table .row-menu-dropdown:not([hidden]) [data-action="view-record"]').click();
+      assert.equal(await page.locator('#log-table .row-menu-dropdown:not([hidden])').count(), 0);
+      await page.locator('#log-record-detail').waitFor({ state: 'visible' });
+      assert.match((await page.locator('#log-record-detail-title').textContent()) ?? '', /^Registro · /);
+      assert.equal(await page.locator('#log-record-detail-fields .log-record-field').count(), 5);
+      assert.equal(await page.locator('#log-record-detail-fields dt').allTextContents().then(labels => labels.join('|')), 'Fecha y hora|Acción|Resumen|Detalle|Línea original');
+      assert.equal(
+        await page.locator('#log-record-detail-fields dd').nth(4).textContent(),
+        `[${logEntries.find(entry => entry.action === newestFirst[0])?.timestamp}] ` +
+          `[${newestFirst[0]}] ${logEntries.find(entry => entry.action === newestFirst[0])?.summary}`,
+      );
+      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length, 'el detalle conserva el historial visible');
+      await page.locator('#log-record-detail-close').click();
+      assert.equal(await page.locator('#log-record-detail').isHidden(), true);
+      assert.equal(await page.locator('#log-record-detail-fields .log-record-field').count(), 0);
+      assert.equal(await page.evaluate(`document.activeElement?.getAttribute('aria-label')`), 'Acciones del registro');
+      assert.equal(await page.locator('#log-table [aria-label="Buscar en la tabla"]').count(), 1);
+      assert.equal(await page.locator('#log-table .pagination-select').inputValue(), '100');
+      assert.equal(await page.locator('#log-table th[aria-sort="descending"]').count(), 1);
+
+      // La búsqueda recorre acción y resumen: «instalado» solo encaja con la
+      // primera operación, y el filtro vacío devuelve todas las entradas.
+      await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('instalado');
+      assert.equal(await page.locator('#log-table tbody tr').count(), 1);
+      assert.deepEqual(await logActions(), ['install']);
+      assert.match(
+        (await page.locator('#log-table tbody').textContent()) ?? '',
+        /Instalado fxbLoader\.dll/,
+      );
+      await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('no existe');
+      assert.equal(await page.locator('#log-table tbody tr').count(), 0);
+      assert.equal(await page.locator('#log-table .table-empty').isVisible(), true);
+      await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('');
+      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length);
+
+      // Orden ascendente: el archivo tal cual se escribió.
+      await page.locator('#log-table th button').first().click();
+      assert.equal(await page.locator('#log-table th[aria-sort="ascending"]').count(), 1);
+      assert.deepEqual(await logActions(), logEntries.map((entry) => entry.action));
+      assert.ok(
+        ((await page.locator('#log-summary').textContent()) ?? '').includes(
+          `${logEntries.length} entrada(s)`,
+        ),
+      );
+      assert.equal(await page.locator('#log-rotated').textContent(), 'Sin archivos rotados.');
+      await page.locator('#log-close').click();
+      assert.equal(await page.locator('#log-drawer').isHidden(), true);
 
       /* 4. Lote completo con progreso en caliente ----------------------- */
       // La vista ya no orquesta el lote: lo pide a `POST /library/batch/stream`
@@ -429,12 +611,12 @@ test(
       await recordTexts(page, 'batch-step', '__batchSteps');
       await recordTexts(page, 'batch-clock', '__batchClock');
       await page.locator('#uninstall-all').click();
-      await waitForText(page, '#batch-status', /desinstalado\(s\)/);
+      await waitForText(page, '#batch-status', /sin cargador/);
       await waitForText(page, '#summary-text', '0 de 3 con el cargador');
-      await waitForText(page, '#batch-status', /desinstalado\(s\)/);
+      await waitForText(page, '#batch-status', /sin cargador/);
       assert.equal(
         await pluginRow(page).locator('[data-field="status"]').textContent(),
-        'no instalado',
+        'sin cargador',
       );
       // La barra de progreso solo vive mientras dura el lote.
       assert.equal(await page.locator('#batch-progress').isHidden(), true);
@@ -474,7 +656,7 @@ test(
       await resetTexts(page, '__batchSteps');
       await resetTexts(page, '__batchClock');
       await page.locator('#install-all').click();
-      await waitForText(page, '#batch-status', /instalado\(s\)/);
+      await waitForText(page, '#batch-status', /con cargador/);
       await waitForText(page, '#summary-text', '2 de 3 con el cargador');
 
       const installSteps = await texts(page, '__batchSteps');
@@ -489,7 +671,7 @@ test(
       assert.equal(await page.locator('#batch-clock').textContent(), '');
       assert.equal(
         await pluginRow(page).locator('[data-field="status"]').textContent(),
-        'instalado',
+        'con cargador',
       );
 
       assert.equal(
@@ -497,6 +679,14 @@ test(
         true,
         'el lote debe pedirse por el endpoint de progreso',
       );
+
+      /* Un 400 del API se ve con su mensaje ---------------------------- */
+      // Al final, para no ensuciar el historial de rutas recientes que ya se
+      // comprobó: la vista enseña el mensaje del servidor, no un texto fijo.
+      await page.fill('#library-root', 'plugs');
+      await page.click('#scan-button');
+      await waitForText(page, '#status', 'libraryRoot debe ser una ruta absoluta: "plugs"');
+      assert.equal(await page.locator('#root-warning').isVisible(), true);
       assert.deepEqual(pageErrors, [], `errores de JavaScript en la página: ${pageErrors.join(' | ')}`);
     } catch (error) {
       // La captura y los logs del servidor son lo único útil si falla en CI.
@@ -519,7 +709,7 @@ test(
  * test de arriba contra el servidor real).
  */
 test(
-  'trocea «Instalar todos» por encima del tope y pinta una sola barra',
+  'trocea «Poner cargador a todos» por encima del tope y pinta una sola barra',
   { skip },
   async (t) => {
     assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
@@ -578,12 +768,14 @@ test(
           plugins: names.map((name) => ({
             name,
             path: `C:\\Fake\\Library\\plugs\\${name}`,
-            installed: false,
+            hasLoader: false,
             hasVfxinfo: true,
+            hasMeta: false,
             pluginName: null,
             warnings: [],
             compatible: true,
             compatibilityIssues: [],
+            banks: { count: 0, names: [] },
           })),
         }),
       }),
@@ -597,7 +789,7 @@ test(
       if (batches.length === 2) await new Promise((resolve) => setTimeout(resolve, 700));
 
       const events = [
-        { type: 'start', action: 'install', dryRun: false, total: body.plugins.length, plugins: body.plugins },
+        { type: 'start', action: 'add', dryRun: false, total: body.plugins.length, plugins: body.plugins },
         ...body.plugins.flatMap((name, index) => [
           { type: 'plugin', index, total: body.plugins.length, name, status: 'running', message: null },
           // Un paso interno por petición: el flujo real los manda entre el
@@ -615,17 +807,17 @@ test(
                 },
               ]
             : []),
-          { type: 'plugin', index, total: body.plugins.length, name, status: 'installed', message: null },
+          { type: 'plugin', index, total: body.plugins.length, name, status: 'added', message: null },
         ]),
         {
           type: 'end',
           result: {
-            action: 'install',
+            action: 'add',
             dryRun: false,
             total: body.plugins.length,
             succeeded: body.plugins.length,
             failed: 0,
-            results: body.plugins.map((name) => ({ name, status: 'installed', message: null })),
+            results: body.plugins.map((name) => ({ name, status: 'added', message: null })),
           },
         },
       ];
@@ -648,7 +840,7 @@ test(
 
       // La segunda petición ya está en vuelo y la barra no se reinició: sigue
       // en el plugin 501 de 501 y conserva el máximo del lote completo.
-      await waitForText(page, '#batch-status', `Instalando ${total} de ${total}…`);
+      await waitForText(page, '#batch-status', `Poniendo el cargador ${total} de ${total}…`);
       assert.equal(await page.locator('#batch-progress').isHidden(), false);
       assert.equal(await page.locator('#batch-clock').isHidden(), false, 'el reloj acompaña al lote troceado');
       assert.match(
@@ -663,7 +855,7 @@ test(
       );
       assert.equal(await page.locator('#batch-progress').count(), 1, 'una sola barra para el lote');
 
-      await waitForText(page, '#batch-status', `${total} plugin(s) instalado(s).`);
+      await waitForText(page, '#batch-status', `${total} plugin(s) con cargador.`);
       assert.equal(await page.locator('#batch-progress').isHidden(), true);
       assert.equal(await page.locator('#batch-step').isHidden(), true);
       assert.equal(await page.locator('#batch-step').textContent(), '');
@@ -757,12 +949,13 @@ test(
           plugins: names.map((name) => ({
             name,
             path: `C:\\Fake\\Library\\plugs\\${name}`,
-            installed: installed.has(name),
+            hasLoader: installed.has(name),
             hasVfxinfo: true,
             pluginName: null,
             warnings: [],
             compatible: true,
             compatibilityIssues: [],
+            banks: { count: 0, names: [] },
           })),
         }),
       }),
@@ -793,7 +986,7 @@ test(
       const events = [
         {
           type: 'start',
-          action: 'install',
+          action: 'add',
           dryRun: false,
           total: body.plugins.length,
           plugins: body.plugins,
@@ -812,21 +1005,21 @@ test(
             index,
             total: body.plugins.length,
             name,
-            status: 'installed',
+            status: 'added',
             message: null,
           },
         ]),
         {
           type: 'end',
           result: {
-            action: 'install',
+            action: 'add',
             dryRun: false,
             total: body.plugins.length,
             succeeded: body.plugins.length,
             failed: 0,
             results: body.plugins.map((name) => ({
               name,
-              status: 'installed',
+              status: 'added',
               message: null,
             })),
           },
@@ -848,7 +1041,7 @@ test(
       await waitForText(page, '#summary-text', `0 de ${names.length} con el cargador`);
 
       await page.locator('#install-all').click();
-      await waitForText(page, '#batch-status', `Instalando 1 de ${names.length}…`);
+      await waitForText(page, '#batch-status', `Poniendo el cargador 1 de ${names.length}…`);
 
       for (let attempt = 0; attempt < 200 && !held; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
@@ -861,7 +1054,7 @@ test(
       await waitForText(
         page,
         '#batch-status',
-        /Lote cancelado: 0 de 3 instalado\(s\); 3 sin confirmar\./,
+        /Lote cancelado: 0 de 3 con cargador; 3 sin confirmar\./,
       );
 
       // Alpha ya está instalado, así que solo quedan dos por reanudar.
@@ -871,7 +1064,7 @@ test(
 
       release();
       await page.click('#batch-resume');
-      await waitForText(page, '#batch-status', '2 plugin(s) instalado(s).');
+      await waitForText(page, '#batch-status', '2 plugin(s) con cargador.');
 
       assert.deepEqual(
         batches,
@@ -970,10 +1163,10 @@ test(
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
 
       const row = pluginRow(page);
-      await row.locator('[data-action="toggle"]').click();
-      await waitForText(page, '#status', `Instalado en ${PLUGIN}.`);
+      await clickRowAction(row, 'toggle');
+      await waitForText(page, '#status', `Cargador puesto en ${PLUGIN}.`);
 
-      await pluginRow(page).locator('[data-action="banks"]').click();
+      await clickRowAction(pluginRow(page), 'banks');
       await page.locator('#banks').waitFor({ state: 'visible' });
       await waitForText(page, '#banks-rows', 'La carpeta de bancos está vacía');
 
@@ -1112,7 +1305,7 @@ test(
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
 
-      await pluginRow(page).locator('[data-action="banks"]').click();
+      await clickRowAction(pluginRow(page), 'banks');
       await page.locator('#banks').waitFor({ state: 'visible' });
       await waitForText(page, '#banks-rows', /La carpeta de bancos/);
 
@@ -1328,7 +1521,7 @@ test(
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
 
       // Importar funciona sin instalar el plugin: solo no deja fijar el banco.
-      await pluginRow(page).locator('[data-action="banks"]').click();
+      await clickRowAction(pluginRow(page), 'banks');
       await page.locator('#banks').waitFor({ state: 'visible' });
       await waitForText(page, '#banks-rows', /La carpeta de bancos/);
 
@@ -1444,7 +1637,7 @@ test(
       const events = [
         {
           type: 'start',
-          action: 'install',
+          action: 'add',
           dryRun: false,
           total: body.plugins.length,
           plugins: body.plugins,
@@ -1456,21 +1649,21 @@ test(
             index,
             total: body.plugins.length,
             name,
-            status: failed.includes(name) ? 'failed' : 'installed',
+            status: failed.includes(name) ? 'failed' : 'added',
             message: failed.includes(name) ? `fallo simulado en ${name}` : null,
           },
         ]),
         {
           type: 'end',
           result: {
-            action: 'install',
+            action: 'add',
             dryRun: false,
             total: body.plugins.length,
             succeeded: body.plugins.length - failed.length,
             failed: failed.length,
             results: body.plugins.map((name) => ({
               name,
-              status: failed.includes(name) ? 'failed' : 'installed',
+              status: failed.includes(name) ? 'failed' : 'added',
               message: failed.includes(name) ? `fallo simulado en ${name}` : null,
             })),
           },
@@ -1484,7 +1677,7 @@ test(
       });
     });
 
-    await page.route('**/library/install', async (route) => {
+    await page.route('**/library/loader/add', async (route) => {
       const body = route.request().postDataJSON() as { plugin: string };
       retried.push(body.plugin);
       if (retried.length === 1) await retryGate;
@@ -1514,7 +1707,7 @@ test(
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
 
       await page.click('#install-all');
-      await waitForText(page, '#batch-status', '1 de 3 instalado(s); 2 con error.');
+      await waitForText(page, '#batch-status', '1 de 3 con cargador; 2 con error.');
       await page.locator('#retry-all').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#retry-all').textContent(), 'Reintentar fallidos (2)');
       assert.equal(await page.locator('#batch-error-list .batch-error').count(), 2);
@@ -1658,7 +1851,7 @@ test(
       assert.equal(scans[1]?.['dllSourcePath'], REPO_DLL);
 
       /* 3. Bancos: añade archivos a la lista sin borrar lo escrito ------ */
-      await pluginRow(page).locator('[data-action="banks"]').click();
+      await clickRowAction(pluginRow(page), 'banks');
       await page.locator('#banks').waitFor({ state: 'visible' });
       await page.locator('details.import > summary').click();
       await page.fill('#import-paths', manualImport);
@@ -1845,6 +2038,927 @@ test(
       await mkdir(ARTIFACTS, { recursive: true });
       await page.screenshot({
         path: path.join(ARTIFACTS, 'e2e-recents-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * El conmutador de tema cicla Sistema → Oscuro → Claro. La elección se guarda
+ * en `localStorage` (`fxbLoader.theme`), también «Sistema», que se escribe como
+ * `auto` en vez de borrar la clave; al recargar, el modo y su dibujo (sol o
+ * luna) tienen que seguir ahí. Con «Sistema» el dibujo sigue al SO sin cambiar
+ * lo guardado.
+ */
+test(
+  'el tema elegido se guarda y se recupera al recargar',
+  {
+    skip: existsSync(SERVER_ENTRY)
+      ? false
+      : `falta ${path.relative(process.cwd(), SERVER_ENTRY)}; ejecuta npm run build`,
+  },
+  async (t) => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    // Tema del SO fijo: el sol o la luna de «Sistema» no deben depender del host.
+    const context = await browser.newContext({ colorScheme: 'light' });
+    const page = await context.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    interface ThemeState {
+      stored: string | null;
+      theme: string | null;
+      sun: boolean;
+      moon: boolean;
+      title: string;
+    }
+
+    // El script va como texto para no necesitar el lib DOM del proyecto.
+    const readTheme = async (): Promise<ThemeState> =>
+      (await page.evaluate(`
+        (() => {
+          const visible = (mode) => {
+            const svg = document.querySelector('svg[data-icon="' + mode + '"]');
+            return svg !== null && getComputedStyle(svg).display !== 'none';
+          };
+          return {
+            stored: localStorage.getItem('fxbLoader.theme'),
+            theme: document.documentElement.getAttribute('data-theme'),
+            sun: visible('light'),
+            moon: visible('dark'),
+            title: document.getElementById('theme-toggle').title,
+          };
+        })()
+      `)) as ThemeState;
+
+    const titleFor = {
+      auto: 'Tema: Sistema (clic para cambiar a Oscuro)',
+      dark: 'Tema: Oscuro (clic para cambiar a Claro)',
+      light: 'Tema: Claro (clic para cambiar a Sistema)',
+    } as const;
+
+    const expectTheme = async (mode: keyof typeof titleFor): Promise<void> => {
+      const dark = mode === 'dark';
+      assert.deepEqual(
+        await readTheme(),
+        {
+          stored: mode,
+          theme: mode === 'auto' ? null : mode,
+          sun: !dark,
+          moon: dark,
+          title: titleFor[mode],
+        },
+        `estado inesperado con el tema ${mode}`,
+      );
+    };
+
+    try {
+      await page.goto(url);
+      await page.waitForSelector('#theme-toggle');
+
+      // Primer arranque: nadie ha elegido, así que manda el SO y no hay clave.
+      const initial = await readTheme();
+      assert.equal(initial.stored, null, 'sin elección no se escribe la clave');
+      assert.equal(initial.theme, null);
+      assert.equal(initial.sun, true, 'con el SO claro se dibuja el sol');
+      assert.equal(initial.title, titleFor.auto);
+
+      await page.click('#theme-toggle');
+      await expectTheme('dark');
+      await page.reload();
+      await page.waitForSelector('#theme-toggle');
+      await expectTheme('dark');
+
+      await page.click('#theme-toggle');
+      await expectTheme('light');
+      await page.reload();
+      await page.waitForSelector('#theme-toggle');
+      await expectTheme('light');
+
+      await page.click('#theme-toggle');
+      await expectTheme('auto');
+      await page.reload();
+      await page.waitForSelector('#theme-toggle');
+      await expectTheme('auto');
+
+      // «Sistema» sigue al SO sin tocar lo guardado.
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await page.waitForFunction(
+        `getComputedStyle(document.querySelector('svg[data-icon="dark"]')).display !== 'none'`,
+      );
+      const followed = await readTheme();
+      assert.equal(followed.stored, 'auto', '«Sistema» sigue guardado como auto');
+      assert.equal(followed.theme, null, '«Sistema» no fija data-theme');
+      assert.equal(followed.moon, true, 'con el SO oscuro se dibuja la luna');
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-theme-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+test(
+  'paginador de plugins embebido: tamaño de página y navegación',
+  { skip },
+  async (t) => {
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-pagination-'));
+    const library = path.join(temp, 'library');
+    await cp(LIBRARY_SOURCE, library, { recursive: true });
+
+    // Copiar plugins dummy para tener 8 plugins y probar paginación de 5 en 5.
+    const plugsDir = path.join(library, 'plugs');
+    for (let i = 1; i <= 5; i++) {
+      await cp(path.join(plugsDir, 'AnalogSynth'), path.join(plugsDir, `Synth-${i}`), {
+        recursive: true,
+      });
+    }
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}`;
+    const logs: string[] = [];
+
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    server.stdout.on('data', (chunk) => logs.push(chunk.toString()));
+    server.stderr.on('data', (chunk) => logs.push(chunk.toString()));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    try {
+      await page.goto(url);
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+
+      await page.waitForSelector('#results:not([hidden])');
+      await page.waitForSelector('#pagination:not([hidden])');
+
+      // Tamaño de página por defecto es 10.
+      const defaultPageSize = await page.inputValue('#page-size');
+      assert.equal(defaultPageSize, '10', 'por defecto el paginador muestra 10');
+
+      // El botón Anterior está deshabilitado en la primera página.
+      const prevDisabled = await page.isDisabled('#page-prev');
+      assert.equal(prevDisabled, true, 'el botón Anterior debe estar deshabilitado en página 1');
+
+      // Cambiar a 5 por página.
+      await page.selectOption('#page-size', '5');
+      const rowsCount = await page.$$eval('#plugins tr', (rows) => rows.length);
+      assert.equal(rowsCount, 5, 'debe mostrar exactamente 5 filas al elegir tamaño 5');
+
+      const pageInfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
+      assert.match(pageInfoText ?? '', /^1–5 de \d+$/, 'page-info refleja el rango');
+
+      // Avanzar a la página siguiente.
+      await page.click('#page-next');
+      const page2InfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
+      assert.match(page2InfoText ?? '', /^6–\d+ de \d+$/, 'page-info avanza a la página 2');
+
+      // Volver a la página anterior.
+      await page.click('#page-prev');
+      const backInfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
+      assert.match(backInfoText ?? '', /^1–5 de \d+$/, 'page-info retrocede a la página 1');
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-pagination-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * Cada eje del filtro es un menú de tres estados: positivo, negativo y «todos».
+ * El chip anuncia si filtra (`aria-pressed`), si su menú está abierto
+ * (`aria-expanded`) y el tono que aplica (`data-tone`); las opciones viajan con
+ * `menuitemradio` + `aria-checked`. Se cubren clic, teclado, Escape, clic fuera,
+ * los cuatro ejes y el color de cada estado.
+ */
+test(
+  'los cuatro ejes filtran desde un menú de tres estados y lo anuncian',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+    assert.ok(existsSync(LIBRARY_SOURCE), `la librería no existe: ${LIBRARY_SOURCE}`);
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    const AXES = ['install', 'banks', 'wizard', 'compat'] as const;
+    const ALL_LABELS: Record<string, string> = {
+      install: 'Con y sin cargador',
+      banks: 'Con y sin bancos',
+      wizard: 'Con y sin wizard',
+      compat: 'Compatibles e incompatibles',
+    };
+
+    const chip = (axis: string) => page.locator(`#filter-${axis}`);
+    const option = (axis: string, value: string) =>
+      page.locator(`#filter-${axis}-menu [data-value="${value}"]`);
+
+    /** Elige una opción como lo haría el usuario: abre el chip y pulsa. */
+    const choose = async (axis: string, value: string): Promise<void> => {
+      await page.click(`#filter-${axis}`);
+      await option(axis, value).click();
+    };
+
+    /** Estado que el DOM anuncia para un eje. */
+    const stateOf = async (
+      axis: string,
+    ): Promise<{ pressed: string | null; expanded: string | null; tone: string | null; text: string }> => ({
+      pressed: await chip(axis).getAttribute('aria-pressed'),
+      expanded: await chip(axis).getAttribute('aria-expanded'),
+      tone: await chip(axis).getAttribute('data-tone'),
+      text: (await chip(axis).locator('.filter-btn-text').textContent())?.trim() ?? '',
+    });
+
+    /** Valor marcado dentro del menú de un eje. */
+    const checkedValue = async (axis: string): Promise<string | null> =>
+      page.locator(`#filter-${axis}-menu [aria-checked="true"]`).getAttribute('data-value');
+
+    const rows = async (expected: number, scope: string): Promise<void> => {
+      assert.equal(
+        await page.locator('#plugins tr').count(),
+        expected === 0 ? 1 : expected,
+        `${scope}: filas visibles`,
+      );
+    };
+
+    const countLabel = async (): Promise<string> =>
+      ((await page.textContent('#filter-count')) ?? '').trim();
+
+    const cdp = await page.context().newCDPSession(page);
+    /** Propiedad que el árbol de accesibilidad expone para un selector. */
+    const axProperty = async (selector: string, property: string): Promise<string | undefined> => {
+      const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+      const { node } = await cdp.send('DOM.describeNode', { nodeId });
+      const { nodes } = await cdp.send('Accessibility.getPartialAXTree', {
+        backendNodeId: node.backendNodeId,
+        fetchRelatives: false,
+      });
+      const found = nodes[0]?.properties?.find((entry) => entry.name === property);
+      const value = found?.value?.value as unknown;
+      return value === undefined || value === null ? undefined : String(value);
+    };
+
+    try {
+      await page.goto(url);
+      await page.fill('#library-root', LIBRARY_SOURCE);
+      await page.click('#scan-button');
+      await page.waitForSelector('#results:not([hidden])');
+
+      // Reparto del fixture, leído de los badges con todos los ejes en «todos».
+      const total = await page.locator('#plugins tr').count();
+      assert.ok(total > 0, 'el fixture debe traer plugins');
+      const installed = await page.locator('#plugins tr').evaluateAll((trs) =>
+        trs.filter(
+          (tr) => tr.querySelector('[data-field="status"]')?.textContent?.trim() === 'con cargador',
+        ).length,
+      );
+      const incompatible = await page.locator('#plugins tr').evaluateAll((trs) =>
+        trs.filter(
+          (tr) =>
+            tr.querySelector('[data-field="compatibility"]')?.textContent?.trim() ===
+            'incompatible',
+        ).length,
+      );
+      const withWizard = await page
+        .locator('[data-field="wizard"]')
+        .evaluateAll((badges) =>
+          badges.filter((badge) => badge.textContent?.trim() === 'disponible').length,
+        );
+
+      for (const axis of AXES) {
+        assert.deepEqual(
+          await stateOf(axis),
+          { pressed: 'false', expanded: 'false', tone: 'neutral', text: ALL_LABELS[axis] },
+          `${axis}: estado inicial`,
+        );
+        assert.equal(await checkedValue(axis), 'all', `${axis}: arranca en «todos»`);
+      }
+      assert.equal(await countLabel(), '', 'sin filtros no hay recuento');
+
+      /* Cargador: abrir, anunciar y elegir «Con cargador» --------------------- */
+      await page.click('#filter-install');
+      assert.deepEqual(
+        await stateOf('install'),
+        { pressed: 'false', expanded: 'true', tone: 'neutral', text: ALL_LABELS.install },
+        'al abrir solo cambia aria-expanded',
+      );
+      assert.equal(await page.locator('#filter-install-menu').isVisible(), true);
+      assert.equal(
+        await page.evaluate('document.activeElement.dataset.value'),
+        'all',
+        'el foco entra en la opción vigente',
+      );
+      assert.equal(await axProperty('#filter-install', 'expanded'), 'true');
+      assert.equal(
+        await axProperty('#filter-install-menu [data-value="all"]', 'checked'),
+        'true',
+        'el árbol de accesibilidad anuncia la opción marcada',
+      );
+
+      await option('install', 'installed').click();
+      assert.deepEqual(
+        await stateOf('install'),
+        { pressed: 'true', expanded: 'false', tone: 'positive', text: 'Con cargador' },
+        'la opción elegida pinta el chip y cierra el menú',
+      );
+      assert.equal(await page.locator('#filter-install-menu').isVisible(), false);
+      assert.equal(
+        await page.evaluate('document.activeElement.id'),
+        'filter-install',
+        'el foco vuelve al chip',
+      );
+      assert.equal(await checkedValue('install'), 'installed');
+      assert.equal(await axProperty('#filter-install', 'pressed'), 'true');
+      await rows(installed, 'solo instalados');
+      assert.equal(await countLabel(), `${installed} de ${total} plugin(s)`);
+
+      /* Teclado: flechas desde la opción marcada e Intro ---------------------- */
+      await page.focus('#filter-install');
+      await page.keyboard.press('Enter');
+      assert.equal(
+        await page.evaluate('document.activeElement.dataset.value'),
+        'installed',
+        'Intro abre el menú en la opción marcada',
+      );
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await page.evaluate('document.activeElement.dataset.value'), 'uninstalled');
+      await page.keyboard.press('Enter');
+      assert.deepEqual(
+        await stateOf('install'),
+        { pressed: 'true', expanded: 'false', tone: 'negative', text: 'Sin cargador' },
+        'Intro elige la opción enfocada',
+      );
+      await rows(total - installed, 'ningún instalado');
+      assert.equal(await countLabel(), `${total - installed} de ${total} plugin(s)`);
+
+      /* Escape cierra y devuelve el foco; un clic fuera también cierra ------- */
+      await page.click('#filter-install');
+      await page.keyboard.press('Escape');
+      assert.equal((await stateOf('install')).expanded, 'false');
+      assert.equal(await page.evaluate('document.activeElement.id'), 'filter-install');
+
+      await page.click('#filter-banks');
+      assert.equal((await stateOf('banks')).expanded, 'true');
+      await page.click('#plugin-filter');
+      assert.equal((await stateOf('banks')).expanded, 'false', 'el clic fuera cierra el menú');
+
+      /* Compatibilidad: el positivo es «Ningún incompatible» ------------------ */
+      await choose('compat', 'incompatible');
+      assert.deepEqual(
+        await stateOf('compat'),
+        { pressed: 'true', expanded: 'false', tone: 'negative', text: 'Solo incompatibles' },
+        'compatibilidad negativa',
+      );
+      await rows(incompatible, 'solo incompatibles');
+      await choose('compat', 'compatible');
+      assert.deepEqual(
+        await stateOf('compat'),
+        { pressed: 'true', expanded: 'false', tone: 'positive', text: 'Ningún incompatible' },
+        'compatibilidad positiva',
+      );
+      await rows(total - incompatible, 'ningún incompatible');
+      await choose('compat', 'all');
+      assert.equal((await stateOf('compat')).pressed, 'false');
+      assert.equal(
+        await countLabel(),
+        `${total - installed} de ${total} plugin(s)`,
+        'el eje de instalación sigue aplicado',
+      );
+
+      /* Wizard --------------------------------------------------------------- */
+      await choose('wizard', 'with-wizard');
+      assert.equal((await stateOf('wizard')).tone, 'positive');
+      await rows(withWizard, 'con wizard');
+      await choose('wizard', 'without-wizard');
+      assert.deepEqual(
+        await stateOf('wizard'),
+        { pressed: 'true', expanded: 'false', tone: 'negative', text: 'Sin wizard' },
+        'wizard negativo',
+      );
+      await rows(total - withWizard, 'sin wizard');
+      await choose('wizard', 'all');
+      assert.equal((await stateOf('wizard')).pressed, 'false');
+
+      /* Bancos: el fixture no trae presets ------------------------------------ */
+      await choose('install', 'all');
+      await choose('banks', 'with-banks');
+      assert.equal((await stateOf('banks')).tone, 'positive');
+      await rows(0, 'con bancos');
+      assert.equal(
+        (await page.textContent('#plugins'))?.trim(),
+        'Ningún plugin coincide con el filtro.',
+        'sin intersección se enseña el aviso',
+      );
+      assert.equal(await countLabel(), `0 de ${total} plugin(s)`);
+      await choose('banks', 'without-banks');
+      assert.equal((await stateOf('banks')).tone, 'negative');
+      await rows(total, 'sin bancos');
+      await choose('banks', 'all');
+      assert.equal(await countLabel(), '', 'sin filtros vuelve a no haber recuento');
+
+      /* Los tres estados se pintan con colores distintos ---------------------- */
+      const background = async (axis: string): Promise<string> =>
+        (await page.evaluate(
+          `getComputedStyle(document.getElementById('filter-${axis}')).backgroundColor`,
+        )) as string;
+      await choose('install', 'installed');
+      const positive = await background('install');
+      await choose('install', 'uninstalled');
+      const negative = await background('install');
+      await choose('install', 'all');
+      const neutral = await background('install');
+      assert.equal(
+        new Set([positive, negative, neutral]).size,
+        3,
+        `cada estado tiene su color: ${positive} / ${negative} / ${neutral}`,
+      );
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-filter-axes-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+test(
+  'combina los ejes de instalación y de bancos en la tabla',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+    assert.ok(existsSync(OBXD_BANK), `falta el banco de prueba ${OBXD_BANK}`);
+    assert.ok(existsSync(FIXTURE_LIBRARY), `la librería no existe: ${FIXTURE_LIBRARY}`);
+
+    // Copia propia: se instalan dos plugins y se deja un banco en uno de ellos
+    // para que la intersección tenga casos con y sin bancos.
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-combo-'));
+    const library = path.join(temp, 'library');
+    await cp(FIXTURE_LIBRARY, library, { recursive: true });
+
+    const port = await freePort();
+    const base = `http://127.0.0.1:${port}`;
+    const url = `${base}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, base, logs);
+
+    // Dos instalados para poder cruzar «Instalados» con los dos ejes de bancos;
+    // solo OB-Xd recibe un banco, así que «Instalados + sin bancos» tiene fila.
+    for (const plugin of ['OB-Xd', 'AnalogSynth']) {
+      const response = await fetch(`${base}/library/loader/add`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ libraryRoot: library, plugin, dllSourcePath: REPO_DLL }),
+      });
+      assert.equal(response.status, 200, `instalar ${plugin}: ${await response.text()}`);
+    }
+    const presets = path.join(library, 'plugs', 'OB-Xd', 'presets');
+    await mkdir(presets, { recursive: true });
+    await cp(OBXD_BANK, path.join(presets, BANK));
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    /** Nombres visibles ahora mismo, en orden alfabético. */
+    const visible = async (): Promise<string[]> =>
+      (await page.locator('#plugins tr [data-field="name"]').allTextContents()).sort();
+
+    const count = async (): Promise<string> =>
+      ((await page.textContent('#filter-count')) ?? '').trim();
+
+    const pressed = async (axis: string): Promise<string | null> =>
+      page.getAttribute(`#filter-${axis}`, 'aria-pressed');
+
+    const tone = async (axis: string): Promise<string | null> =>
+      page.getAttribute(`#filter-${axis}`, 'data-tone');
+
+    const label = async (axis: string): Promise<string> =>
+      (await page.textContent(`#filter-${axis} .filter-btn-text`))?.trim() ?? '';
+
+    /** Abre el chip de un eje y elige una de sus tres opciones. */
+    const choose = async (axis: string, value: string): Promise<void> => {
+      await page.click(`#filter-${axis}`);
+      await page.click(`#filter-${axis}-menu [data-value="${value}"]`);
+    };
+
+    const expectRows = async (names: string[], scope: string): Promise<void> => {
+      assert.deepEqual(await visible(), [...names].sort(), `${scope}: plugins visibles`);
+      assert.equal(
+        await count(),
+        `${names.length} de 3 plugin(s)`,
+        `${scope}: recuento del filtro`,
+      );
+    };
+
+    try {
+      await page.goto(url);
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await page.waitForSelector('#results:not([hidden])');
+
+      // Punto de partida comprobado: el banco copiado cuenta y los dos
+      // instalados no se confunden con el que quedó sin instalar.
+      const rows = await page.locator('#plugins tr').evaluateAll((trs) =>
+        trs.map((tr) => ({
+          name: tr.querySelector('[data-field="name"]')?.textContent?.trim() ?? '',
+          status: tr.querySelector('[data-field="status"]')?.textContent?.trim() ?? '',
+          banks: tr.querySelector('[data-field="banks"]')?.textContent?.trim() ?? '',
+        })),
+      );
+      const rowOf = (name: string) => {
+        const row = rows.find((entry) => entry.name === name);
+        assert.ok(row, `falta la fila de ${name}`);
+        return row;
+      };
+      assert.equal(rowOf('OB-Xd').status, 'con cargador');
+      assert.match(rowOf('OB-Xd').banks, /^1 banco/);
+      assert.equal(rowOf('AnalogSynth').status, 'con cargador');
+      assert.equal(rowOf('AnalogSynth').banks, 'sin bancos');
+      assert.equal(rowOf('GrandPiano').status, 'sin cargador');
+      assert.equal(rowOf('GrandPiano').banks, 'sin bancos');
+
+      assert.deepEqual(
+        await visible(),
+        ['AnalogSynth', 'GrandPiano', 'OB-Xd'],
+        'sin filtros: plugins visibles',
+      );
+      assert.equal(await count(), '', 'sin filtros no hay recuento');
+
+      /* Instalados + con bancos: intersección de los dos ejes ---------- */
+      await choose('install', 'installed');
+      await choose('banks', 'with-banks');
+      await expectRows(['OB-Xd'], 'instalados + con bancos');
+      assert.equal(await pressed('install'), 'true');
+      assert.equal(await pressed('banks'), 'true');
+      assert.equal(await pressed('wizard'), 'false');
+      assert.equal(await pressed('compat'), 'false');
+      assert.equal(await tone('install'), 'positive');
+      assert.equal(await tone('banks'), 'positive');
+      assert.equal(await label('install'), 'Con cargador');
+      assert.equal(await label('banks'), 'Con bancos');
+
+      /* Instalados + sin bancos --------------------------------------- */
+      await choose('banks', 'without-banks');
+      await expectRows(['AnalogSynth'], 'instalados + sin bancos');
+      assert.equal(await tone('banks'), 'negative');
+
+      /* Todos + sin bancos -------------------------------------------- */
+      await choose('install', 'all');
+      await expectRows(['AnalogSynth', 'GrandPiano'], 'todos + sin bancos');
+      assert.equal(await pressed('install'), 'false');
+      assert.equal(await tone('install'), 'neutral');
+
+      /* Todos + con bancos -------------------------------------------- */
+      await choose('banks', 'with-banks');
+      await expectRows(['OB-Xd'], 'todos + con bancos');
+
+      /* No instalados + con bancos: intersección vacía ---------------- */
+      await choose('install', 'uninstalled');
+      await expectRows([], 'no instalados + con bancos');
+      assert.equal(
+        (await page.locator('#plugins').textContent())?.trim(),
+        'Ningún plugin coincide con el filtro.',
+        'sin intersección se enseña el aviso',
+      );
+      assert.equal(
+        await pressed('banks'),
+        'true',
+        'el eje de bancos sigue aplicado aunque no queden filas',
+      );
+      assert.equal(await tone('install'), 'negative');
+      assert.equal(await label('install'), 'Sin cargador');
+
+      /* Quitar el eje de bancos deja solo el estado ------------------- */
+      await choose('banks', 'all');
+      await expectRows(['GrandPiano'], 'no instalados');
+
+      /* Instalados, ahora con y sin el eje de bancos ------------------ */
+      await choose('install', 'installed');
+      await expectRows(['AnalogSynth', 'OB-Xd'], 'instalados');
+      await choose('banks', 'with-banks');
+      await expectRows(['OB-Xd'], 'instalados + con bancos otra vez');
+      await choose('banks', 'all');
+      await expectRows(['AnalogSynth', 'OB-Xd'], 'instalados tras quitar bancos');
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-filter-combo-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/***
+ * Preferencia local de DLL por plugin, recorrida en el navegador contra el
+ * servidor real: cambiar `dll_name` en el panel del catálogo, guardarlo (con
+ * respaldo `vfxinfo.tx_` en disco) y comprobar el aviso de
+ * borrador que intercepta al importador.
+ *
+ * Como en el recorrido de arriba se instala el cargador de verdad: el valor
+ * guardado tras instalar es `OB-Xd/fxbLoader.dll`, y la alternativa es un PE32
+ * mínimo dentro del plugin para que un reescaneo no la marque incompatible.
+ */
+test(
+  'preferencia de DLL: borrador en el catálogo, guardado y aviso al importar',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+    const value = 'OB-Xd-alt.dll';
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-dll-'));
+    const library = path.join(temp, 'library');
+    // Nunca se toca el fixture: se trabaja sobre una copia.
+    await cp(path.join(LIBRARY_SOURCE, 'plugs'), path.join(library, 'plugs'), { recursive: true });
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    const pluginDir = path.join(library, 'plugs', PLUGIN);
+    const vfxinfoPath = path.join(pluginDir, 'vfxinfo.txt');
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    try {
+      /* Escaneo e instalación ----------------------------------------- */
+      await page.goto(url);
+      await page.waitForSelector('#scan-form');
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
+
+      const row = pluginRow(page);
+      await clickRowAction(row, 'toggle');
+      await waitForText(page, '#status', `Cargador puesto en ${PLUGIN}.`);
+
+      // La DLL alternativa: un PE32 válido para que un reescaneo la acepte.
+      await writeFile(path.join(pluginDir, value), pe32Dll());
+
+      /* Catálogo: valor guardado y botones al reposo ------------------ */
+      await clickRowAction(row, 'meta');
+      await page.locator('#meta').waitFor({ state: 'visible' });
+      await waitForText(page, '#meta-dll-note', 'Preferencia guardada en vfxinfo.txt');
+      // El panel muestra el `pluginName` del escaneo, que para un plugin con
+      // cargador es la DLL original del vfxinfo (o su respaldo), no
+      // `fxbLoader.dll`: el test toma el valor que está en pantalla.
+      const original = await page.inputValue('#meta-dll');
+      // La nota nombra el valor guardado tal cual está en el campo.
+      assert.ok(
+        ((await page.locator('#meta-dll-note').textContent()) ?? '').includes(original),
+        `la nota nombra el valor guardado: original=${original}`,
+      );
+      assert.match(original, /\.dll$/);
+      assert.equal(await page.locator('#meta-dll-save').isDisabled(), true);
+      assert.equal(await page.locator('#meta-dll-cancel').isDisabled(), true);
+
+      /* Borrador: nota, botones y cancelar --------------------------- */
+      await page.fill('#meta-dll', value);
+      await waitForText(page, '#meta-dll-note', 'Borrador sin guardar del valor mostrado.');
+      assert.equal(await page.locator('#meta-dll-save').isDisabled(), false);
+      assert.equal(await page.locator('#meta-dll-cancel').isDisabled(), false);      await page.click('#meta-dll-cancel');
+      await waitForText(page, '#meta-status', 'Preferencia de DLL restablecida al valor guardado.');
+      assert.equal(await page.inputValue('#meta-dll'), original);
+      assert.equal(await page.locator('#meta-dll-save').isDisabled(), true);      /* Guardar: API, vfxinfo.txt y respaldo ------------------------- */
+      const backupPath = path.join(pluginDir, 'vfxinfo.tx_');
+      // La instalación ya dejó el respaldo del vfxinfo.txt original.
+      assert.equal(existsSync(backupPath), true, 'la instalación respaldó el vfxinfo.txt');
+      const backupBefore = await readFile(backupPath);
+      await page.fill('#meta-dll', value);
+      await page.click('#meta-dll-save');
+      await waitForText(page, '#meta-status', `Preferencia de DLL guardada: ${value}`);
+      await waitForText(
+        page,
+        '#meta-dll-note',
+        `Preferencia guardada en vfxinfo.txt: ${value}`,
+      );
+      assert.equal(await page.inputValue('#meta-dll'), value);
+      assert.equal(await page.locator('#meta-dll-save').isDisabled(), true);      assert.match(
+        (await readFile(vfxinfoPath, 'latin1')),
+        new RegExp(`^dll_name: ${value.replace(/\./g, '\\.')}\\r?$`, 'm'),
+      );      // El respaldo de la instalación queda intacto tras guardar la
+      // preferencia: guarda el vfxinfo.txt original, no el parcheado.
+      assert.equal(existsSync(backupPath), true, 'el respaldo sigue ahí');
+      assert.equal(
+        Buffer.compare(await readFile(backupPath), backupBefore),
+        0,
+        'el primer guardado de preferencia no toca el respaldo existente',
+      );
+      assert.notEqual(
+        Buffer.compare(await readFile(backupPath), await readFile(vfxinfoPath)),
+        0,
+        'el respaldo conserva el original, distinto del vfxinfo parcheado',
+      );
+      // La operación queda en el historial del plugin.
+      assert.match(
+        await readFile(path.join(pluginDir, 'fxbLoader.log'), 'utf8'),
+        /\[dll-preference\]/,
+      );
+
+      /* Aviso de borrador al abrir el importador --------------------- */
+      // Otro borrador (la preferencia guardada ahora es la alternativa): se
+
+//      // abre el importador y el diálogo pregunta antes de continuar. El
+      // cajón del catálogo tapa la barra: se cierra y el borrador sobrevive.
+      await page.fill('#meta-dll', original);      await page.click('#meta-close');      await page.locator('#meta').waitFor({ state: 'hidden' });
+
+      await page.click('#import-pkg-nav-btn');
+      await page.locator('#dialog-dll-draft').waitFor({ state: 'visible' });
+      assert.equal(
+        await page.evaluate(`document.querySelector('#dialog-dll-draft')?.open`),
+        true,
+      );
+      // «Cancelar» conserva el borrador y no abre nada.
+      await page.click('#dialog-dll-draft-cancel');
+      assert.equal(
+        await page.evaluate(`document.querySelector('#dialog-dll-draft')?.open`),
+        false,
+      );      assert.equal(await page.locator('#import-package-drawer').isHidden(), true);
+      assert.equal(await page.inputValue('#meta-dll'), original);
+
+      // «Continuar sin cambios» descarta el borrador y abre el importador:
+      // el campo vuelve a la preferencia guardada.
+      await page.click('#import-pkg-nav-btn');
+      await page.locator('#dialog-dll-draft').waitFor({ state: 'visible' });
+      await page.click('#dialog-dll-draft-continue');
+      await page.locator('#import-package-drawer').waitFor({ state: 'visible' });
+      assert.equal(await page.inputValue('#meta-dll'), value);
+      assert.equal(
+        await page.evaluate(`document.querySelector('#dialog-dll-draft')?.open`),
+        false,
+      );
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-dll-preference-failure.png'),
         fullPage: true,
       });
       console.error(`Servidor:\n${logs.join('')}`);

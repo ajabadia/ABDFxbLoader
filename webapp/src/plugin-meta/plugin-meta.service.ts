@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { writeFileAtomic } from '../common/atomic-file';
 import { readVfxinfo, VFXINFO_FILENAME } from '../library/vfxinfo';
+import { META_FILENAME } from './plugin-meta.constants';
 import type {
   PluginMetaCommon,
   PluginMetaCommonInput,
@@ -16,7 +17,6 @@ import {
   PluginMetaPathError,
 } from './plugin-meta.types';
 
-const META_FILENAME = 'fxbLoader.meta.json';
 const COMMON_KEY_ARRAY: readonly (keyof PluginMetaCommon)[] = [
   'id',
   'name',
@@ -410,14 +410,18 @@ export class PluginMetaService {
     const stats = await statOrNull(file);
 
     if (stats === null) {
+      const vfxinfo = await readCommonFromVfxinfo(dir);
       return {
         metaPath: file,
         exists: false,
         mtimeMs: null,
         size: 0,
-        common: copyCommonDefaults(),
+        common: {
+          ...copyCommonDefaults(),
+          ...vfxinfo,
+        },
         extended: {},
-        source: null,
+        source: Object.keys(vfxinfo).length > 0 ? { vfxinfo: true } : null,
         updated: null,
       };
     }
@@ -427,14 +431,18 @@ export class PluginMetaService {
       raw = await fs.readFile(file, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        const vfxinfo = await readCommonFromVfxinfo(dir);
         return {
           metaPath: file,
           exists: false,
           mtimeMs: null,
           size: 0,
-          common: copyCommonDefaults(),
+          common: {
+            ...copyCommonDefaults(),
+            ...vfxinfo,
+          },
           extended: {},
-          source: null,
+          source: Object.keys(vfxinfo).length > 0 ? { vfxinfo: true } : null,
           updated: null,
         };
       }

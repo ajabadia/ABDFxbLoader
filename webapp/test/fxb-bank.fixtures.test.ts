@@ -860,7 +860,7 @@ async function library(t: TestContext): Promise<Library> {
 test('importa los bancos reales y los copia byte a byte', async (t) => {
   const data = await library(t);
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll })
     .expect(200);
 
@@ -904,7 +904,7 @@ test('importa los bancos reales y los copia byte a byte', async (t) => {
 test('rechaza un banco real de otro plugin y no lo copia', async (t) => {
   const data = await library(t);
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll })
     .expect(200);
 
@@ -932,7 +932,7 @@ test('rechaza un banco real de otro plugin y no lo copia', async (t) => {
 test('la versión real del banco solo se exige si el cliente la pide', async (t) => {
   const data = await library(t);
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll })
     .expect(200);
 

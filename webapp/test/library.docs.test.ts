@@ -20,15 +20,15 @@ import {
   LIBRARY_IMPORT_REJECTED_EXAMPLE,
   LIBRARY_INSPECT_EXAMPLE,
   LIBRARY_INSPECT_WITHOUT_PLUGIN_EXAMPLE,
-  LIBRARY_INSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
-  LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE,
+  LIBRARY_LOADER_ADD_EXAMPLE,
   LIBRARY_RESTORE_EXAMPLE,
   LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
   LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
-  LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_UNINSTALL_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_EXAMPLE,
 } from '../src/library/library.dto';
 import { buildBank } from './helpers/fxb-bank';
 
@@ -98,32 +98,32 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
   assertSameKeys(scan.body.plugins[0], LIBRARY_SCAN_EXAMPLE.plugins[0]!, 'scan 200: plugin');
 
   const dry = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll, dryRun: true })
     .expect(200);
-  assertSameKeys(dry.body, LIBRARY_INSTALL_DRY_RUN_EXAMPLE, 'install dryRun 200');
-  assert.deepEqual(actionKinds(dry.body), actionKinds(LIBRARY_INSTALL_DRY_RUN_EXAMPLE));
-  assertSameKeys(dry.body.actions[0], LIBRARY_INSTALL_DRY_RUN_EXAMPLE.actions[0]!, 'install dryRun: acción');
+  assertSameKeys(dry.body, LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE, 'install dryRun 200');
+  assert.deepEqual(actionKinds(dry.body), actionKinds(LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE));
+  assertSameKeys(dry.body.actions[0], LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE.actions[0]!, 'install dryRun: acción');
 
   const installed = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll })
     .expect(200);
-  assertSameKeys(installed.body, LIBRARY_INSTALL_EXAMPLE, 'install 200');
-  assert.deepEqual(actionKinds(installed.body), actionKinds(LIBRARY_INSTALL_EXAMPLE));
+  assertSameKeys(installed.body, LIBRARY_LOADER_ADD_EXAMPLE, 'install 200');
+  assert.deepEqual(actionKinds(installed.body), actionKinds(LIBRARY_LOADER_ADD_EXAMPLE));
 
   const conflict = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'Synth', dllSourcePath: data.dll })
     .expect(409);
-  assertSameKeys(conflict.body, LIBRARY_INSTALL_CONFLICT_EXAMPLE, 'install 409');
+  assertSameKeys(conflict.body, LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE, 'install 409');
 
   // El lote responde 200 con el resultado de cada plugin (uno bien y otro fallido).
   const batched = await http()
     .post('/library/batch')
     .send({
       libraryRoot: data.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'NoExiste'],
       dllSourcePath: data.dll,
       force: true,
@@ -133,7 +133,7 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
   assertSameKeys(batched.body.results[0], LIBRARY_BATCH_EXAMPLE.results[0]!, 'batch 200: resultado');
   assertSameKeys(batched.body.results[1], LIBRARY_BATCH_EXAMPLE.results[1]!, 'batch 200: fallo');
   assert.deepEqual(actionKinds(batched.body.results[0]), actionKinds(LIBRARY_BATCH_EXAMPLE.results[0]!));
-  assert.equal(batched.body.results[0].status, 'installed');
+  assert.equal(batched.body.results[0].status, 'added');
   assert.equal(batched.body.results[1].status, 'failed');
   assert.equal(batched.body.results[1].entry, null);
 
@@ -141,7 +141,7 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
     .post('/library/batch')
     .send({
       libraryRoot: data.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth'],
       dllSourcePath: data.dll,
       force: true,
@@ -313,23 +313,23 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
   );
 
   const uninstalled = await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: data.root, plugin: 'Synth' })
     .expect(200);
-  assertSameKeys(uninstalled.body, LIBRARY_UNINSTALL_EXAMPLE, 'uninstall 200');
-  assert.deepEqual(actionKinds(uninstalled.body), actionKinds(LIBRARY_UNINSTALL_EXAMPLE));
+  assertSameKeys(uninstalled.body, LIBRARY_LOADER_REMOVE_EXAMPLE, 'uninstall 200');
+  assert.deepEqual(actionKinds(uninstalled.body), actionKinds(LIBRARY_LOADER_REMOVE_EXAMPLE));
 
   const uninstallConflict = await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: data.root, plugin: 'Synth' })
     .expect(409);
-  assertSameKeys(uninstallConflict.body, LIBRARY_UNINSTALL_CONFLICT_EXAMPLE, 'uninstall 409');
+  assertSameKeys(uninstallConflict.body, LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE, 'uninstall 409');
 
   const badRoot = await http().post('/library/scan').send({ libraryRoot: 'plugs' }).expect(400);
   assert.deepEqual(badRoot.body, LIBRARY_SCAN_PATH_ERROR_EXAMPLE);
 
   const notFound = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: data.root, plugin: 'NoExiste', dllSourcePath: data.dll })
     .expect(404);
   assertSameKeys(notFound.body, LIBRARY_SCAN_PATH_ERROR_EXAMPLE, 'install 404');

@@ -26,11 +26,14 @@ export const LIBRARY_LOADER_EXAMPLE = {
 };
 
 /** Plugin instalado, tal como lo devuelve `scan`. */
-export const LIBRARY_INSTALLED_PLUGIN_EXAMPLE = {
+export const LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE = {
   name: 'MySynth',
   path: PLUGIN_DIR,
-  installed: true,
+  hasLoader: true,
   hasVfxinfo: true,
+  hasWizard: true,
+  wizardId: 'MySynth',
+  hasMeta: true,
   pluginName: 'MySynth.dll',
   warnings: [],
   compatible: true,
@@ -38,11 +41,14 @@ export const LIBRARY_INSTALLED_PLUGIN_EXAMPLE = {
 };
 
 /** Plugin sin el cargador instalado (`pluginName` es `null`). */
-export const LIBRARY_PENDING_PLUGIN_EXAMPLE = {
+export const LIBRARY_PLUGIN_WITHOUT_LOADER_EXAMPLE = {
   name: 'GrandPiano',
   path: 'C:\\VFX\\Library\\plugs\\GrandPiano',
-  installed: false,
+  hasLoader: false,
   hasVfxinfo: true,
+  hasWizard: false,
+  wizardId: null,
+  hasMeta: false,
   pluginName: null,
   warnings: [],
   compatible: true,
@@ -53,11 +59,14 @@ export const LIBRARY_SCAN_EXAMPLE = {
   libraryRoot: LIBRARY_ROOT,
   plugsPath: PLUGS_PATH,
   loader: LIBRARY_LOADER_EXAMPLE,
-  plugins: [LIBRARY_INSTALLED_PLUGIN_EXAMPLE, LIBRARY_PENDING_PLUGIN_EXAMPLE],
+  plugins: [
+    { ...LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE, banks: { count: 2, names: ['Rhodes.fxb', 'Strings.fxb'] } },
+    { ...LIBRARY_PLUGIN_WITHOUT_LOADER_EXAMPLE, banks: { count: 0, names: [] } },
+  ],
 };
 
-export const LIBRARY_INSTALL_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+export const LIBRARY_LOADER_ADD_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   actions: [
     {
       kind: 'backup',
@@ -80,8 +89,8 @@ export const LIBRARY_INSTALL_EXAMPLE = {
   dryRun: false,
 };
 
-export const LIBRARY_INSTALL_DRY_RUN_EXAMPLE = {
-  plugin: LIBRARY_PENDING_PLUGIN_EXAMPLE,
+export const LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITHOUT_LOADER_EXAMPLE,
   actions: [
     {
       kind: 'backup',
@@ -108,12 +117,15 @@ export const LIBRARY_INSTALL_DRY_RUN_EXAMPLE = {
   dryRun: true,
 };
 
-export const LIBRARY_UNINSTALL_EXAMPLE = {
+export const LIBRARY_LOADER_REMOVE_EXAMPLE = {
   plugin: {
     name: 'MySynth',
     path: PLUGIN_DIR,
-    installed: false,
+    hasLoader: false,
     hasVfxinfo: true,
+    hasMeta: true,
+    hasWizard: true,
+    wizardId: 'MySynth',
     pluginName: null,
     warnings: [],
     compatible: true,
@@ -137,7 +149,7 @@ export const LIBRARY_UNINSTALL_EXAMPLE = {
 
 /** Lote de instalación: un plugin bien y otro que ya estaba instalado. */
 export const LIBRARY_BATCH_EXAMPLE = {
-  action: 'install',
+  action: 'add',
   dryRun: false,
   total: 2,
   succeeded: 1,
@@ -145,15 +157,15 @@ export const LIBRARY_BATCH_EXAMPLE = {
   results: [
     {
       name: 'MySynth',
-      status: 'installed',
+      status: 'added',
       message: null,
-      entry: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
-      actions: LIBRARY_INSTALL_EXAMPLE.actions,
+      entry: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+      actions: LIBRARY_LOADER_ADD_EXAMPLE.actions,
     },
     {
       name: 'GrandPiano',
       status: 'failed',
-      message: 'GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)',
+      message: 'GrandPiano ya tiene el cargador (usa force para volver a ponerlo)',
       entry: null,
       actions: [],
     },
@@ -162,7 +174,7 @@ export const LIBRARY_BATCH_EXAMPLE = {
 
 /** Lote en `dryRun`: solo el plan de cada plugin, sin tocar el disco. */
 export const LIBRARY_BATCH_DRY_RUN_EXAMPLE = {
-  action: 'install',
+  action: 'add',
   dryRun: true,
   total: 1,
   succeeded: 1,
@@ -172,8 +184,8 @@ export const LIBRARY_BATCH_DRY_RUN_EXAMPLE = {
       name: 'GrandPiano',
       status: 'planned',
       message: null,
-      entry: LIBRARY_PENDING_PLUGIN_EXAMPLE,
-      actions: LIBRARY_INSTALL_DRY_RUN_EXAMPLE.actions,
+      entry: LIBRARY_PLUGIN_WITHOUT_LOADER_EXAMPLE,
+      actions: LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE.actions,
     },
   ],
 };
@@ -183,7 +195,7 @@ export const LIBRARY_BATCH_DRY_RUN_EXAMPLE = {
  * una línea JSON por evento y en el orden en que los escribe el servidor.
  */
 export const LIBRARY_BATCH_STREAM_EXAMPLE = [
-  { type: 'start', action: 'install', dryRun: false, total: 2, plugins: ['MySynth', 'GrandPiano'] },
+  { type: 'start', action: 'add', dryRun: false, total: 2, plugins: ['MySynth', 'GrandPiano'] },
   { type: 'plugin', index: 0, total: 2, name: 'MySynth', status: 'running', message: null },
   { type: 'step', index: 0, total: 2, name: 'MySynth', step: 'backup', stepIndex: 0, steps: 5 },
   { type: 'step', index: 0, total: 2, name: 'MySynth', step: 'copy', stepIndex: 1, steps: 5 },
@@ -198,7 +210,7 @@ export const LIBRARY_BATCH_STREAM_EXAMPLE = [
     steps: 5,
   },
   { type: 'step', index: 0, total: 2, name: 'MySynth', step: 'create-dir', stepIndex: 4, steps: 5 },
-  { type: 'plugin', index: 0, total: 2, name: 'MySynth', status: 'installed', message: null },
+  { type: 'plugin', index: 0, total: 2, name: 'MySynth', status: 'added', message: null },
   { type: 'plugin', index: 1, total: 2, name: 'GrandPiano', status: 'running', message: null },
   {
     type: 'plugin',
@@ -206,7 +218,7 @@ export const LIBRARY_BATCH_STREAM_EXAMPLE = [
     total: 2,
     name: 'GrandPiano',
     status: 'failed',
-    message: 'GrandPiano ya tiene fxbLoader instalado (usa force para reinstalar)',
+    message: 'GrandPiano ya tiene el cargador (usa force para volver a ponerlo)',
   },
   { type: 'end', result: LIBRARY_BATCH_EXAMPLE },
 ]
@@ -234,7 +246,7 @@ export const LIBRARY_BANK_EXAMPLE = {
 };
 
 export const LIBRARY_IMPORT_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   reference: {
     source: 'explicit',
@@ -330,19 +342,40 @@ export class PluginEntryDto {
   path!: string;
 
   @ApiProperty({
-    description: 'El escaneo del binario marca instalado si existe `fxbLoader.config`.',
+    description: 'El cargador está puesto si existe `fxbLoader.config`.',
     example: true,
   })
-  installed!: boolean;
+  hasLoader!: boolean;
 
   @ApiProperty({
-    description: 'Existe `vfxinfo.txt`; sin él, instalar responde 422.',
+    description: 'Existe `vfxinfo.txt`; sin él, poner el cargador responde 422.',
     example: true,
   })
   hasVfxinfo!: boolean;
 
   @ApiProperty({
-    description: '`pluginName` de `fxbLoader.config`, o `null` si no está instalado.',
+    description: 'Existe un wizard oficial coincidente en la base de datos de wizards.',
+    example: true,
+  })
+  hasWizard!: boolean;
+
+  @ApiProperty({
+    description: 'Identificador del wizard coincidente si existe, o `null`.',
+    type: String,
+    nullable: true,
+    example: 'MySynth',
+  })
+  wizardId!: string | null;
+
+  @ApiProperty({
+    description:
+      'Existe `fxbLoader.meta.json`: el plugin ya tiene catálogo propio, aunque no tenga bancos configurados.',
+    example: false,
+  })
+  hasMeta!: boolean;
+
+  @ApiProperty({
+    description: '`pluginName` de `fxbLoader.config`, o `null` si no tiene el cargador.',
     type: String,
     nullable: true,
     example: 'MySynth.dll',
@@ -358,7 +391,7 @@ export class PluginEntryDto {
 
   @ApiProperty({
     description:
-      '`true` si el binario del plugin y el `fxbLoader.dll` instalado son PE32 i386; ' +
+      '`true` si el binario del plugin y el `fxbLoader.dll` copiado son PE32 i386; ' +
       '`false` si es incompatible de forma comprobable (otra arquitectura, archivo ' +
       'vacío, truncado o sin cabecera PE); `null` si el DLL no existe o no se pudo leer.',
     type: Boolean,
@@ -391,6 +424,35 @@ export class LibraryScanRequestDto {
   dllSourcePath?: string;
 }
 
+/** Resumen de bancos que el escaneo añade a cada plugin. */
+export class PluginBanksSummaryDto {
+  @ApiProperty({
+    description:
+      'Bancos válidos de la carpeta de presets, con el mismo tope que el panel de bancos ' +
+      '(`MAX_REFERENCE_SCAN` archivos).',
+    example: 2,
+  })
+  count!: number;
+
+  @ApiProperty({
+    description: 'Nombres de esos bancos, en el mismo orden que el panel.',
+    type: [String],
+    example: ['Rhodes.fxb', 'Strings.fxb'],
+  })
+  names!: string[];
+}
+
+/** Entrada del escaneo: el plugin más su resumen de bancos. */
+export class LibraryScanPluginDto extends PluginEntryDto {
+  @ApiProperty({
+    description:
+      'Bancos del plugin en `plugs\\<plugin>\\<programDirName>\\`. Si la carpeta o el ' +
+      '`programDirName` no son utilizables, queda a cero y el motivo aparece en `warnings`.',
+    type: () => PluginBanksSummaryDto,
+  })
+  banks!: PluginBanksSummaryDto;
+}
+
 export class LibraryScanResponseDto {
   @ApiProperty({ description: 'Raíz resuelta.', example: LIBRARY_ROOT })
   libraryRoot!: string;
@@ -399,20 +461,21 @@ export class LibraryScanResponseDto {
   plugsPath!: string;
 
   @ApiProperty({
-    description: 'Validación del cargador que se instalaría; si no es PE32 i386, los plugins quedan incompatibles.',
+    description:
+      'Validación del cargador que se copiaría al plugin; si no es PE32 i386, los plugins quedan incompatibles.',
     type: () => LoaderDllDto,
   })
   loader!: LoaderDllDto;
 
   @ApiProperty({
     description: 'Solo directorios, ordenados por nombre.',
-    type: () => PluginEntryDto,
+    type: () => LibraryScanPluginDto,
     isArray: true,
   })
-  plugins!: PluginEntryDto[];
+  plugins!: LibraryScanPluginDto[];
 }
 
-export class LibraryInstallRequestDto {
+export class LibraryLoaderAddRequestDto {
   @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
   libraryRoot!: string;
 
@@ -428,7 +491,7 @@ export class LibraryInstallRequestDto {
   dllSourcePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Reinstalar aunque `fxbLoader.config` ya exista (409 sin esto).',
+    description: 'Volver a poner el cargador aunque `fxbLoader.config` ya exista (409 sin esto).',
     example: false,
   })
   force?: boolean;
@@ -446,10 +509,10 @@ export class LibraryBatchRequestDto {
 
   @ApiProperty({
     description: 'Acción aplicada a todos los plugins indicados.',
-    enum: ['install', 'uninstall'],
-    example: 'install',
+    enum: ['add', 'remove'],
+    example: 'add',
   })
-  action!: 'install' | 'uninstall';
+  action!: 'add' | 'remove';
 
   @ApiProperty({
     description:
@@ -462,13 +525,15 @@ export class LibraryBatchRequestDto {
   plugins!: string[];
 
   @ApiPropertyOptional({
-    description: 'DLL a copiar en la instalación; como en `install`, si se omite se usa la del repositorio.',
+    description:
+      'DLL que se copia con el cargador; como en `POST /library/loader/add`, si se omite se usa el del repositorio.',
     example: REPO_DLL,
   })
   dllSourcePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Reinstalar los que ya tengan `fxbLoader.config`; sin esto, cada uno falla con 409.',
+    description:
+      'Volver a poner el cargador en los que ya tengan `fxbLoader.config`; sin esto, cada uno falla con 409.',
     example: false,
   })
   force?: boolean;
@@ -481,7 +546,7 @@ export class LibraryBatchRequestDto {
   dryRun?: boolean;
 }
 
-export class LibraryUninstallRequestDto {
+export class LibraryLoaderRemoveRequestDto {
   @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
   libraryRoot!: string;
 
@@ -573,12 +638,12 @@ export class LibraryBatchPluginResultDto {
 
   @ApiProperty({
     description:
-      '`installed`/`uninstalled` si se aplicó, `planned` si solo se calculó el plan con ' +
+      '`added`/`removed` si se aplicó, `planned` si solo se calculó el plan con ' +
       '`dryRun`, `failed` si ese plugin no se pudo operar.',
-    enum: ['installed', 'uninstalled', 'planned', 'failed'],
-    example: 'installed',
+    enum: ['added', 'removed', 'planned', 'failed'],
+    example: 'added',
   })
-  status!: 'installed' | 'uninstalled' | 'planned' | 'failed';
+  status!: 'added' | 'removed' | 'planned' | 'failed';
 
   @ApiProperty({
     description: 'Motivo del fallo; `null` si la operación fue correcta.',
@@ -604,8 +669,8 @@ export class LibraryBatchPluginResultDto {
 }
 
 export class LibraryBatchResponseDto {
-  @ApiProperty({ enum: ['install', 'uninstall'], example: 'install' })
-  action!: 'install' | 'uninstall';
+  @ApiProperty({ enum: ['add', 'remove'], example: 'add' })
+  action!: 'add' | 'remove';
 
   @ApiProperty({ description: '`true` si solo se calcularon los planes.', example: false })
   dryRun!: boolean;
@@ -1319,7 +1384,7 @@ export class LibraryErrorDto {
 export class LibraryConflictErrorDto {
   @ApiProperty({
     description: 'Estado que impide la operación.',
-    example: 'MySynth ya tiene fxbLoader instalado (usa force para reinstalar)',
+    example: 'MySynth ya tiene el cargador (usa force para volver a ponerlo)',
   })
   message!: string;
 
@@ -1365,16 +1430,16 @@ export const LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE = {
   message: 'no existe el plugin "NoExiste" en C:\\VFX\\Library\\plugs',
 };
 
-export const LIBRARY_INSTALL_CONFLICT_EXAMPLE = {
-  message: 'MySynth ya tiene fxbLoader instalado (usa force para reinstalar)',
+export const LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE = {
+  message: 'MySynth ya tiene el cargador (usa force para volver a ponerlo)',
 };
 
-export const LIBRARY_UNINSTALL_CONFLICT_EXAMPLE = {
-  message: 'MySynth no tiene fxbLoader instalado',
+export const LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE = {
+  message: 'MySynth no tiene el cargador',
 };
 
 export const LIBRARY_BATCH_ACTION_ERROR_EXAMPLE = {
-  message: 'action debe ser "install" o "uninstall"',
+  message: 'action debe ser "add" o "remove"',
 };
 
 export const LIBRARY_BATCH_PLUGINS_ERROR_EXAMPLE = {
@@ -1413,7 +1478,7 @@ export const LIBRARY_INCOMPATIBLE_ERROR_EXAMPLE = {
 
 export const LIBRARY_IMPORT_REJECTED_EXAMPLE = {
   message: 'Ningún banco se pudo importar',
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   reference: {
     source: 'explicit',
@@ -1443,7 +1508,7 @@ export const LIBRARY_IMPORT_REJECTED_EXAMPLE = {
 
 /** Vista de bancos: lista el contenido y el estado de la configuración. */
 export const LIBRARY_BANKS_LIST_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   presetsDirExists: true,
   banks: [
@@ -1531,7 +1596,7 @@ export const LIBRARY_INSPECT_EXTENSION_ERROR_EXAMPLE = {
 
 /** Exportación de un banco big-endian a little-endian. */
 export const LIBRARY_EXPORT_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   source: {
     fileName: 'Legacy.fxb',
@@ -1559,7 +1624,7 @@ export const LIBRARY_EXPORT_EXAMPLE = {
  * El archivo conserva su nombre y su ruta; solo cambia el orden de sus campos.
  */
 export const LIBRARY_CONVERT_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   fileName: 'Warm Rhodes.fxb',
   source: {
@@ -1605,7 +1670,7 @@ export const LIBRARY_CONVERT_MISSING_BANK_EXAMPLE = {
  * intacto: mismo tamaño y mismo hash que antes de restaurar.
  */
 export const LIBRARY_RESTORE_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   fileName: 'Warm Rhodes.fxb',
   restored: {
@@ -1643,7 +1708,7 @@ export const LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE = {
 
 /** Respaldo en la papelera: el banco sigue en su sitio y el `.orig` es recuperable. */
 export const LIBRARY_DISCARD_BACKUP_EXAMPLE = {
-  plugin: LIBRARY_INSTALLED_PLUGIN_EXAMPLE,
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
   presetsDir: PRESETS_DIR,
   fileName: 'Warm Rhodes.fxb',
   discarded: {
@@ -1678,3 +1743,360 @@ export const LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE = {
     'ya existe C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy-le.fxb; marca overwrite ' +
     'para reemplazarlo',
 };
+
+/** Cuerpo de `POST /library/plugin-dll-preference`. */
+export class LibraryDllPreferenceRequestDto {
+  @ApiProperty({
+    description: 'Carpeta absoluta del plugin.',
+    example: 'C:\\VFX\\Library\\plugs\\MySynth',
+  })
+  pluginDir!: string;
+
+  @ApiProperty({
+    description:
+      'Valor nuevo de `dll_name`: ruta relativa al plugin de la DLL a usar, siempre ' +
+      'dentro de la carpeta del plugin.',
+    example: 'Synth64.dll',
+  })
+  dllName!: string;
+}
+
+/** Resultado de `POST /library/plugin-dll-preference`. */
+export class LibraryDllPreferenceResponseDto {
+  @ApiProperty({ example: 'C:\\VFX\\Library\\plugs\\MySynth' })
+  pluginDir!: string;
+
+  @ApiProperty({
+    description: 'Valor de `dll_name` antes de guardar; `null` si ya apuntaba al cargador.',
+    type: String,
+    nullable: true,
+    example: 'MySynth/fxbLoader.dll',
+  })
+  previousDllName!: string | null;
+
+  @ApiProperty({ example: 'Synth64.dll' })
+  dllName!: string;
+
+  @ApiProperty({
+    description: 'Respaldo `vfxinfo.tx_` creado en esta operación, si procede.',
+    type: String,
+    nullable: true,
+    example: 'C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_',
+  })
+  backupFile!: string | null;
+
+  @ApiProperty({
+    description: '`false` si el `dll_name` ya era el pedido y no se escribió nada.',
+    example: true,
+  })
+  changed!: boolean;
+
+  @ApiProperty({ type: () => [LibraryActionDto], example: [] })
+  actions!: LibraryActionDto[];
+}
+
+export const LIBRARY_DLL_PREFERENCE_EXAMPLE = {
+  pluginDir: 'C:\\VFX\\Library\\plugs\\MySynth',
+  previousDllName: 'MySynth/fxbLoader.dll',
+  dllName: 'Synth64.dll',
+  backupFile: null,
+  changed: true,
+  actions: [
+    {
+      kind: 'backup',
+      path: 'C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.tx_',
+      detail: 'vfxinfo.tx_ ya existe; se conserva',
+    },
+    {
+      kind: 'patch',
+      path: 'C:\\VFX\\Library\\plugs\\MySynth\\vfxinfo.txt',
+      detail: 'dll_name: Synth64.dll',
+    },
+  ],
+};
+
+export const LIBRARY_DLL_PREFERENCE_ERROR_EXAMPLE = {
+  message: 'dllName apunta fuera del plugin: "..\\otro.dll"',
+};
+
+/** Petición para inspeccionar una DLL suelta y validar exportaciones VST. */
+export class LibraryInspectDllDto {
+  @ApiProperty({
+    description: 'Ruta absoluta al archivo DLL a analizar.',
+    example: 'C:\\Vst\\Synth.dll',
+  })
+  dllPath!: string;
+}
+
+/** Resumen de wizard coincidente para DLL inspeccionada. */
+export class LibraryInspectDllMatchingWizardDto {
+  @ApiProperty({ example: '1398231096' })
+  id!: string;
+
+  @ApiProperty({ example: 'SuperWave P8' })
+  name!: string;
+
+  @ApiProperty({ example: 'Superwave' })
+  vendor!: string;
+
+  @ApiProperty({ example: 'Synth' })
+  genre!: string;
+
+  @ApiProperty({ example: 'SuperWave P8/P8.dll' })
+  dllName!: string;
+
+  @ApiProperty({ example: true })
+  isSynth!: boolean;
+}
+
+/** Resultado de la inspección técnica de un binario DLL. */
+export class LibraryInspectDllResponseDto {
+  @ApiProperty({ description: 'Indica si es un ejecutable PE válido.', example: true })
+  validPe!: boolean;
+
+  @ApiProperty({ description: 'Arquitectura en bits (32 o 64).', nullable: true, type: Number, example: 32 })
+  bitness!: number | null;
+
+  @ApiProperty({ description: 'Compatible con hardware VFX Machine (PE32 de 32 bits).', example: true })
+  is32BitCompatible!: boolean;
+
+  @ApiProperty({ description: 'Indica si exporta puntos de entrada VST (VSTPluginMain o main).', example: true })
+  isVstPlugin!: boolean;
+
+  @ApiProperty({
+    description: 'Punto de entrada VST detectado en la tabla de exportación.',
+    nullable: true,
+    type: String,
+    example: 'VSTPluginMain',
+  })
+  vstEntrypoint!: string | null;
+
+  @ApiProperty({
+    description: 'Nombre interno de la DLL declarado en su tabla de exportación.',
+    nullable: true,
+    type: String,
+    example: 'Synth.dll',
+  })
+  internalDllName!: string | null;
+
+  @ApiProperty({ description: 'Nombre recomendado para el instrumento.', example: 'Synth' })
+  suggestedName!: string;
+
+  @ApiProperty({ description: 'ID VST numérico sugerido.', example: '1398231096' })
+  suggestedId!: string;
+
+  @ApiProperty({
+    description: 'Lista de funciones exportadas detectadas en la cabecera PE.',
+    example: ['VSTPluginMain'],
+    type: [String],
+  })
+  exportedNames!: string[];
+
+  @ApiProperty({
+    description: 'Problemas o avisos de compatibilidad detectados.',
+    example: [],
+    type: [String],
+  })
+  issues!: string[];
+
+  @ApiProperty({
+    description: 'Wizard oficial coincidente en el catálogo si existe.',
+    nullable: true,
+    type: () => LibraryInspectDllMatchingWizardDto,
+  })
+  matchingWizard!: LibraryInspectDllMatchingWizardDto | null;
+}
+
+export const LIBRARY_INSPECT_DLL_EXAMPLE: LibraryInspectDllDto = {
+  dllPath: 'C:\\Vst\\Synth.dll',
+};
+
+export const LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE: LibraryInspectDllResponseDto = {
+  validPe: true,
+  bitness: 32,
+  is32BitCompatible: true,
+  isVstPlugin: true,
+  vstEntrypoint: 'VSTPluginMain',
+  internalDllName: 'Synth.dll',
+  suggestedName: 'Synth',
+  suggestedId: '1398231096',
+  exportedNames: ['VSTPluginMain'],
+  issues: [],
+  matchingWizard: null,
+};
+
+/** Petición para dar de alta un plugin personalizado desde un DLL sin wizard previo. */
+export class LibraryCreateCustomPluginDto {
+  @ApiProperty({
+    description: 'Ruta absoluta a la librería VFX activa.',
+    example: 'C:\\VFX\\Library',
+  })
+  libraryRoot!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta al archivo DLL de origen.',
+    example: 'C:\\Vst\\NewSynth.dll',
+  })
+  sourceDllPath!: string;
+
+  @ApiProperty({
+    description: 'Nombre de la carpeta del plugin bajo plugs/.',
+    example: 'NewSynth',
+  })
+  folderName!: string;
+
+  @ApiProperty({
+    description: 'Nombre visible del instrumento o efecto.',
+    example: 'New Synth Pro',
+  })
+  name!: string;
+
+  @ApiProperty({
+    description: 'ID VST numérico o FourCC de 4 caracteres.',
+    example: '12345678',
+  })
+  id!: string;
+
+  @ApiProperty({
+    description: '`true` si es un sintetizador/generador; `false` si es un efecto de audio.',
+    example: true,
+  })
+  isSynth!: boolean;
+
+  @ApiProperty({
+    description: 'Número de parámetros VST (por defecto 16).',
+    required: false,
+    example: 16,
+  })
+  parameterCount?: number;
+
+  @ApiProperty({
+    description: 'Número de programas / patches VST (por defecto 16).',
+    required: false,
+    example: 16,
+  })
+  programCount?: number;
+
+  @ApiProperty({
+    description: 'Indica si el plugin dispone de editor gráfico (GUI).',
+    required: false,
+    example: true,
+  })
+  hasEditor?: boolean;
+
+  @ApiProperty({
+    description: 'Ancho de la ventana de GUI en píxeles.',
+    required: false,
+    example: 800,
+  })
+  editorWidth?: number;
+
+  @ApiProperty({
+    description: 'Alto de la ventana de GUI en píxeles.',
+    required: false,
+    example: 600,
+  })
+  editorHeight?: number;
+
+  @ApiProperty({
+    description: 'Fabricante o autor del plugin.',
+    required: false,
+    example: 'Custom Audio',
+  })
+  vendor?: string;
+
+  @ApiProperty({
+    description: 'Género musical o categoría (ej. Synth, Filter, Reverb).',
+    required: false,
+    example: 'Synth',
+  })
+  genre?: string;
+
+  @ApiProperty({
+    description: 'Guarda además un archivo .vfxwizard en el catálogo local para reutilizarlo.',
+    required: false,
+    example: false,
+  })
+  saveAsWizard?: boolean;
+
+  @ApiProperty({
+    description: 'Sobrescribe si la carpeta ya existe.',
+    required: false,
+    example: false,
+  })
+  overwrite?: boolean;
+}
+
+/** Resultado del alta y creación del plugin personalizado. */
+export class LibraryCreateCustomPluginResponseDto {
+  @ApiProperty({ description: 'Indica si la creación se completó con éxito.', example: true })
+  created!: boolean;
+
+  @ApiProperty({
+    description: 'Ruta absoluta al directorio del plugin instalado.',
+    example: 'C:\\VFX\\Library\\plugs\\NewSynth',
+  })
+  pluginDir!: string;
+
+  @ApiProperty({
+    description: 'Ruta relativa de la DLL dentro del plugin.',
+    example: 'NewSynth/NewSynth.dll',
+  })
+  dllRelativePath!: string;
+
+  @ApiProperty({
+    description: 'Ruta al archivo vfxinfo.txt generado.',
+    example: 'C:\\VFX\\Library\\plugs\\NewSynth\\vfxinfo.txt',
+  })
+  vfxinfoPath!: string;
+
+  @ApiProperty({
+    description: 'Ruta al archivo fxbLoader.meta.json generado.',
+    example: 'C:\\VFX\\Library\\plugs\\NewSynth\\fxbLoader.meta.json',
+  })
+  metaPath!: string;
+
+  @ApiProperty({
+    description: 'Ruta al wizard guardado en disco si saveAsWizard fue true.',
+    nullable: true,
+    type: String,
+    example: null,
+  })
+  wizardPath!: string | null;
+
+  @ApiProperty({
+    description: 'Avisos o advertencias generadas durante la inspección.',
+    example: [],
+    type: [String],
+  })
+  warnings!: string[];
+}
+
+export const LIBRARY_CREATE_CUSTOM_PLUGIN_EXAMPLE: LibraryCreateCustomPluginDto = {
+  libraryRoot: 'C:\\VFX\\Library',
+  sourceDllPath: 'C:\\Vst\\NewSynth.dll',
+  folderName: 'NewSynth',
+  name: 'New Synth Pro',
+  id: '12345678',
+  isSynth: true,
+  parameterCount: 32,
+  programCount: 16,
+  hasEditor: true,
+  editorWidth: 800,
+  editorHeight: 600,
+  vendor: 'Custom Audio',
+  genre: 'Synth',
+  saveAsWizard: false,
+  overwrite: false,
+};
+
+export const LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE: LibraryCreateCustomPluginResponseDto = {
+  created: true,
+  pluginDir: 'C:\\VFX\\Library\\plugs\\NewSynth',
+  dllRelativePath: 'NewSynth/NewSynth.dll',
+  vfxinfoPath: 'C:\\VFX\\Library\\plugs\\NewSynth\\vfxinfo.txt',
+  metaPath: 'C:\\VFX\\Library\\plugs\\NewSynth\\fxbLoader.meta.json',
+  wizardPath: null,
+  warnings: [],
+};
+

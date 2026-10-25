@@ -26,3 +26,9 @@ desktop.ini
 
 # Estado local de Freebuff
 .freebuff/
+
+# Respaldos y datos locales
+_backup-*/
+_encoding-backup-*/
+_banks/
+

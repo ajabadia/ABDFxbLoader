@@ -63,9 +63,9 @@ test('POST /library/scan responde 200 con el listado', async (t) => {
 
   assert.equal(response.body.plugsPath, path.join(lib.root, 'plugs'));
   assert.deepEqual(
-    response.body.plugins.map((plugin: { name: string; installed: boolean }) => [
+    response.body.plugins.map((plugin: { name: string; hasLoader: boolean }) => [
       plugin.name,
-      plugin.installed,
+      plugin.hasLoader,
     ]),
     [['Synth', false]],
   );
@@ -101,18 +101,18 @@ test('POST /library/scan valida el cargador y marca plugins de 64 bits', async (
   assert.equal(bad.body.plugins[0].compatible, false);
 
   const rejected = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(422);
   assert.match(rejected.body.message, /no es compatible/);
 });
 
-test('POST /library/install responde 422 si el DLL declarado no existe', async (t) => {
+test('POST /library/loader/add responde 422 si el DLL declarado no existe', async (t) => {
   const lib = await makeLibrary(t);
   await rm(path.join(lib.pluginDir, 'Synth', 'Synth.dll'));
 
   const response = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(422);
 
@@ -152,11 +152,11 @@ test('POST /library/scan responde 400 sin libraryRoot o con ruta relativa', asyn
     .expect(400);
 });
 
-test('POST /library/install responde 200, escribe los archivos y luego 409', async (t) => {
+test('POST /library/loader/add responde 200, escribe los archivos y luego 409', async (t) => {
   const lib = await makeLibrary(t);
 
   const response = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(200);
 
@@ -165,7 +165,7 @@ test('POST /library/install responde 200, escribe los archivos y luego 409', asy
     response.body.actions.map((action: { kind: string }) => action.kind),
     ['backup', 'copy', 'patch', 'write-config', 'create-dir'],
   );
-  assert.equal(response.body.plugin.installed, true);
+  assert.equal(response.body.plugin.hasLoader, true);
   assert.equal(response.body.plugin.pluginName, 'Synth.dll');
 
   const vfxinfo = (await readFile(path.join(lib.pluginDir, 'vfxinfo.txt'))).toString('latin1');
@@ -180,51 +180,51 @@ test('POST /library/install responde 200, escribe los archivos y luego 409', asy
   assert.deepEqual(await readFile(path.join(lib.pluginDir, 'fxbLoader.dll')), pe32Dll());
 
   const conflict = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(409);
-  assert.match(conflict.body.message, /ya tiene fxbLoader/);
+  assert.match(conflict.body.message, /ya tiene el cargador/);
 });
 
-test('POST /library/install responde 400 con traversal y 404 con plugin inexistente', async (t) => {
+test('POST /library/loader/add responde 400 con traversal y 404 con plugin inexistente', async (t) => {
   const lib = await makeLibrary(t);
 
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: '../Synth', dllSourcePath: lib.dllSource })
     .expect(400);
 
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Ghost', dllSourcePath: lib.dllSource })
     .expect(404);
 });
 
-test('POST /library/uninstall responde 200 y después 409', async (t) => {
+test('POST /library/loader/remove responde 200 y después 409', async (t) => {
   const lib = await makeLibrary(t);
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(200);
 
   const response = await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: lib.root, plugin: 'Synth' })
     .expect(200);
 
-  assert.equal(response.body.plugin.installed, false);
+  assert.equal(response.body.plugin.hasLoader, false);
   assert.equal(
     (await readFile(path.join(lib.pluginDir, 'vfxinfo.txt'))).toString('latin1'),
     'name: Synth\r\ndll_name: Synth/Synth.dll\r\nversion: 1.0\r\n',
   );
 
   await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: lib.root, plugin: 'Synth' })
     .expect(409);
 });
 
-test('POST /library/uninstall restaura el original tras dos instalaciones con force', async (t) => {
+test('POST /library/loader/remove restaura el original tras dos instalaciones con force', async (t) => {
   const lib = await makeLibrary(t);
   const vfxinfoPath = path.join(lib.pluginDir, 'vfxinfo.txt');
   const backupPath = path.join(lib.pluginDir, 'vfxinfo.tx_');
@@ -239,7 +239,7 @@ test('POST /library/uninstall restaura el original tras dos instalaciones con fo
 
   // Primera instalación; force sobre un plugin sin instalar se ignora.
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
     .expect(200);
   const patched = await readFile(vfxinfoPath);
@@ -251,15 +251,15 @@ test('POST /library/uninstall restaura el original tras dos instalaciones con fo
 
   // Sin force no se reinstala.
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(409);
 
   const forced = await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
     .expect(200);
-  assert.equal(forced.body.plugin.installed, true);
+  assert.equal(forced.body.plugin.hasLoader, true);
   assert.equal(
     forced.body.plugin.pluginName,
     'Synth.dll',
@@ -279,10 +279,10 @@ test('POST /library/uninstall restaura el original tras dos instalaciones con fo
   );
 
   const uninstalled = await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: lib.root, plugin: 'Synth' })
     .expect(200);
-  assert.equal(uninstalled.body.plugin.installed, false);
+  assert.equal(uninstalled.body.plugin.hasLoader, false);
 
   assert.deepEqual(await readFile(vfxinfoPath), original, 'vfxinfo.txt vuelve al original');
   assert.deepEqual(
@@ -300,7 +300,7 @@ test('POST /library/uninstall restaura el original tras dos instalaciones con fo
   );
 });
 
-test('POST /library/uninstall responde 409 sin tocar vfxinfo.txt si falta el respaldo', async (t) => {
+test('POST /library/loader/remove responde 409 sin tocar vfxinfo.txt si falta el respaldo', async (t) => {
   const lib = await makeLibrary(t);
   const vfxinfoPath = path.join(lib.pluginDir, 'vfxinfo.txt');
   const backupPath = path.join(lib.pluginDir, 'vfxinfo.tx_');
@@ -309,12 +309,12 @@ test('POST /library/uninstall responde 409 sin tocar vfxinfo.txt si falta el res
 
   // Instalación y reinstalación con force: el respaldo sigue siendo el original.
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource })
     .expect(200);
   const patched = await readFile(vfxinfoPath);
   await http()
-    .post('/library/install')
+    .post('/library/loader/add')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dllSource, force: true })
     .expect(200);
   assert.deepEqual(await readFile(vfxinfoPath), patched, 'la reinstalación deja el mismo parche');
@@ -325,12 +325,12 @@ test('POST /library/uninstall responde 409 sin tocar vfxinfo.txt si falta el res
 
   // `dryRun` valida igual: tampoco puede prometer un plan que no se puede cumplir.
   await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: lib.root, plugin: 'Synth', dryRun: true })
     .expect(409);
 
   const conflict = await http()
-    .post('/library/uninstall')
+    .post('/library/loader/remove')
     .send({ libraryRoot: lib.root, plugin: 'Synth' })
     .expect(409);
   assert.match(conflict.body.message, /falta vfxinfo\.tx_ en/);
@@ -387,6 +387,25 @@ test('PUT /fxb-config responde 200, 409 con mtime obsoleto y 400 con config inv�
     })
     .expect(400);
   assert.equal(Array.isArray(invalid.body.issues), true);
+  // Sin sobre de Nest: el cuerpo es `message` + `issues`, como el DTO.
+  assert.deepEqual(Object.keys(invalid.body).sort(), ['issues', 'message']);
+});
+
+test('los 400 devuelven solo el cuerpo que documenta su DTO', async () => {
+  // Excepción con mensaje de texto: Nest añadía `statusCode` y `error`.
+  const missing = await http().post('/library/scan').send({}).expect(400);
+  assert.deepEqual(missing.body, {
+    message: 'libraryRoot es obligatorio y debe ser una cadena',
+  });
+
+  // Un 400 que no nace en un controlador: el cuerpo JSON mal formado.
+  const malformed = await http()
+    .post('/library/scan')
+    .set('content-type', 'application/json')
+    .send('{"libraryRoot": ')
+    .expect(400);
+  assert.deepEqual(Object.keys(malformed.body), ['message']);
+  assert.equal(typeof malformed.body.message, 'string');
 });
 
 test('POST /system/paths dice qué rutas recordadas siguen en el disco', async (t) => {

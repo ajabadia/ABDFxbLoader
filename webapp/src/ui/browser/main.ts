@@ -10,9 +10,14 @@
 import type {
   LibraryBanksImportResponse,
   LibraryBanksListResponse,
+  LibraryInspectPackageResponse,
+  LibraryImportPackageResponse,
   LibraryScanResponse,
+  PluginLogSnapshotResponse,
   PluginMetaSnapshotResponse,
   RequestBody,
+  WizardListResponse,
+  WizardMatchResponse,
 } from '../../client/fxb-client.js';
 import { appendPaths, parentDir } from '../picker.js';
 // Cada módulo de la vista se importa con su extensión `.js` y desde su propio
@@ -55,6 +60,7 @@ import type {
 import type { BatchStreamEvent, BatchStreamResult } from '../../client/batch-stream.js';
 import { client, describeError, isFxbApiError } from './api.js';
 import { byId, cell, cloneRow, query } from './dom.js';
+import { mountTable, type TableController, type TableView } from '../table.js';
 
 const STORAGE_ROOT = 'fxbLoader.libraryRoot';
 const STORAGE_DLL = 'fxbLoader.dllSource';
@@ -67,10 +73,25 @@ type ImportResults = LibraryBanksImportResponse['results'];
 type ConfigSnapshot = LibraryBanksListResponse['config'];
 type ExportOrder = RequestBody<'/library/banks/export', 'post'>['endianness'];
 
+function fourCcFromId(id: string | number | undefined): string {
+  if (id === undefined || id === '') return '—';
+  const num = typeof id === 'number' ? id : Number.parseInt(String(id), 10);
+  if (Number.isNaN(num) || num <= 0) return String(id);
+  const chars = [
+    String.fromCharCode((num >> 24) & 0xff),
+    String.fromCharCode((num >> 16) & 0xff),
+    String.fromCharCode((num >> 8) & 0xff),
+    String.fromCharCode(num & 0xff),
+  ].map((c) => (/[\x20-\x7e]/.test(c) ? c : '.'));
+  return chars.join('');
+}
+
 const els = {
+  themeToggle: byId<HTMLButtonElement>('theme-toggle'),
   form: byId<HTMLFormElement>('scan-form'),
   root: byId<HTMLInputElement>('library-root'),
   rootRecents: byId<HTMLDataListElement>('library-root-recents'),
+  rootWarning: byId<HTMLParagraphElement>('root-warning'),
   rootBrowse: byId<HTMLButtonElement>('root-browse'),
   dll: byId<HTMLInputElement>('dll-source'),
   dllRecents: byId<HTMLDataListElement>('dll-source-recents'),
@@ -84,6 +105,21 @@ const els = {
   loaderStatus: byId<HTMLParagraphElement>('loader-status'),
   tbody: byId<HTMLTableSectionElement>('plugins'),
   template: byId<HTMLTemplateElement>('row-template'),
+  pluginFilter: byId<HTMLInputElement>('plugin-filter'),
+  filterTriggers: [
+    byId<HTMLButtonElement>('filter-install'),
+    byId<HTMLButtonElement>('filter-banks'),
+    byId<HTMLButtonElement>('filter-wizard'),
+    byId<HTMLButtonElement>('filter-compat'),
+  ],
+  filterMenus: [...document.querySelectorAll<HTMLElement>('.filter-menu-list')],
+  filterItems: [...document.querySelectorAll<HTMLButtonElement>('.filter-menu-list button')],
+  filterCount: byId<HTMLElement>('filter-count'),
+  pagination: byId<HTMLElement>('pagination'),
+  pageSize: byId<HTMLSelectElement>('page-size'),
+  pagePrev: byId<HTMLButtonElement>('page-prev'),
+  pageInfo: byId<HTMLElement>('page-info'),
+  pageNext: byId<HTMLButtonElement>('page-next'),
   installAll: byId<HTMLButtonElement>('install-all'),
   uninstallAll: byId<HTMLButtonElement>('uninstall-all'),
   batchCancel: byId<HTMLButtonElement>('batch-cancel'),
@@ -94,7 +130,7 @@ const els = {
   batchStep: byId<HTMLElement>('batch-step'),
   batchClock: byId<HTMLParagraphElement>('batch-clock'),
   batchErrors: byId<HTMLDetailsElement>('batch-errors'),
-  batchErrorsSummary: byId<HTMLElement>('batch-errors-summary'),
+  batchErrorsLabel: byId<HTMLElement>('batch-errors-label'),
   batchErrorList: byId<HTMLUListElement>('batch-error-list'),
   banks: byId<HTMLElement>('banks'),
   banksTitle: byId<HTMLElement>('banks-plugin'),
@@ -121,11 +157,13 @@ const els = {
   exportOrder: byId<HTMLSelectElement>('export-order'),
   exportOverwrite: byId<HTMLInputElement>('export-overwrite'),
   exportButton: byId<HTMLButtonElement>('export-button'),
+  drawerBackdrop: byId<HTMLElement>('drawer-backdrop'),
   meta: byId<HTMLElement>('meta'),
   metaPlugin: byId<HTMLElement>('meta-plugin'),
   metaClose: byId<HTMLButtonElement>('meta-close'),
   metaPath: byId<HTMLElement>('meta-path'),
   metaExists: byId<HTMLElement>('meta-exists'),
+  metaOrigin: byId<HTMLElement>('meta-origin'),
   metaId: byId<HTMLInputElement>('meta-id'),
   metaName: byId<HTMLInputElement>('meta-name'),
   metaVendor: byId<HTMLInputElement>('meta-vendor'),
@@ -138,6 +176,84 @@ const els = {
   metaSave: byId<HTMLButtonElement>('meta-save'),
   metaReload: byId<HTMLButtonElement>('meta-reload'),
   metaStatus: byId<HTMLParagraphElement>('meta-status'),
+  metaDll: byId<HTMLInputElement>('meta-dll'),
+  metaDllNote: byId<HTMLElement>('meta-dll-note'),
+  metaDllSave: byId<HTMLButtonElement>('meta-dll-save'),
+  metaDllCancel: byId<HTMLButtonElement>('meta-dll-cancel'),
+  metaDllActions: byId<HTMLElement>('meta-dll-actions'),
+  dialogDllDraft: byId<HTMLDialogElement>('dialog-dll-draft'),
+  dialogDllDraftText: byId<HTMLElement>('dialog-dll-draft-text'),
+  dialogDllDraftContinue: byId<HTMLButtonElement>('dialog-dll-draft-continue'),
+  dialogDllDraftCancel: byId<HTMLButtonElement>('dialog-dll-draft-cancel'),
+  metaWizardBanner: byId<HTMLElement>('meta-wizard-banner'),
+  metaWizardTitle: byId<HTMLElement>('meta-wizard-title'),
+  metaWizardApply: byId<HTMLButtonElement>('meta-wizard-apply'),
+  pluginWizard: byId<HTMLElement>('plugin-wizard'),
+  pluginWizardPlugin: byId<HTMLElement>('plugin-wizard-plugin'),
+  pluginWizardClose: byId<HTMLButtonElement>('plugin-wizard-close'),
+  pluginWizardEmpty: byId<HTMLElement>('plugin-wizard-empty'),
+  pluginWizardContent: byId<HTMLElement>('plugin-wizard-content'),
+  pluginWizardName: byId<HTMLElement>('plugin-wizard-name'),
+  pluginWizardSource: byId<HTMLElement>('plugin-wizard-source'),
+  pluginWizardVendor: byId<HTMLElement>('plugin-wizard-vendor'),
+  pluginWizardGenre: byId<HTMLElement>('plugin-wizard-genre'),
+  pluginWizardId: byId<HTMLElement>('plugin-wizard-id'),
+  pluginWizardDll: byId<HTMLElement>('plugin-wizard-dll'),
+  pluginWizardDimensions: byId<HTMLElement>('plugin-wizard-dimensions'),
+  pluginWizardParams: byId<HTMLElement>('plugin-wizard-params'),
+  pluginWizardFlags: byId<HTMLElement>('plugin-wizard-flags'),
+  pluginWizardFilesWrap: byId<HTMLElement>('plugin-wizard-files-wrap'),
+  pluginWizardFiles: byId<HTMLElement>('plugin-wizard-files'),
+  pluginWizardRegistryWrap: byId<HTMLElement>('plugin-wizard-registry-wrap'),
+  pluginWizardRegistry: byId<HTMLElement>('plugin-wizard-registry'),
+  pluginWizardNotesWrap: byId<HTMLElement>('plugin-wizard-notes-wrap'),
+  pluginWizardNotes: byId<HTMLElement>('plugin-wizard-notes'),
+  pluginWizardReadmeWrap: byId<HTMLElement>('plugin-wizard-readme-wrap'),
+  pluginWizardReadme: byId<HTMLElement>('plugin-wizard-readme'),
+  pluginWizardVfxinfoBtn: byId<HTMLButtonElement>('plugin-wizard-vfxinfo-btn'),
+  pluginWizardVfxinfoLabel: byId<HTMLElement>('plugin-wizard-vfxinfo-label'),
+  pluginWizardApplyBtn: byId<HTMLButtonElement>('plugin-wizard-apply-btn'),
+  pluginWizardInstallBtn: byId<HTMLButtonElement>('plugin-wizard-install-btn'),
+  pluginWizardStatus: byId<HTMLParagraphElement>('plugin-wizard-status'),
+  logDrawer: byId<HTMLElement>('log-drawer'),
+  logPlugin: byId<HTMLElement>('log-plugin'),
+  logClose: byId<HTMLButtonElement>('log-close'),
+  logPath: byId<HTMLElement>('log-path'),
+  logExists: byId<HTMLElement>('log-exists'),
+  logSummary: byId<HTMLElement>('log-summary'),
+  logTable: byId<HTMLElement>('log-table'),
+  logDetail: byId<HTMLElement>('log-record-detail'),
+  logDetailTitle: byId<HTMLElement>('log-record-detail-title'),
+  logDetailFields: byId<HTMLElement>('log-record-detail-fields'),
+  logDetailClose: byId<HTMLButtonElement>('log-record-detail-close'),
+  logRotated: byId<HTMLElement>('log-rotated'),
+  logStatus: byId<HTMLParagraphElement>('log-status'),
+  wizardsNavBtn: byId<HTMLButtonElement>('wizards-nav-btn'),
+  wizards: byId<HTMLElement>('wizards'),
+  wizardsClose: byId<HTMLButtonElement>('wizards-close'),
+  wizardsFilter: byId<HTMLInputElement>('wizards-filter'),
+  wizardsCount: byId<HTMLElement>('wizards-count'),
+  wizardsRows: byId<HTMLTableSectionElement>('wizards-rows'),
+  wizardsStatus: byId<HTMLParagraphElement>('wizards-status'),
+  importPkgNavBtn: byId<HTMLButtonElement>('import-pkg-nav-btn'),
+  importPackageDrawer: byId<HTMLElement>('import-package-drawer'),
+  importPackageClose: byId<HTMLButtonElement>('import-package-close'),
+  importPackagePath: byId<HTMLInputElement>('import-package-path'),
+  importPackageBrowse: byId<HTMLButtonElement>('import-package-browse'),
+  importPackageInspectBtn: byId<HTMLButtonElement>('import-package-inspect-btn'),
+  importPackagePreview: byId<HTMLElement>('import-package-preview'),
+  importPackageKind: byId<HTMLElement>('import-package-kind'),
+  importPackageSource: byId<HTMLElement>('import-package-source'),
+  importPackagePluginsWrap: byId<HTMLElement>('import-package-plugins-wrap'),
+  importPackageAllPlugs: byId<HTMLInputElement>('import-package-all-plugs'),
+  importPackagePluginsRows: byId<HTMLTableSectionElement>('import-package-plugins-rows'),
+  importPackageBanksWrap: byId<HTMLElement>('import-package-banks-wrap'),
+  importPackageAllBanks: byId<HTMLInputElement>('import-package-all-banks'),
+  importPackageBanksRows: byId<HTMLTableSectionElement>('import-package-banks-rows'),
+  importPackagePolicy: byId<HTMLSelectElement>('import-package-policy'),
+  importPackageRepair: byId<HTMLInputElement>('import-package-repair'),
+  importPackageExecuteBtn: byId<HTMLButtonElement>('import-package-execute-btn'),
+  importPackageStatus: byId<HTMLParagraphElement>('import-package-status'),
 };
 
 interface BanksState {
@@ -149,6 +265,7 @@ interface BanksState {
 interface MetaState {
   pluginName: string;
   dir: string;
+  plugin: ScanPlugin;
   snapshot: PluginMetaSnapshotResponse;
 }
 
@@ -217,15 +334,30 @@ let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
 let metaState: MetaState | null = null;
+let logTableController: TableController<PluginLogSnapshotResponse['entries'][number]> | null = null;
+let logDetailOpener: HTMLButtonElement | null = null;
 let metaBusy = false;
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
 renderRecents();
+setRootWarning(libraryRoot === '');
 
 function setStatus(message: string, kind = 'info'): void {
   els.status.textContent = message;
   els.status.className = `status ${kind}`;
+}
+
+/**
+ * La explicación de qué necesita la carpeta solo se enseña cuando hace falta:
+ * el campo vacío o una ruta que el servidor rechaza por no contener `plugs\`.
+ */
+function setRootWarning(visible: boolean): void {
+  els.rootWarning.hidden = !visible;
+  // `hidden` no quita el texto de la descripción accesible del campo: el
+  // enlace se pone solo mientras el aviso se ve, para no leerlo siempre.
+  if (visible) els.root.setAttribute('aria-describedby', 'root-warning');
+  else els.root.removeAttribute('aria-describedby');
 }
 
 function setBanksStatus(message: string, kind = 'info'): void {
@@ -305,6 +437,7 @@ function renderRecentBanks(): void {
   clear.type = 'button';
   clear.className = 'recent-clear';
   clear.textContent = 'Olvidar';
+  clear.prepend(createIcon('trash'));
   clear.title = 'Olvidar los bancos recientes; la lista escrita no cambia';
   clear.addEventListener('click', () => clearRecentBanks());
   els.recentBanks.append(clear);
@@ -450,15 +583,23 @@ function setBusy(value: boolean): void {
 function updateBatchControls(): void {
   const plugins = scanData?.plugins ?? [];
   const installable = plugins.filter(
-    (plugin) => !plugin.installed && plugin.compatible === true,
+    (plugin) => !plugin.hasLoader && plugin.compatible === true,
   ).length;
-  const installed = plugins.filter((plugin) => plugin.installed).length;
+  const installed = plugins.filter((plugin) => plugin.hasLoader).length;
 
-  els.installAll.textContent =
-    installable === 0 ? 'Instalar todos' : `Instalar todos (${installable})`;
+  setButtonLabel(
+    els.installAll,
+    installable === 0
+      ? 'Poner cargador a todos'
+      : `Poner cargador a todos (${installable})`,
+  );
   els.installAll.disabled = busy || installable === 0;
-  els.uninstallAll.textContent =
-    installed === 0 ? 'Desinstalar todos' : `Desinstalar todos (${installed})`;
+  setButtonLabel(
+    els.uninstallAll,
+    installed === 0
+      ? 'Quitar cargador a todos'
+      : `Quitar cargador a todos (${installed})`,
+  );
   els.uninstallAll.disabled = busy || installed === 0;
 
   // Cancelar solo tiene sentido mientras corre un lote: el mismo `busy` lo
@@ -471,7 +612,7 @@ function updateBatchControls(): void {
   // en el estado buscado no se repite.
   const resume = pendingResume();
   els.batchResume.hidden = resume === null;
-  els.batchResume.textContent = resume === null ? '' : resumeLabel(resume.plugins.length);
+  setButtonLabel(els.batchResume, resume === null ? '' : resumeLabel(resume.plugins.length));
   els.batchResume.title =
     resume === null
       ? ''
@@ -482,7 +623,7 @@ function updateBatchControls(): void {
   // Reintentar todos aparece solo mientras queden fallos del lote; el texto
   // lleva la cuenta para no tener que abrir el desplegable de errores.
   els.retryAll.hidden = batchFailures.length === 0;
-  els.retryAll.textContent = `Reintentar fallidos (${batchFailures.length})`;
+  setButtonLabel(els.retryAll, `Reintentar fallidos (${batchFailures.length})`);
   els.retryAll.disabled = busy || batchFailures.length === 0;
   els.retryAll.title =
     batchFailures.length === 0
@@ -491,7 +632,8 @@ function updateBatchControls(): void {
         'cada uno con su acción';
 
   els.batchErrors.hidden = batchFailures.length === 0;
-  els.batchErrorsSummary.textContent =
+  // El texto va en su propio nodo: el chevrón del summary no se puede pisar.
+  els.batchErrorsLabel.textContent =
     batchFailures.length === 1 ? '1 error' : `${batchFailures.length} errores`;
   for (const button of els.batchErrorList.querySelectorAll<HTMLButtonElement>('button')) {
     button.disabled = busy;
@@ -558,8 +700,35 @@ function renderBatchClock(): void {
   els.batchClock.textContent = timingLabel(batchClock.snapshot(batchProgress), batchProgress);
 }
 
-/** Fila del plugin que el servidor está procesando, si sigue en la tabla. */
-function batchRow(name: string): HTMLTableRowElement | null {
+/** Icono del sprite para un botón que la vista crea sobre la marcha. */
+function createIcon(name: string): SVGSVGElement {
+  // El espacio de nombres va literal: `renderRecentBanks` corre antes de que se
+  // inicialicen las constantes de la mitad del archivo (zona muerta temporal).
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'icon');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#icon-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+/**
+ * Cambia el texto de un botón sin borrar su icono: el marcado pone el texto en
+ * `.label`; un botón sin icono sigue aceptando `textContent` tal cual.
+ */
+function setButtonLabel(button: HTMLButtonElement, text: string): void {
+  const label = button.querySelector<HTMLElement>('.label');
+  if (label === null) {
+    button.textContent = text;
+    return;
+  }
+  label.textContent = text;
+}
+
+/** Fila de la tabla para ese plugin, si sigue visible. */
+function rowForPlugin(name: string): HTMLTableRowElement | null {
   for (const row of els.tbody.querySelectorAll<HTMLTableRowElement>('tr')) {
     if (query<HTMLElement>(row, '[data-field="name"]').textContent === name) return row;
   }
@@ -571,7 +740,7 @@ function batchRow(name: string): HTMLTableRowElement | null {
  * resultado definitivo llega con el refresco posterior del escaneo.
  */
 function markBatchRow(name: string, state: 'running' | 'done' | 'failed'): void {
-  const row = batchRow(name);
+  const row = rowForPlugin(name);
   if (row === null) return;
   row.classList.toggle('batch-running', state === 'running');
   row.classList.toggle('batch-done', state === 'done');
@@ -618,7 +787,7 @@ function clearBatchErrors(): void {
  * haría que el escaneo lo marcase como instalado sin tener el DLL.
  */
 function syncBanksDisabled(): void {
-  const locked = banksBusy || banks === null || !banks.data.plugin.installed;
+  const locked = banksBusy || banks === null || !banks.data.plugin.hasLoader;
   els.banksClose.disabled = banksBusy;
   els.defaultBank.disabled = locked;
   els.loadFxb.disabled = locked;
@@ -663,13 +832,246 @@ function renderLoader(loader: LibraryScanResponse['loader'] | null): void {
   els.loaderStatus.title = loader.path;
 }
 
+/** Un eje del filtro; cada uno tiene tres estados y se combina con los demás. */
+type FilterAxis = 'install' | 'banks' | 'wizard' | 'compat';
+/** Tono del chip: verde para el positivo, cálido para el negativo y gris «todos». */
+type FilterTone = 'positive' | 'negative' | 'neutral';
+
+interface FilterOption {
+  value: string;
+  label: string;
+  tone: FilterTone;
+}
+
+/**
+ * Los ejes y sus tres estados, siempre en el orden positivo → negativo →
+ * todos. Un solo control por eje sustituye a los chips duplicados de «con» y
+ * «sin»: elegir «todos» es la forma de quitar ese eje del filtro.
+ */
+const FILTER_AXES: Record<FilterAxis, { title: string; options: FilterOption[] }> = {
+  install: {
+    title: 'Filtro del cargador',
+    options: [
+      { value: 'installed', label: 'Con cargador', tone: 'positive' },
+      { value: 'uninstalled', label: 'Sin cargador', tone: 'negative' },
+      { value: 'all', label: 'Con y sin cargador', tone: 'neutral' },
+    ],
+  },
+  banks: {
+    title: 'Filtro de bancos',
+    options: [
+      { value: 'with-banks', label: 'Con bancos', tone: 'positive' },
+      { value: 'without-banks', label: 'Sin bancos', tone: 'negative' },
+      { value: 'all', label: 'Con y sin bancos', tone: 'neutral' },
+    ],
+  },
+  wizard: {
+    title: 'Filtro de wizard',
+    options: [
+      { value: 'with-wizard', label: 'Con wizard', tone: 'positive' },
+      { value: 'without-wizard', label: 'Sin wizard', tone: 'negative' },
+      { value: 'all', label: 'Con y sin wizard', tone: 'neutral' },
+    ],
+  },
+  compat: {
+    title: 'Filtro de compatibilidad',
+    options: [
+      { value: 'compatible', label: 'Ningún incompatible', tone: 'positive' },
+      { value: 'incompatible', label: 'Solo incompatibles', tone: 'negative' },
+      { value: 'all', label: 'Compatibles e incompatibles', tone: 'neutral' },
+    ],
+  },
+};
+
+/** Valor elegido en cada eje; `all` es el estado que no filtra. */
+const filterState: Record<FilterAxis, string> = {
+  install: 'all',
+  banks: 'all',
+  wizard: 'all',
+  compat: 'all',
+};
+
+/** El eje que nombra un chip o una opción, o `null` si el marcado no lo dice. */
+function filterAxisOf(element: HTMLElement): FilterAxis | null {
+  const axis = element.dataset['axis'];
+  return axis === 'install' || axis === 'banks' || axis === 'wizard' || axis === 'compat'
+    ? axis
+    : null;
+}
+
+const STORAGE_PAGE_SIZE = 'fxbLoader.pageSize';
+const VALID_PAGE_SIZES = [5, 10, 20, 50];
+
+function readPageSize(): number {
+  const parsed = Number.parseInt(readStorage(STORAGE_PAGE_SIZE), 10);
+  return VALID_PAGE_SIZES.includes(parsed) ? parsed : 10;
+}
+
+let pageSize = readPageSize();
+let currentPage = 1;
+let filterQuery = '';
+
+/**
+ * Pinta un eje completo: el chip con su etiqueta, su tono y si filtra, y las
+ * tres opciones del menú con `aria-checked`. El tono y la etiqueta salen del
+ * estado elegido, así que el marcado estático solo describe el estado «todos».
+ */
+function paintFilterAxis(axis: FilterAxis): void {
+  const config = FILTER_AXES[axis];
+  const selected = filterState[axis];
+  const option =
+    config.options.find((entry) => entry.value === selected) ?? config.options[0]!;
+  const filtering = option.value !== 'all';
+
+  for (const trigger of els.filterTriggers) {
+    if (filterAxisOf(trigger) !== axis) continue;
+    trigger.dataset['tone'] = option.tone;
+    trigger.classList.toggle('active', filtering);
+    // `aria-pressed` dice si el eje filtra; `aria-expanded`, si el menú está abierto.
+    trigger.setAttribute('aria-pressed', String(filtering));
+    const text = trigger.querySelector<HTMLElement>('.filter-btn-text');
+    if (text !== null) text.textContent = option.label;
+    trigger.title = `${config.title}: ${option.label.toLowerCase()}. Abrir las opciones`;
+  }
+
+  for (const item of els.filterItems) {
+    if (filterAxisOf(item) !== axis) continue;
+    const checked = item.dataset['value'] === selected;
+    item.classList.toggle('selected', checked);
+    item.setAttribute('aria-checked', String(checked));
+  }
+}
+
+function paintFilters(): void {
+  for (const axis of Object.keys(FILTER_AXES) as FilterAxis[]) paintFilterAxis(axis);
+}
+
+function setFilterAxis(axis: FilterAxis, value: string): void {
+  filterState[axis] = value;
+  currentPage = 1;
+  paintFilterAxis(axis);
+  if (scanData !== null) render(scanData);
+}
+
+/** El menú abierto, para devolver el foco al chip al cerrarlo con Escape. */
+let openFilter: { trigger: HTMLButtonElement; menu: HTMLElement } | null = null;
+
+function closeFilterMenu(focusTrigger = false): void {
+  const open = openFilter;
+  openFilter = null;
+  if (open === null) return;
+  open.menu.hidden = true;
+  open.trigger.classList.remove('open');
+  open.trigger.setAttribute('aria-expanded', 'false');
+  if (focusTrigger) open.trigger.focus({ preventScroll: true });
+}
+
+function openFilterMenu(trigger: HTMLButtonElement, menu: HTMLElement): void {
+  closeFilterMenu();
+  closeAllRowMenus();
+  openFilter = { trigger, menu };
+  menu.hidden = false;
+  trigger.classList.add('open');
+  trigger.setAttribute('aria-expanded', 'true');
+  // El foco entra en la opción vigente: Espacio o Intro la dejan tal cual y las
+  // flechas recorren las otras dos.
+  const checked = menu.querySelector<HTMLButtonElement>('button[aria-checked="true"]');
+  (checked ?? menu.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
+}
+
+function toggleFilterMenu(trigger: HTMLButtonElement): void {
+  const menu = els.filterMenus.find(
+    (entry) => entry.id === trigger.getAttribute('aria-controls'),
+  );
+  if (menu === undefined) return;
+  if (openFilter?.menu === menu) {
+    closeFilterMenu(true);
+    return;
+  }
+  openFilterMenu(trigger, menu);
+}
+
+/** Flechas y Home/End dentro del menú; el foco no sale de las tres opciones. */
+function moveFilterFocus(menu: HTMLElement, step: number | 'first' | 'last'): void {
+  const items = [...menu.querySelectorAll<HTMLButtonElement>('button')];
+  if (items.length === 0) return;
+  if (step === 'first' || step === 'last') {
+    (step === 'first' ? items[0] : items[items.length - 1])?.focus();
+    return;
+  }
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  items[(current + step + items.length) % items.length]?.focus();
+}
+
+/** Nombres que se listan en el tooltip de la pastilla de bancos. */
+const MAX_BANK_NAMES_IN_TITLE = 12;
+
+/** `1 banco`, `N bancos` o `sin bancos`. */
+function bankCountLabel(count: number): string {
+  if (count === 0) return 'sin bancos';
+  return count === 1 ? '1 banco' : `${count} bancos`;
+}
+
+/**
+ * La pastilla de bancos lleva el recuento del último escaneo y, al pasar el
+ * ratón, los nombres: el mismo listado que abre el panel.
+ */
+function paintBanksBadge(
+  badge: HTMLButtonElement,
+  pluginName: string,
+  banks: ScanPlugin['banks'] | undefined,
+): void {
+  const count = banks?.count ?? 0;
+  const label = bankCountLabel(count);
+  badge.textContent = label;
+  badge.classList.toggle('on', count > 0);
+  badge.setAttribute('aria-label', `Bancos de ${pluginName}: ${label}. Abrir el panel`);
+
+  if (count === 0) {
+    badge.title = `Abrir el panel de bancos de ${pluginName} (sin bancos)`;
+    return;
+  }
+
+  const names = banks?.names ?? [];
+  const shown = names.slice(0, MAX_BANK_NAMES_IN_TITLE);
+  const rest = count - shown.length;
+  const list = rest > 0 ? [...shown, `… y ${rest} más`].join('\n') : shown.join('\n');
+  badge.title = `Bancos de ${pluginName}:\n${list}\n\nAbrir el panel de bancos`;
+}
+
+/**
+ * Refresca la pastilla de la fila con lo que acaba de leer el panel de bancos.
+ * También guarda el recuento en el último escaneo: los filtros «con bancos» y
+ * «sin bancos» leen de ahí y, si uno está activo, la tabla se repinta para que
+ * el plugin no siga en una lista a la que ya no pertenece.
+ */
+function syncBanksBadge(pluginName: string, names: string[]): void {
+  const plugin = scanData?.plugins.find((entry) => entry.name === pluginName);
+  if (plugin !== undefined) plugin.banks = { count: names.length, names: [...names] };
+
+  const row = rowForPlugin(pluginName);
+  if (row !== null) {
+    paintBanksBadge(query<HTMLButtonElement>(row, '[data-field="banks"]'), pluginName, {
+      count: names.length,
+      names,
+    });
+  }
+
+  if (scanData !== null && filterState.banks !== 'all') render(scanData);
+}
+
 function render(data: LibraryScanResponse): void {
   scanData = data;
+  for (const plugin of data.plugins) {
+    if (!plugin.banks) {
+      plugin.banks = { count: 0, names: [] };
+    }
+  }
   updateBatchControls();
   els.tbody.replaceChildren();
   els.results.hidden = false;
 
-  const installed = data.plugins.filter((plugin) => plugin.installed).length;
+  const installed = data.plugins.filter((plugin) => plugin.hasLoader).length;
   const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
   els.summary.textContent =
     data.plugins.length === 0
@@ -681,21 +1083,79 @@ function render(data: LibraryScanResponse): void {
   renderLoader(data.loader);
 
   if (data.plugins.length === 0) {
+    els.pagination.hidden = true;
+    els.filterCount.textContent = '';
     const row = document.createElement('tr');
-    row.append(cell(6, 'La carpeta plugs\\ no contiene subdirectorios.'));
+    row.append(cell(7, 'La carpeta plugs\\ no contiene subdirectorios.'));
     els.tbody.append(row);
     return;
   }
 
-  for (const plugin of data.plugins) {
+  const queryText = filterQuery.toLowerCase();
+  const visiblePlugins = data.plugins.filter((plugin) => {
+    const bankCount = plugin.banks?.count ?? 0;
+    if (filterState.install === 'installed' && !plugin.hasLoader) return false;
+    if (filterState.install === 'uninstalled' && plugin.hasLoader) return false;
+    if (filterState.banks === 'with-banks' && bankCount === 0) return false;
+    if (filterState.banks === 'without-banks' && bankCount > 0) return false;
+    if (filterState.wizard === 'with-wizard' && !plugin.hasWizard) return false;
+    if (filterState.wizard === 'without-wizard' && plugin.hasWizard) return false;
+    if (filterState.compat === 'compatible' && plugin.compatible === false) return false;
+    if (filterState.compat === 'incompatible' && plugin.compatible !== false) return false;
+    if (queryText !== '') {
+      const matchName = plugin.name.toLowerCase().includes(queryText);
+      const matchPluginName = plugin.pluginName?.toLowerCase().includes(queryText) ?? false;
+      const matchPath = plugin.path.toLowerCase().includes(queryText);
+      if (!matchName && !matchPluginName && !matchPath) return false;
+    }
+    return true;
+  });
+
+  if (
+    filterQuery !== '' ||
+    Object.values(filterState).some((value) => value !== 'all')
+  ) {
+    els.filterCount.textContent = `${visiblePlugins.length} de ${data.plugins.length} plugin(s)`;
+  } else {
+    els.filterCount.textContent = '';
+  }
+
+  if (visiblePlugins.length === 0) {
+    els.pagination.hidden = true;
+    const row = document.createElement('tr');
+    row.append(cell(7, 'Ningún plugin coincide con el filtro.'));
+    els.tbody.append(row);
+    return;
+  }
+
+  const totalItems = visiblePlugins.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  if (currentPage > totalPages) {
+    currentPage = totalPages;
+  }
+  if (currentPage < 1) {
+    currentPage = 1;
+  }
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pagePlugins = visiblePlugins.slice(startIndex, endIndex);
+
+  els.pagination.hidden = false;
+  els.pageSize.value = String(pageSize);
+  els.pageInfo.textContent = `${startIndex + 1}–${endIndex} de ${totalItems}`;
+  els.pagePrev.disabled = currentPage <= 1;
+  els.pageNext.disabled = currentPage >= totalPages;
+
+  for (const plugin of pagePlugins) {
     const row = cloneRow(els.template);
     const name = query<HTMLElement>(row, '[data-field="name"]');
     name.textContent = plugin.name;
     if (plugin.warnings.length > 0) name.title = plugin.warnings.join('\n');
 
     const badge = query<HTMLElement>(row, '[data-field="status"]');
-    badge.textContent = plugin.installed ? 'instalado' : 'no instalado';
-    badge.classList.toggle('on', plugin.installed);
+    badge.textContent = plugin.hasLoader ? 'con cargador' : 'sin cargador';
+    badge.classList.toggle('on', plugin.hasLoader);
 
     const compatibility = query<HTMLElement>(row, '[data-field="compatibility"]');
     compatibility.textContent =
@@ -709,40 +1169,140 @@ function render(data: LibraryScanResponse): void {
     compatibility.title = plugin.compatibilityIssues.join('\n');
 
     query<HTMLElement>(row, '[data-field="pluginName"]').textContent = plugin.pluginName ?? '—';
-    query<HTMLElement>(row, '[data-field="vfxinfo"]').textContent = plugin.hasVfxinfo
-      ? 'presente'
-      : 'falta';
+
+    const vfxinfoBadge = query<HTMLElement>(row, '[data-field="vfxinfo"]');
+    vfxinfoBadge.textContent = plugin.hasVfxinfo ? 'presente' : 'falta';
+    vfxinfoBadge.classList.toggle('on', plugin.hasVfxinfo);
+
+    const wizardBadge = query<HTMLButtonElement>(row, '[data-field="wizard"]');
+    wizardBadge.textContent = plugin.hasWizard ? 'disponible' : '—';
+    wizardBadge.classList.toggle('on', plugin.hasWizard);
+    wizardBadge.title = plugin.hasWizard
+      ? `Wizard oficial disponible (${plugin.wizardId}). Abrir panel del wizard`
+      : `Sin wizard oficial para ${plugin.name}. Abrir panel del wizard`;
+    wizardBadge.setAttribute(
+      'aria-label',
+      `Wizard de ${plugin.name}: ${plugin.hasWizard ? 'disponible' : 'no disponible'}. Abrir el panel`,
+    );
+    wizardBadge.addEventListener('click', () => {
+      closeAllRowMenus();
+      void openPluginWizard(plugin, wizardBadge);
+    });
+
+    // La pastilla cuenta los bancos del último escaneo y abre el cajón con el
+    // listado completo, validado, que se refresca al importar o borrar.
+    const banksBadge = query<HTMLButtonElement>(row, '[data-field="banks"]');
+    paintBanksBadge(banksBadge, plugin.name, plugin.banks);
+    banksBadge.addEventListener('click', () => {
+      closeAllRowMenus();
+      void openBanks(plugin, banksBadge);
+    });
+
+    const metaBadge = query<HTMLButtonElement>(row, '[data-field="meta"]');
+    metaBadge.textContent = plugin.hasMeta ? 'presente' : 'falta';
+    metaBadge.classList.toggle('on', plugin.hasMeta);
+    // La pastilla es el atajo de la columna: abre el mismo cajón que «···» sin
+    // desplegar el menú de la fila.
+    metaBadge.title = plugin.hasMeta
+      ? `Abrir el catálogo de ${plugin.name}`
+      : `Crear el catálogo de ${plugin.name}`;
+    metaBadge.setAttribute(
+      'aria-label',
+      `Catálogo de ${plugin.name}: ${plugin.hasMeta ? 'presente' : 'falta'}. Abrir el panel`,
+    );
+    metaBadge.addEventListener('click', () => {
+      closeAllRowMenus();
+      void openMeta(plugin, metaBadge);
+    });
+
+    const menuButton = query<HTMLButtonElement>(row, '[data-action="menu"]');
+    const menuDropdown = query<HTMLElement>(row, '.row-menu-dropdown');
+
+    menuButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const willOpen = menuDropdown.hidden;
+      closeAllRowMenus();
+      if (willOpen) {
+        const rect = menuButton.getBoundingClientRect();
+        const table = menuButton.closest('table');
+        const tableRect = table?.getBoundingClientRect();
+        const spaceBelowInTable = tableRect ? tableRect.bottom - rect.bottom : 0;
+        const spaceAboveInTable = tableRect ? rect.top - tableRect.top : 0;
+        const spaceBelowInViewport = window.innerHeight - rect.bottom;
+        const menuHeight = 185;
+
+        const openUp =
+          (spaceBelowInTable < menuHeight || spaceBelowInViewport < menuHeight) &&
+          spaceAboveInTable >= menuHeight;
+
+        menuDropdown.classList.toggle('drop-up', openUp);
+        menuDropdown.hidden = false;
+        menuButton.setAttribute('aria-expanded', 'true');
+      }
+    });
 
     const banksButton = query<HTMLButtonElement>(row, '[data-action="banks"]');
     banksButton.title = `Ver los bancos de ${plugin.name}`;
     banksButton.addEventListener('click', () => {
-      void openBanks(plugin);
+      closeAllRowMenus();
+      // El menú se cierra al abrir el cajón: el foco vuelve a «···», que sigue visible.
+      void openBanks(plugin, menuButton);
     });
 
     const metaButton = query<HTMLButtonElement>(row, '[data-action="meta"]');
     metaButton.title = `Ver el catálogo de ${plugin.name}`;
     metaButton.addEventListener('click', () => {
-      void openMeta(plugin);
+      closeAllRowMenus();
+      void openMeta(plugin, menuButton);
+    });
+
+    const wizardButton = query<HTMLButtonElement>(row, '[data-action="wizard"]');
+    wizardButton.title = `Ver wizard de ${plugin.name}`;
+    wizardButton.addEventListener('click', () => {
+      closeAllRowMenus();
+      void openPluginWizard(plugin, menuButton);
+    });
+
+    const logButton = query<HTMLButtonElement>(row, '[data-action="log"]');
+    logButton.title = `Ver historial de operaciones de ${plugin.name}`;
+    logButton.addEventListener('click', () => {
+      closeAllRowMenus();
+      void openLogDrawer(plugin, menuButton);
     });
 
     const action = query<HTMLButtonElement>(row, '[data-action="toggle"]');
-    const blocked = !plugin.installed && plugin.compatible === false;
-    action.textContent = plugin.installed ? 'Desinstalar' : 'Instalar';
-    action.classList.add(plugin.installed ? 'danger' : 'primary');
+    const blocked = !plugin.hasLoader && plugin.compatible === false;
+    setButtonLabel(action, plugin.hasLoader ? 'Quitar cargador' : 'Poner cargador');
+    // El icono acompaña a la acción: bajar el cargador o mandarlo a la papelera.
+    action
+      .querySelector('use')
+      ?.setAttribute('href', plugin.hasLoader ? '#icon-trash' : '#icon-download');
+    action.classList.add(plugin.hasLoader ? 'danger' : 'primary');
     action.disabled = blocked;
     action.dataset['blocked'] = String(blocked);
     if (blocked) {
       action.title = plugin.compatibilityIssues.join('\n');
     } else {
-      action.title = plugin.installed
-        ? `Desinstalar fxbLoader de ${plugin.name}`
-        : `Instalar fxbLoader en ${plugin.name}`;
+      action.title = plugin.hasLoader
+        ? `Quitar el cargador de ${plugin.name}`
+        : `Poner el cargador en ${plugin.name}`;
     }
     action.addEventListener('click', () => {
-      void runAction(plugin, plugin.installed);
+      closeAllRowMenus();
+      void runAction(plugin, plugin.hasLoader);
     });
 
     els.tbody.append(row);
+  }
+}
+
+function closeAllRowMenus(): void {
+  for (const dropdown of document.querySelectorAll<HTMLElement>('.row-menu-dropdown')) {
+    dropdown.hidden = true;
+    dropdown.classList.remove('drop-up');
+  }
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-action="menu"]')) {
+    btn.setAttribute('aria-expanded', 'false');
   }
 }
 
@@ -764,20 +1324,24 @@ async function fetchPlugins(): Promise<LibraryScanResponse> {
 async function scan(): Promise<void> {
   if (busy) return;
   if (!libraryRoot) {
-    setStatus('Introduce la carpeta de la librería (debe contener plugs\\).', 'error');
+    setRootWarning(true);
+    setStatus('Introduce la carpeta de la librería.', 'error');
     els.root.focus();
     return;
   }
 
+  currentPage = 1;
   setBusy(true);
   setStatus('Escaneando…', 'busy');
   closeBanks();
+  closeMeta();
   clearBatchErrors();
   scanData = null;
   updateBatchControls();
   try {
     const data = await fetchPlugins();
     render(data);
+    setRootWarning(false);
     const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
     setStatus(
       data.plugins.length === 0
@@ -792,6 +1356,9 @@ async function scan(): Promise<void> {
     updateBatchControls();
     els.results.hidden = true;
     renderLoader(null);
+    // Un 400 al escanear es siempre el `libraryRoot`: no es una ruta válida o
+    // no contiene `plugs\`, que es justo lo que explica el aviso.
+    setRootWarning(isFxbApiError(error) && error.status === 400);
     setStatus(describeError(error), 'error');
   } finally {
     setBusy(false);
@@ -926,29 +1493,33 @@ async function chooseImportFiles(): Promise<void> {
 }
 
 async function callAction(plugin: BatchPlugin, action: BatchAction): Promise<unknown> {
-  if (action === 'uninstall') {
-    return client.library.uninstall({ libraryRoot, plugin: plugin.name });
+  if (action === 'remove') {
+    return client.library.removeLoader({ libraryRoot, plugin: plugin.name });
   }
 
-  const body: RequestBody<'/library/install', 'post'> = {
+  const body: RequestBody<'/library/loader/add', 'post'> = {
     libraryRoot,
     plugin: plugin.name,
   };
   const dll = currentDll();
   if (dll !== '') body.dllSourcePath = dll;
-  return client.library.install(body);
+  return client.library.addLoader(body);
 }
 
 async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void> {
   if (busy) return;
 
   setBusy(true);
-  setStatus(`${isInstalled ? 'Desinstalando' : 'Instalando'} ${plugin.name}…`, 'busy');
+  setStatus(
+    `${isInstalled ? 'Quitando el cargador de' : 'Poniendo el cargador en'} ${plugin.name}…`,
+    'busy',
+  );
 
   try {
-    await callAction(plugin, isInstalled ? 'uninstall' : 'install');
+    await callAction(plugin, isInstalled ? 'remove' : 'add');
 
     if (banks?.pluginName === plugin.name) closeBanks();
+    if (metaState?.pluginName === plugin.name) closeMeta();
     if (batchFailures.some((item) => item.plugin.name === plugin.name)) {
       batchFailures = batchFailures.filter((item) => item.plugin.name !== plugin.name);
       renderBatchErrors();
@@ -962,11 +1533,36 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
 
     const data = await fetchPlugins();
     render(data);
-    setStatus(`${isInstalled ? 'Desinstalado de' : 'Instalado en'} ${plugin.name}.`, 'ok');
+    setStatus(`${isInstalled ? 'Cargador quitado de' : 'Cargador puesto en'} ${plugin.name}.`, 'ok');
   } catch (error) {
     setStatus(describeError(error), 'error');
   } finally {
     setBusy(false);
+  }
+}
+
+async function createVfxinfoFromWizard(plugin: ScanPlugin): Promise<void> {
+  const confirmed = plugin.hasVfxinfo
+    ? window.confirm(
+        `¿Reemplazar vfxinfo.txt existente en "${plugin.name}" usando datos del wizard? Se creará respaldo vfxinfo.tx_.`,
+      )
+    : true;
+  if (!confirmed) return;
+
+  setStatus(`Generando vfxinfo.txt desde wizard para ${plugin.name}…`, 'busy');
+  try {
+    const res = await client.wizards.createVfxinfo({
+      pluginDir: plugin.path,
+      force: true,
+    });
+    const data = await fetchPlugins();
+    render(data);
+    setStatus(
+      `Creado vfxinfo.txt para ${plugin.name}${res.backedUp ? ' (con respaldo .tx_)' : ''}.`,
+      'ok',
+    );
+  } catch (error) {
+    setStatus(`No se pudo crear vfxinfo.txt: ${describeError(error)}`, 'error');
   }
 }
 
@@ -986,7 +1582,8 @@ function renderBatchErrors(): void {
 
     const badge = document.createElement('span');
     badge.className = 'badge';
-    badge.textContent = failure.action === 'install' ? 'instalar' : 'desinstalar';
+    badge.textContent =
+      failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador';
 
     const message = document.createElement('p');
     message.textContent = failure.message;
@@ -994,9 +1591,10 @@ function renderBatchErrors(): void {
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.textContent = 'Reintentar';
+    retry.prepend(createIcon('refresh'));
     retry.title = `Reintentar ${
-      failure.action === 'install' ? 'la instalación' : 'la desinstalación'
-    } de ${failure.plugin.name}`;
+      failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador'
+    } en ${failure.plugin.name}`;
     retry.addEventListener('click', () => {
       void retryFailure(failure);
     });
@@ -1034,20 +1632,23 @@ async function runBatch(
 ): Promise<void> {
   if (busy || scanData === null) return;
 
-  const isInstall = action === 'install';
+  const isInstall = action === 'add';
   const eligible = scanData.plugins.filter((plugin) =>
-    isInstall ? !plugin.installed && plugin.compatible === true : plugin.installed,
+    isInstall ? !plugin.hasLoader && plugin.compatible === true : plugin.hasLoader,
   );
   const plugins = resume === null ? eligible.map((plugin) => plugin.name) : [...resume];
   if (plugins.length === 0) {
     setBatchStatus(
-      isInstall ? 'No hay plugins por instalar.' : 'No hay plugins instalados que desinstalar.',
+      isInstall
+        ? 'No hay plugins a los que poner el cargador.'
+        : 'No hay plugins con cargador que quitar.',
       'info',
     );
     return;
   }
 
   closeBanks();
+  closeMeta();
   if (resume === null) {
     clearBatchErrors();
   } else {
@@ -1192,11 +1793,7 @@ async function retryAllFailures(): Promise<void> {
         index,
         total,
         name: failure.plugin.name,
-        status: retried
-          ? failure.action === 'install'
-            ? 'installed'
-            : 'uninstalled'
-          : 'failed',
+        status: retried ? (failure.action === 'add' ? 'added' : 'removed') : 'failed',
         message: retried ? null : failure.message,
       });
       renderBatchErrors();
@@ -1242,7 +1839,7 @@ async function retryFailure(failure: BatchFailure): Promise<void> {
     renderBatchErrors();
 
     const message = `${failure.plugin.name} ${
-      failure.action === 'install' ? 'instalado' : 'desinstalado'
+      failure.action === 'add' ? 'con cargador' : 'sin cargador'
     } tras reintentar.`;
     setStatus(message, 'ok');
     setBatchStatus(
@@ -1296,9 +1893,83 @@ function clearBanksView(pluginName: string): void {
   els.loadFxb.checked = false;
 }
 
+/** Cajón abierto (bancos o catálogo) y el control que lo abrió. */
+let openPanel: HTMLElement | null = null;
+let panelOpener: HTMLElement | null = null;
+
+/** Controles que reciben Tab dentro del cajón, en orden de documento. */
+const FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'summary',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+function isFocusableByTab(element: HTMLElement): boolean {
+  if (typeof element.checkVisibility === 'function') {
+    return element.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true });
+  }
+  // Sin `checkVisibility`, el contenido de un `<details>` cerrado conserva
+  // rectángulos aunque el navegador no lo tabule; solo su `summary` entra.
+  if (element.getClientRects().length === 0) return false;
+  const details = element.closest('details');
+  return details === null || details.open || element.matches('summary');
+}
+
+function panelFocusables(panel: HTMLElement): HTMLElement[] {
+  return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isFocusableByTab);
+}
+
+/**
+ * Abre un cajón como diálogo modal: recuerda quién lo abrió, le da el foco al
+ * panel para que el lector anuncie su nombre (`aria-labelledby`) y deja el Tab
+ * encerrado dentro mientras siga abierto.
+ */
+function showPanel(panel: HTMLElement, opener?: HTMLElement): void {
+  panel.scrollTop = 0;
+  if (openPanel === panel) return;
+
+  const active = document.activeElement;
+  panelOpener = opener ?? (active instanceof HTMLElement && active !== panel ? active : null);
+  openPanel = panel;
+  panel.hidden = false;
+  els.drawerBackdrop.hidden = false;
+  document.body.classList.add('drawer-open');
+  panel.focus({ preventScroll: true });
+}
+
+function hidePanel(panel: HTMLElement): void {
+  panel.hidden = true;
+  if (openPanel !== panel) return;
+
+  openPanel = null;
+  if (
+    els.banks.hidden &&
+    els.meta.hidden &&
+    els.wizards.hidden &&
+    els.pluginWizard.hidden &&
+    els.logDrawer.hidden &&
+    els.importPackageDrawer.hidden
+  ) {
+    els.drawerBackdrop.hidden = true;
+    document.body.classList.remove('drawer-open');
+  }
+
+  const opener = panelOpener;
+  panelOpener = null;
+  // El menú de fila se cierra al abrir el cajón: si el control quedó oculto no
+  // se le puede devolver el foco, y no es un error.
+  if (opener !== null && opener.isConnected && opener.getClientRects().length > 0) {
+    opener.focus({ preventScroll: true });
+  }
+}
+
 function closeBanks(): void {
   if (els.banks.hidden) return;
-  els.banks.hidden = true;
+  hidePanel(els.banks);
   banks = null;
   hideImportProgress();
   setBanksStatus('');
@@ -1358,6 +2029,7 @@ function renderBankRows(data: LibraryBanksListResponse): void {
     const use = document.createElement('button');
     use.type = 'button';
     use.textContent = 'Usar';
+    use.prepend(createIcon('check'));
     if (entry.fileName === current) use.dataset['default'] = 'true';
     use.title = `Elegir ${entry.fileName} como banco por defecto`;
     use.addEventListener('click', () => {
@@ -1447,6 +2119,7 @@ function renderBanks(options: { keepSelection?: boolean } = {}): void {
   renderDefaultOptions(data, keepSelection);
   renderExportOptions(data, keepSelection);
   renderBankRows(data);
+  syncBanksBadge(pluginName, data.banks.map((entry) => entry.fileName));
 
   const backup = data.defaultBackup;
   const defaultName = data.config.config.defaultFxbName.trim();
@@ -1474,10 +2147,14 @@ async function fetchBanks(
   return data;
 }
 
-async function openBanks(plugin: ScanPlugin): Promise<void> {
+async function openBanks(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
   if (banksBusy) return;
 
-  els.banks.hidden = false;
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  showPanel(els.banks, opener);
   clearBanksView(plugin.name);
   setBanksBusy(true);
   setBanksStatus('Leyendo los bancos…', 'busy');
@@ -1485,12 +2162,11 @@ async function openBanks(plugin: ScanPlugin): Promise<void> {
   try {
     await fetchBanks(plugin.name);
     setBanksStatus(
-      plugin.installed
+      plugin.hasLoader
         ? ''
-        : 'El plugin no está instalado: puedes importar bancos, pero no fijar el banco por defecto hasta instalarlo.',
-      plugin.installed ? 'info' : 'busy',
+        : 'El plugin no tiene cargador: puedes importar bancos, pero no fijar el banco por defecto hasta ponérselo.',
+      plugin.hasLoader ? 'info' : 'busy',
     );
-    els.banks.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   } catch (error) {
     banks = null;
     clearBanksView(plugin.name);
@@ -1528,7 +2204,8 @@ async function saveDefault(fileName: string): Promise<void> {
       data.config = current;
       renderBanks();
       setBanksStatus(
-        'La configuración cambió en disco (quizá la DLL la reescribió). Revisa los valores y vuelve a guardar.',
+        `${describeError(error)} Puede que la DLL la reescribiera; revisa los valores ` +
+          'actualizados y vuelve a guardar.',
         'error',
       );
     } else {
@@ -1703,7 +2380,8 @@ function renderImportResults(results: ImportResults): void {
 
   for (const result of results) {
     const item = document.createElement('li');
-    item.className = `import-result ${result.status}`;
+    item.className = 'import-result';
+    item.classList.add(result.status);
 
     const name = document.createElement('strong');
     name.textContent = result.fileName;
@@ -1900,6 +2578,7 @@ function syncMetaDisabled(): void {
   const disabled = metaBusy || metaState === null;
   els.metaSave.disabled = disabled;
   els.metaReload.disabled = disabled;
+  els.metaWizardApply.disabled = disabled;
 }
 
 function setMetaBusy(value: boolean): void {
@@ -1911,6 +2590,7 @@ function clearMetaView(pluginName: string): void {
   els.metaPlugin.textContent = pluginName;
   els.metaPath.textContent = '';
   els.metaExists.textContent = '';
+  els.metaOrigin.textContent = '';
   els.metaId.value = '';
   els.metaName.value = '';
   els.metaVendor.value = '';
@@ -1920,11 +2600,33 @@ function clearMetaView(pluginName: string): void {
   els.metaCreated.value = '';
   els.metaNotes.value = '';
   els.metaExtended.value = '';
+  resetDllPreference();
+  els.metaWizardBanner.hidden = true;
+  els.metaWizardTitle.textContent = '';
+  matchedWizard = null;
+}
+
+function metaOriginText(snapshot: PluginMetaSnapshotResponse): string {
+  if (snapshot.exists) return '';
+
+  const missing = [
+    snapshot.common.id === '' ? 'id' : null,
+    snapshot.common.name === '' ? 'nombre' : null,
+  ].filter((field): field is string => field !== null);
+
+  if (missing.length === 0) {
+    return 'Id y nombre tomados de vfxinfo.txt; al guardar se crea fxbLoader.meta.json.';
+  }
+  if (snapshot.source?.vfxinfo === true) {
+    return `vfxinfo.txt no trae ${missing.join(' ni ')}; el catálogo necesita id y nombre.`;
+  }
+  return 'Sin datos de vfxinfo.txt: escribe el id y el nombre para poder guardar el catálogo.';
 }
 
 function renderMeta(snapshot: PluginMetaSnapshotResponse): void {
   els.metaPath.textContent = snapshot.metaPath;
   els.metaExists.textContent = snapshot.exists ? '' : '(aún no existe: se crea al guardar)';
+  els.metaOrigin.textContent = metaOriginText(snapshot);
   els.metaId.value = snapshot.common.id;
   els.metaName.value = snapshot.common.name;
   els.metaVendor.value = snapshot.common.vendor;
@@ -1939,48 +2641,356 @@ function renderMeta(snapshot: PluginMetaSnapshotResponse): void {
 
 function closeMeta(): void {
   if (els.meta.hidden) return;
-  els.meta.hidden = true;
+  hidePanel(els.meta);
   metaState = null;
+  matchedWizard = null;
+  els.metaWizardBanner.hidden = true;
   setMetaStatus('');
   syncMetaDisabled();
 }
 
+/* ------------------------------------------------------------------ */
+/* Preferencia local de DLL por plugin                                */
+/* ------------------------------------------------------------------ */
+
+/** Valor guardado en `vfxinfo.txt` del plugin cargado; `''` si no declara. */
+let dllPrefSaved: string | null = null;
+/** Borrador sin guardar; sobrevive al cierre del panel del catálogo. */
+let dllPrefDraft: string | null = null;
+/** Plugin al que la preferencia abierta corresponde. */
+let dllPrefPluginName: string | null = null;
+let dllPrefBusy = false;
+
+/** Deja la sección sin plugin, sin borrador y sin textos. */
+function resetDllPreference(): void {
+  dllPrefSaved = null;
+  dllPrefPluginName = null;
+  els.metaDll.value = dllPrefDraft ?? '';
+  els.metaDllSave.disabled = true;
+  els.metaDllCancel.disabled = true;
+  els.metaDllNote.textContent = dllPrefDraft === null ? '' : 'Borrador sin guardar.';
+  els.metaDllActions.classList.toggle('draft', dllPrefDraft !== null);
+}
+
+/** Rellena la preferencia tras leer el catálogo del plugin. */
+function renderDllPreference(plugin: ScanPlugin, dir: string): void {
+  if (dllPrefDraft !== null && dllPrefPluginName !== plugin.name) {
+    // Borrador de otro plugin: no puede sobrevivir a un cambio de plugin.
+    dllPrefDraft = null;
+  }
+  dllPrefSaved = plugin.pluginName ?? '';
+  dllPrefPluginName = plugin.name;
+  void dir;
+  els.metaDll.value = dllPrefDraft ?? dllPrefSaved;
+  updateDllPreferenceNote();
+}
+
+function dllPreferenceInput(): string {
+  return els.metaDll.value.trim();
+}
+
+function dllPreferenceDirty(): boolean {
+  return dllPrefSaved !== null && dllPreferenceInput() !== dllPrefSaved;
+}
+
+/** Texto de la nota y estado de los botones según haya o no borrador. */
+function updateDllPreferenceNote(): void {
+  if (dllPrefSaved === null) return;
+
+  const dirty = dllPreferenceDirty();
+  els.metaDllActions.classList.toggle('draft', dirty);
+  els.metaDllCancel.disabled = !dirty || dllPrefBusy;
+  els.metaDllSave.disabled = !dirty || dllPrefBusy;
+
+  const current = dllPreferenceInput();
+  if (current === '') {
+    els.metaDllNote.textContent = dirty
+      ? 'Borrador sin guardar: un valor vacío no es válida preferencia.'
+      : 'vfxinfo.txt no declara dll_name. Indica la DLL del plugin y guarda la preferencia.';
+    return;
+  }
+  if (dirty) {
+    els.metaDllNote.textContent = 'Borrador sin guardar del valor mostrado.';
+    return;
+  }
+  els.metaDllNote.textContent = `Preferencia guardada en vfxinfo.txt: ${dllPrefSaved}`;
+}
+
+/** Cancelar restaura el valor guardado y descarta el borrador en memoria. */
+function cancelDllPreferenceDraft(): void {
+  if (dllPrefSaved === null) return;
+  dllPrefDraft = null;
+  els.metaDll.value = dllPrefSaved;
+  updateDllPreferenceNote();
+  setMetaStatus('Preferencia de DLL restablecida al valor guardado.');
+}
+
+async function saveDllPreference(): Promise<void> {
+  if (metaState === null || dllPrefBusy || !dllPreferenceDirty()) return;
+
+  const value = dllPreferenceInput();
+  const { plugin, dir } = metaState;
+  dllPrefBusy = true;
+  updateDllPreferenceNote();
+  setMetaStatus('Guardando la preferencia de DLL…', 'busy');
+
+  try {
+    const result = await client.library.updateDllPreference({
+      pluginDir: dir,
+      dllName: value,
+    });
+    dllPrefSaved = value;
+    dllPrefDraft = null;
+    dllPrefPluginName = plugin.name;
+    els.metaDll.value = value;
+    // El pluginName del escaneo apunta a la DLL del vfxinfo: se alinea con el
+    // valor guardado para que «Catálogo» y la tabla digan lo mismo.
+    plugin.pluginName = value.includes('/') || value.includes('\\')
+      ? (value.split(/[\\/]/).pop() ?? value)
+      : value;
+    updateDllPreferenceNote();
+    if (result.changed) {
+      setMetaStatus(`Preferencia de DLL guardada: ${result.dllName}`, 'ok');
+    } else {
+      setMetaStatus(`La preferencia de DLL ya era "${result.dllName}".`);
+    }
+  } catch (error) {
+    setMetaStatus(describeError(error), 'error');
+  } finally {
+    dllPrefBusy = false;
+    updateDllPreferenceNote();
+  }
+}
+
+/**
+ * Aviso de borrador al abrir el importador: no guarda nada desde aquí;
+ * «Continuar sin cambios» descarta el borrador y «Cancelar» lo conserva.
+ */
+let pendingImportOpener: HTMLElement | null = null;
+
+function dllPreferenceHasDraft(): boolean {
+  return dllPrefDraft !== null && dllPrefDraft !== dllPrefSaved;
+}
+
+function continueWithoutChanges(): void {
+  const opener = pendingImportOpener;
+  pendingImportOpener = null;
+  dllPrefDraft = null;
+  els.metaDll.value = dllPrefSaved ?? '';
+  updateDllPreferenceNote();
+  els.dialogDllDraft.close();
+  requestOpenImportPackageDrawer(opener ?? undefined);
+}
+
+function declareDraftImportCancelled(): void {
+  pendingImportOpener = null;
+  els.dialogDllDraft.close();
+}
+
+/** Abre el importador; con borrador activo pregunta antes de continuar. */
+function requestOpenImportPackageDrawer(opener?: HTMLElement): void {
+  if (dllPreferenceHasDraft()) {
+    const pluginName = dllPrefPluginName ?? 'el plugin';
+    els.dialogDllDraftText.textContent =
+      `El catálogo de ${pluginName} tiene una preferencia de DLL modificada que todavía no está guardada. ` +
+      '«Continuar sin cambios» la descarta y usa la preferencia guardada; «Cancelar» conserva el borrador. ' +
+      'Desde aquí no se guarda: vuelve al catálogo y usa Guardar preferencia.';
+    pendingImportOpener = opener ?? null;
+    els.dialogDllDraft.showModal();
+    return;
+  }
+  openImportPackageDrawer(opener);
+}
+
+/**
+ * El log trae marcas de tiempo ISO que nadie lee de corrido: se pasan a la hora
+ * local y, si el archivo trae algo raro, se deja el texto tal cual.
+ */
+function logTimestamp(timestamp: string): string {
+  if (timestamp === '') return '';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString();
+}
+
+const pluginHistoryTableView: TableView<PluginLogSnapshotResponse['entries'][number]> = {
+  columns: [
+    { id: 'timestamp', label: 'Fecha', getValue: entry => entry.timestamp, sortType: 'date', cellClass: 'table-date', cellTitle: entry => entry.raw, renderCell: entry => logTimestamp(entry.timestamp) || '—' },
+    { id: 'action', label: 'Acción', getValue: entry => entry.action, sortType: 'text', cellClass: 'table-action', cellTitle: entry => entry.raw },
+    { id: 'summary', label: 'Resumen', getValue: entry => entry.summary, sortType: 'text', cellTitle: entry => entry.raw },
+    { id: 'detail', label: 'Detalle', getValue: entry => entry.detail ?? '', sortType: 'text', cellTitle: entry => entry.raw },
+  ],
+  getRowId: entry => `${entry.timestamp}-${entry.action}-${entry.raw}`,
+  initialSort: { columnId: 'timestamp', direction: 'desc' },
+  pageSize: 100,
+  searchColumns: ['timestamp', 'action', 'summary', 'detail'],
+  filters: [
+    { id: 'actions', label: 'Acción', columnId: 'action', type: 'multi-select' },
+    { id: 'period', label: 'Fecha', columnId: 'timestamp', type: 'date-range' },
+  ],
+  emptyText: 'No hay entradas que coincidan con la búsqueda.',
+  rowActions: {
+    actions: [{ id: 'view-record', label: 'Ver registro', icon: 'file', onSelect: (entry, trigger) => openLogRecordDetail(entry, trigger) }],
+  },
+};
+
+/**
+ * Historial del plugin: la ruta del archivo, cuánto ocupa, sus entradas y los
+ * rotados que dejó la rotación por tamaño.
+ */
+function renderLogDetailField(label: string, value: string, className = ''): HTMLElement {
+  const field = document.createElement('div');
+  field.className = 'log-record-field';
+  const title = document.createElement('dt');
+  title.textContent = label;
+  const data = document.createElement('dd');
+  if (className) data.className = className;
+  data.textContent = value === '' ? '—' : value;
+  field.append(title, data);
+  return field;
+}
+
+function openLogRecordDetail(
+  entry: PluginLogSnapshotResponse['entries'][number],
+  trigger: HTMLButtonElement,
+): void {
+  logDetailOpener = trigger;
+  els.logDetailTitle.textContent = `Registro · ${entry.action || 'sin acción'}`;
+  const timestamp = logTimestamp(entry.timestamp) || entry.timestamp || '—';
+  els.logDetailFields.replaceChildren(
+    renderLogDetailField('Fecha y hora', timestamp),
+    renderLogDetailField('Acción', entry.action),
+    renderLogDetailField('Resumen', entry.summary),
+    renderLogDetailField('Detalle', entry.detail ?? ''),
+    renderLogDetailField('Línea original', entry.raw, 'log-record-raw'),
+  );
+  els.logDetail.hidden = false;
+  els.logDetailClose.focus({ preventScroll: true });
+}
+
+function closeLogRecordDetail(): void {
+  if (els.logDetail.hidden) return;
+  els.logDetail.hidden = true;
+  els.logDetailFields.replaceChildren();
+  const opener = logDetailOpener;
+  logDetailOpener = null;
+  if (opener?.isConnected && opener.getClientRects().length > 0) {
+    opener.focus({ preventScroll: true });
+  }
+}
+
+function renderPluginLog(snapshot: PluginLogSnapshotResponse): void {
+  if (els.logDetail.hidden === false && logDetailOpener?.isConnected !== true) closeLogRecordDetail();
+  els.logPath.textContent = snapshot.logPath;
+  els.logExists.textContent = snapshot.exists ? '' : '(todavía no existe)';
+  els.logSummary.textContent = `${snapshot.totalEntries} entrada(s) · ${formatBytes(
+    snapshot.size,
+  )} en el archivo activo`;
+  els.logRotated.textContent =
+    snapshot.rotatedFiles.length === 0
+      ? 'Sin archivos rotados.'
+      : `Rotados (${snapshot.rotatedFiles.length}): ${snapshot.rotatedFiles.join(', ')}`;
+
+  if (snapshot.entries.length === 0) {
+    logTableController?.destroy();
+    logTableController = null;
+    els.logTable.replaceChildren();
+    const empty = document.createElement('p');
+    empty.className = 'table-empty';
+    empty.textContent = snapshot.exists ? 'El log no tiene entradas legibles.' : 'El plugin todavía no ha escrito nada en su log.';
+    els.logTable.append(empty);
+    return;
+  }
+  if (logTableController === null) {
+    logTableController = mountTable(els.logTable, pluginHistoryTableView, snapshot.entries);
+  } else {
+    logTableController.setRows(snapshot.entries);
+  }
+}
+
+async function readPluginLog(pluginName: string, dir: string): Promise<void> {
+  try {
+    renderPluginLog(await client.plugins.log.read({ id: pluginName, dir }));
+    els.logStatus.textContent = '';
+    els.logStatus.className = 'status';
+  } catch (error) {
+    els.logPath.textContent = '';
+    els.logExists.textContent = '';
+    els.logSummary.textContent = `No se pudo leer el log: ${describeError(error)}`;
+    logTableController?.destroy();
+    logTableController = null;
+    els.logTable.replaceChildren();
+    els.logRotated.textContent = '';
+    els.logStatus.textContent = describeError(error);
+    els.logStatus.className = 'status error';
+  }
+}
+
+async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  showPanel(els.logDrawer, opener);
+
+  els.logPlugin.textContent = plugin.name;
+  els.logPath.textContent = '';
+  els.logExists.textContent = '';
+  els.logSummary.textContent = 'Leyendo historial…';
+  logTableController?.destroy();
+  logTableController = null;
+  els.logTable.replaceChildren();
+  els.logRotated.textContent = '';
+  els.logStatus.textContent = '';
+
+  await readPluginLog(plugin.name, plugin.path);
+}
+
+function closeLogDrawer(): void {
+  if (els.logDrawer.hidden) return;
+  closeLogRecordDetail();
+  hidePanel(els.logDrawer);
+}
+
 /** Lee el catálogo de `dir` y deja el panel listo para guardar con ese `mtimeMs`. */
-async function readMeta(pluginName: string, dir: string): Promise<void> {
+async function readMeta(plugin: ScanPlugin): Promise<void> {
   setMetaBusy(true);
   setMetaStatus('Leyendo el catálogo…', 'busy');
 
   try {
-    const snapshot = await client.plugins.meta.read({ id: pluginName, dir });
-    metaState = { pluginName, dir, snapshot };
+    const snapshot = await client.plugins.meta.read({ id: plugin.name, dir: plugin.path });
+    metaState = { pluginName: plugin.name, dir: plugin.path, plugin, snapshot };
     renderMeta(snapshot);
-    setMetaStatus(
-      snapshot.exists ? '' : 'El plugin no tiene catálogo; al guardar se crea fxbLoader.meta.json.',
-      snapshot.exists ? 'info' : 'busy',
-    );
+    renderDllPreference(plugin, plugin.path);
+
+    await checkWizardMatch(plugin, snapshot);
+
+    setMetaStatus('');
   } catch (error) {
     metaState = null;
-    clearMetaView(pluginName);
+    clearMetaView(plugin.name);
     setMetaStatus(describeError(error), 'error');
   } finally {
     setMetaBusy(false);
   }
 }
 
-async function openMeta(plugin: ScanPlugin): Promise<void> {
+async function openMeta(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
   if (metaBusy) return;
 
-  els.meta.hidden = false;
+  closeBanks();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  showPanel(els.meta, opener);
   metaState = null;
   clearMetaView(plugin.name);
   syncMetaDisabled();
-  await readMeta(plugin.name, plugin.path);
-  els.meta.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  await readMeta(plugin);
 }
 
 async function reloadMeta(): Promise<void> {
   if (metaState === null) return;
-  await readMeta(metaState.pluginName, metaState.dir);
+  await readMeta(metaState.plugin);
 }
 
 /**
@@ -2024,7 +3034,7 @@ async function saveMeta(): Promise<void> {
   const extended = readExtended();
   if (extended === null) return;
 
-  const { pluginName, dir, snapshot } = metaState;
+  const { pluginName, dir, plugin, snapshot } = metaState;
   setMetaBusy(true);
   setMetaStatus('Guardando el catálogo…', 'busy');
 
@@ -2045,16 +3055,18 @@ async function saveMeta(): Promise<void> {
       },
       extended,
     });
-    metaState = { pluginName, dir, snapshot: written };
+    metaState = { pluginName, dir, plugin, snapshot: written };
     renderMeta(written);
+    markPluginHasMeta(dir);
     setMetaStatus('Catálogo guardado.', 'ok');
   } catch (error) {
     if (isFxbApiError(error) && error.status === 409) {
       // Otra escritura (otra pestaña o el propio plugin) adelantó el archivo:
-      // se relee para no seguir guardando con un `mtimeMs` viejo.
-      await readMeta(pluginName, dir);
+      // se relee para no seguir guardando con un `mtimeMs` viejo. El texto
+      // empieza por el mensaje del API y solo añade qué hacer ahora.
+      await readMeta(plugin);
       setMetaStatus(
-        'El catálogo cambió en disco desde la última lectura; se muestra el estado actual. Vuelve a guardar.',
+        `${describeError(error)} Se muestra el estado actual del disco; vuelve a guardar.`,
         'error',
       );
       return;
@@ -2063,6 +3075,355 @@ async function saveMeta(): Promise<void> {
   } finally {
     setMetaBusy(false);
   }
+}
+
+function markPluginHasMeta(dir: string): void {
+  if (scanData === null) return;
+  const entry = scanData.plugins.find((plugin) => plugin.path === dir);
+  if (entry === undefined || entry.hasMeta) return;
+  entry.hasMeta = true;
+  render(scanData);
+}
+
+/* ------------------------------------------------------------------ */
+/* Wizards y asistente VFX                                            */
+/* ------------------------------------------------------------------ */
+
+let matchedWizard: WizardMatchResponse | null = null;
+
+async function checkWizardMatch(
+  plugin: ScanPlugin,
+  snapshot: PluginMetaSnapshotResponse,
+): Promise<void> {
+  els.metaWizardBanner.hidden = true;
+  matchedWizard = null;
+  try {
+    const match = await client.wizards.match({
+      id: snapshot.common.id || undefined,
+      name: snapshot.common.name || plugin.name,
+      dllName: plugin.pluginName || undefined,
+    });
+    if (match && metaState && metaState.dir === plugin.path) {
+      matchedWizard = match;
+      els.metaWizardTitle.textContent = `${match.name} · ${match.vendor || 'Desconocido'} (${match.genre || 'VST'}, ID: ${match.id})`;
+      els.metaWizardBanner.hidden = false;
+    }
+  } catch {
+    // Si no coincide o falla, se mantiene oculto.
+  }
+}
+
+async function applyWizardToMeta(): Promise<void> {
+  if (metaState === null || metaBusy) return;
+  setMetaBusy(true);
+  setMetaStatus('Aplicando metadatos del wizard…', 'busy');
+  try {
+    const updated = await client.wizards.applyMeta({
+      pluginDir: metaState.dir,
+      wizardId: matchedWizard?.id,
+      overwriteNotes: false,
+    });
+    metaState.snapshot = updated;
+    renderMeta(updated);
+    markPluginHasMeta(metaState.dir);
+    setMetaStatus('Metadatos del wizard aplicados correctamente al catálogo.', 'ok');
+  } catch (error) {
+    setMetaStatus(describeError(error), 'error');
+  } finally {
+    setMetaBusy(false);
+  }
+}
+
+function closeWizards(): void {
+  if (els.wizards.hidden) return;
+  els.wizards.hidden = true;
+  if (
+    els.banks.hidden &&
+    els.meta.hidden &&
+    els.pluginWizard.hidden &&
+    els.logDrawer.hidden
+  ) {
+    els.drawerBackdrop.hidden = true;
+    document.body.classList.remove('drawer-open');
+  }
+}
+
+async function openWizards(): Promise<void> {
+  closeBanks();
+  closeMeta();
+  closePluginWizard();
+  closeLogDrawer();
+  els.wizards.hidden = false;
+  els.wizards.scrollTop = 0;
+  els.drawerBackdrop.hidden = false;
+  document.body.classList.add('drawer-open');
+  els.wizardsFilter.value = '';
+  await loadWizards('');
+}
+
+let wizardsLoading = false;
+
+async function loadWizards(query: string): Promise<void> {
+  if (wizardsLoading) return;
+  wizardsLoading = true;
+  els.wizardsStatus.textContent = 'Cargando wizards…';
+  els.wizardsStatus.className = 'status busy';
+  try {
+    const res = await client.wizards.list({ query: query || undefined, limit: 100 });
+    renderWizardsList(res.items, res.total);
+    els.wizardsStatus.textContent = '';
+    els.wizardsStatus.className = 'status';
+  } catch (error) {
+    els.wizardsStatus.textContent = `Error cargando wizards: ${describeError(error)}`;
+    els.wizardsStatus.className = 'status error';
+  } finally {
+    wizardsLoading = false;
+  }
+}
+
+async function promptAndInstallFromWizard(
+  wizardId: string,
+  wizardName: string,
+  folderName?: string,
+): Promise<void> {
+  if (!libraryRoot) {
+    const msg = 'Debes seleccionar y escanear primero una librería VFX activa para instalar instrumentos.';
+    setStatus(msg, 'error');
+    if (!els.wizards.hidden) {
+      els.wizardsStatus.textContent = msg;
+      els.wizardsStatus.className = 'status error';
+    }
+    if (!els.pluginWizard.hidden) {
+      els.pluginWizardStatus.textContent = msg;
+      els.pluginWizardStatus.className = 'status error';
+    }
+    return;
+  }
+
+  const setTargetStatus = (msg: string, cls: string) => {
+    if (!els.wizards.hidden) {
+      els.wizardsStatus.textContent = msg;
+      els.wizardsStatus.className = cls;
+    }
+    if (!els.pluginWizard.hidden) {
+      els.pluginWizardStatus.textContent = msg;
+      els.pluginWizardStatus.className = cls;
+    }
+  };
+
+  setTargetStatus('Elige el DLL original en el diálogo del explorador…', 'status busy');
+
+  const body: RequestBody<'/system/pick', 'post'> = {
+    kind: 'file',
+    title: `Elige el archivo DLL original para "${wizardName}"`,
+    extensions: ['dll'],
+  };
+  const start = parentDir(currentDll() || recentDlls[0] || '');
+  if (start !== null) body.initialDir = start;
+
+  const picked = await pickPaths(body, 'library');
+  if (picked === null) return;
+  const chosenDll = picked[0];
+  if (!chosenDll) {
+    setTargetStatus('Instalación cancelada: no se seleccionó ningún archivo DLL.', 'status');
+    return;
+  }
+
+  setTargetStatus(`Instalando "${wizardName}" desde wizard certificado…`, 'status busy');
+
+  try {
+    const res = await client.wizards.install({
+      wizardId,
+      libraryRoot,
+      dllSourcePath: chosenDll,
+      pluginFolderName: folderName,
+      overwrite: true,
+      initializeBank: true,
+    });
+
+    const warnText = res.warnings.length > 0 ? ` [Aviso: ${res.warnings.join('; ')}]` : '';
+    const regText = res.registryFileCreated ? ' Claves de registro guardadas.' : '';
+    const successMsg = `Instrumento "${res.pluginName}" instalado con éxito desde Wizard certificado.${warnText}${regText}`;
+
+    setTargetStatus(successMsg, 'status ok');
+
+    // Refrescar el escaneo para ver el plugin en la tabla
+    const plugins = await fetchPlugins();
+    render(plugins);
+  } catch (error) {
+    setTargetStatus(`Error al instalar instrumento: ${describeError(error)}`, 'status error');
+  }
+}
+
+function renderWizardsList(items: WizardListResponse['items'], total: number): void {
+  els.wizardsCount.textContent = `${items.length} de ${total}`;
+  els.wizardsRows.replaceChildren();
+
+  if (items.length === 0) {
+    const tr = document.createElement('tr');
+    tr.append(cell(7, 'No se encontraron wizards coincidentes.'));
+    els.wizardsRows.append(tr);
+    return;
+  }
+
+  for (const w of items) {
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    tdName.textContent = w.name;
+
+    const tdVendor = document.createElement('td');
+    tdVendor.textContent = w.vendor || '—';
+
+    const tdGenre = document.createElement('td');
+    tdGenre.textContent = w.genre || 'VST';
+
+    const tdDll = document.createElement('td');
+    const code = document.createElement('code');
+    code.textContent = w.dllName;
+    tdDll.append(code);
+
+    const tdId = document.createElement('td');
+    const badgeId = document.createElement('span');
+    badgeId.className = 'badge';
+    badgeId.textContent = w.id;
+    tdId.append(badgeId);
+
+    const tdConfig = document.createElement('td');
+    const flags: string[] = [];
+    if (w.hasRegistryKeys) flags.push('Registro');
+    if (w.hasFilesToCopy || w.hasDirsToCopy) flags.push('Archivos');
+    if (w.hasReadme) flags.push('Readme');
+    if (w.isSynth) flags.push('Sinte');
+    tdConfig.textContent = flags.length > 0 ? flags.join(', ') : 'Estándar';
+
+    const tdAction = document.createElement('td');
+    const installBtn = document.createElement('button');
+    installBtn.type = 'button';
+    installBtn.title = `Instalar ${w.name} en la librería activa`;
+    installBtn.textContent = 'Instalar…';
+    installBtn.addEventListener('click', () => {
+      void promptAndInstallFromWizard(w.id, w.name);
+    });
+    tdAction.append(installBtn);
+
+    tr.append(tdName, tdVendor, tdGenre, tdDll, tdId, tdConfig, tdAction);
+    els.wizardsRows.append(tr);
+  }
+}
+
+interface PluginWizardState {
+  plugin: ScanPlugin;
+  wizard: WizardMatchResponse | null;
+}
+
+let pluginWizardState: PluginWizardState | null = null;
+
+async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closeLogDrawer();
+  showPanel(els.pluginWizard, opener);
+
+  els.pluginWizardPlugin.textContent = plugin.name;
+  els.pluginWizardStatus.textContent = 'Buscando wizard…';
+  els.pluginWizardStatus.className = 'status busy';
+  els.pluginWizardEmpty.hidden = true;
+  els.pluginWizardContent.hidden = true;
+
+  try {
+    const match = await client.wizards.match({
+      id: plugin.wizardId ?? undefined,
+      name: plugin.name,
+      dllName: plugin.pluginName ?? undefined,
+    });
+
+    if (match === null) {
+      pluginWizardState = { plugin, wizard: null };
+      els.pluginWizardEmpty.hidden = false;
+      els.pluginWizardContent.hidden = true;
+      els.pluginWizardStatus.textContent = '';
+      els.pluginWizardStatus.className = 'status';
+      return;
+    }
+
+    pluginWizardState = { plugin, wizard: match };
+    els.pluginWizardEmpty.hidden = true;
+    els.pluginWizardContent.hidden = false;
+
+    els.pluginWizardName.textContent = match.name;
+    els.pluginWizardSource.textContent = match.sourcePath;
+    els.pluginWizardVendor.textContent = match.vendor || '—';
+    els.pluginWizardGenre.textContent = match.genre || '—';
+    els.pluginWizardId.textContent = `${match.id} (FourCC: ${fourCcFromId(match.id)})`;
+    els.pluginWizardDll.textContent = match.dllName || '—';
+    els.pluginWizardDimensions.textContent = `${match.editorWidth} × ${match.editorHeight} px (${match.hasEditor ? 'Con GUI' : 'Sin GUI'})`;
+    els.pluginWizardParams.textContent = `${match.parameterCount} parámetros · ${match.programCount} programas`;
+
+    const flagsKeys = Object.keys(match.flags ?? {});
+    els.pluginWizardFlags.textContent = flagsKeys.length > 0 ? JSON.stringify(match.flags) : '—';
+
+    const fileParts: string[] = [];
+    if (match.filesToCopy && match.filesToCopy.length > 0) {
+      fileParts.push('Archivos:\n  ' + match.filesToCopy.join('\n  '));
+    }
+    if (match.dirsToCopy && match.dirsToCopy.length > 0) {
+      fileParts.push('Directorios:\n  ' + match.dirsToCopy.join('\n  '));
+    }
+    if (match.symlinks && match.symlinks.length > 0) {
+      fileParts.push('Enlaces simbólicos:\n  ' + match.symlinks.join('\n  '));
+    }
+    if (match.filesToCreate && Object.keys(match.filesToCreate).length > 0) {
+      fileParts.push('Archivos creados: ' + Object.keys(match.filesToCreate).join(', '));
+    }
+    if (fileParts.length > 0) {
+      els.pluginWizardFilesWrap.hidden = false;
+      els.pluginWizardFiles.textContent = fileParts.join('\n\n');
+    } else {
+      els.pluginWizardFilesWrap.hidden = true;
+    }
+
+    if (match.registryKeys && match.registryKeys.trim() !== '') {
+      els.pluginWizardRegistryWrap.hidden = false;
+      els.pluginWizardRegistry.textContent = match.registryKeys.trim();
+    } else {
+      els.pluginWizardRegistryWrap.hidden = true;
+    }
+
+    const noteParts = [match.notes, match.vendorNotes].filter((n) => Boolean(n && n.trim()));
+    if (noteParts.length > 0) {
+      els.pluginWizardNotesWrap.hidden = false;
+      els.pluginWizardNotes.textContent = noteParts.join('\n\n');
+    } else {
+      els.pluginWizardNotesWrap.hidden = true;
+    }
+
+    const rawReadme = (match as { readme?: unknown }).readme;
+    const readmeText = typeof rawReadme === 'string' ? rawReadme.trim() : '';
+    if (readmeText !== '') {
+      els.pluginWizardReadmeWrap.hidden = false;
+      els.pluginWizardReadme.textContent = readmeText;
+    } else {
+      els.pluginWizardReadmeWrap.hidden = true;
+    }
+
+    els.pluginWizardVfxinfoLabel.textContent = plugin.hasVfxinfo
+      ? 'Recrear vfxinfo.txt desde Wizard'
+      : 'Crear vfxinfo.txt desde Wizard';
+
+    els.pluginWizardStatus.textContent = '';
+    els.pluginWizardStatus.className = 'status';
+  } catch (error) {
+    els.pluginWizardStatus.textContent = `Error al buscar wizard: ${describeError(error)}`;
+    els.pluginWizardStatus.className = 'status error';
+  }
+}
+
+function closePluginWizard(): void {
+  if (els.pluginWizard.hidden) return;
+  hidePanel(els.pluginWizard);
+  pluginWizardState = null;
 }
 
 els.form.addEventListener('submit', (event) => {
@@ -2077,6 +3438,11 @@ els.form.addEventListener('submit', (event) => {
 
 els.dll.addEventListener('input', () => {
   writeStorage(STORAGE_DLL, currentDll());
+});
+
+// Al escribir una ruta el aviso se retira; el siguiente escaneo lo repone si no vale.
+els.root.addEventListener('input', () => {
+  setRootWarning(els.root.value.trim() === '');
 });
 
 // Al salir del campo se recuerda la DLL escrita, aunque no se haya escaneado.
@@ -2102,11 +3468,11 @@ els.importBrowse.addEventListener('click', () => {
 });
 
 els.installAll.addEventListener('click', () => {
-  void runBatch('install');
+  void runBatch('add');
 });
 
 els.uninstallAll.addEventListener('click', () => {
-  void runBatch('uninstall');
+  void runBatch('remove');
 });
 
 els.batchCancel.addEventListener('click', () => {
@@ -2142,6 +3508,119 @@ els.metaReload.addEventListener('click', () => {
   void reloadMeta();
 });
 
+els.metaDll.addEventListener('input', () => {
+  // Cada edición es un borrador en memoria; nada se escribe sin Guardar.
+  const value = dllPreferenceInput();
+  dllPrefDraft = value === dllPrefSaved ? null : value;
+  updateDllPreferenceNote();
+});
+
+els.metaDllSave.addEventListener('click', () => {
+  void saveDllPreference();
+});
+
+els.metaDllCancel.addEventListener('click', () => {
+  cancelDllPreferenceDraft();
+});
+
+els.dialogDllDraftContinue.addEventListener('click', () => {
+  continueWithoutChanges();
+});
+
+els.dialogDllDraftCancel.addEventListener('click', () => {
+  // Solo conserva el borrador: no se guarda nada desde el aviso.
+  declareDraftImportCancelled();
+});
+
+els.metaWizardApply.addEventListener('click', () => {
+  void applyWizardToMeta();
+});
+
+els.wizardsNavBtn.addEventListener('click', () => {
+  void openWizards();
+});
+
+els.wizardsClose.addEventListener('click', () => {
+  closeWizards();
+});
+
+els.pluginWizardClose.addEventListener('click', () => {
+  closePluginWizard();
+});
+
+els.pluginWizardVfxinfoBtn.addEventListener('click', async () => {
+  if (!pluginWizardState) return;
+  const { plugin, wizard } = pluginWizardState;
+  const confirmed = plugin.hasVfxinfo
+    ? window.confirm(
+        `¿Reemplazar vfxinfo.txt existente en "${plugin.name}" usando datos del wizard? Se creará respaldo vfxinfo.tx_.`,
+      )
+    : true;
+  if (!confirmed) return;
+
+  els.pluginWizardStatus.textContent = 'Generando vfxinfo.txt…';
+  els.pluginWizardStatus.className = 'status busy';
+  try {
+    const res = await client.wizards.createVfxinfo({
+      pluginDir: plugin.path,
+      wizardId: wizard?.id,
+      force: true,
+    });
+    plugin.hasVfxinfo = true;
+    els.pluginWizardVfxinfoLabel.textContent = 'Recrear vfxinfo.txt desde Wizard';
+    const data = await fetchPlugins();
+    render(data);
+    els.pluginWizardStatus.textContent = `vfxinfo.txt generado correctamente${res.backedUp ? ' (respaldo .tx_ creado)' : ''}.`;
+    els.pluginWizardStatus.className = 'status ok';
+  } catch (error) {
+    els.pluginWizardStatus.textContent = `No se pudo generar vfxinfo.txt: ${describeError(error)}`;
+    els.pluginWizardStatus.className = 'status error';
+  }
+});
+
+els.pluginWizardApplyBtn.addEventListener('click', async () => {
+  if (!pluginWizardState) return;
+  const { plugin, wizard } = pluginWizardState;
+  els.pluginWizardStatus.textContent = 'Aplicando metadatos al catálogo…';
+  els.pluginWizardStatus.className = 'status busy';
+  try {
+    await client.wizards.applyMeta({
+      pluginDir: plugin.path,
+      wizardId: wizard?.id,
+      overwriteNotes: false,
+    });
+    markPluginHasMeta(plugin.path);
+    els.pluginWizardStatus.textContent =
+      'Metadatos del wizard aplicados correctamente al catálogo (fxbLoader.meta.json).';
+    els.pluginWizardStatus.className = 'status ok';
+  } catch (error) {
+    els.pluginWizardStatus.textContent = `No se pudieron aplicar metadatos: ${describeError(error)}`;
+    els.pluginWizardStatus.className = 'status error';
+  }
+});
+
+els.pluginWizardInstallBtn.addEventListener('click', () => {
+  if (!pluginWizardState?.wizard) return;
+  void promptAndInstallFromWizard(
+    pluginWizardState.wizard.id,
+    pluginWizardState.wizard.name,
+    pluginWizardState.plugin.name,
+  );
+});
+
+els.logClose.addEventListener('click', () => {
+  closeLogDrawer();
+});
+els.logDetailClose.addEventListener('click', closeLogRecordDetail);
+
+let filterTimeout: ReturnType<typeof setTimeout> | null = null;
+els.wizardsFilter.addEventListener('input', () => {
+  if (filterTimeout) clearTimeout(filterTimeout);
+  filterTimeout = setTimeout(() => {
+    void loadWizards(els.wizardsFilter.value.trim());
+  }, 200);
+});
+
 els.defaultSave.addEventListener('click', () => {
   void saveDefault(els.defaultBank.value);
 });
@@ -2171,6 +3650,524 @@ els.importCancel.addEventListener('click', () => {
 
 els.exportButton.addEventListener('click', () => {
   void exportBank();
+});
+
+els.pluginFilter.addEventListener('input', () => {
+  filterQuery = els.pluginFilter.value.trim();
+  currentPage = 1;
+  if (scanData !== null) render(scanData);
+});
+
+els.pageSize.addEventListener('change', () => {
+  const next = Number.parseInt(els.pageSize.value, 10);
+  if (VALID_PAGE_SIZES.includes(next)) {
+    pageSize = next;
+    writeStorage(STORAGE_PAGE_SIZE, String(pageSize));
+    currentPage = 1;
+    if (scanData !== null) render(scanData);
+  }
+});
+
+els.pagePrev.addEventListener('click', () => {
+  if (currentPage > 1) {
+    currentPage -= 1;
+    if (scanData !== null) render(scanData);
+  }
+});
+
+els.pageNext.addEventListener('click', () => {
+  currentPage += 1;
+  if (scanData !== null) render(scanData);
+});
+
+// Un chip por eje: el clic abre sus tres opciones, y la opción elegida deja el
+// eje aplicado (o lo quita si es «todos»).
+for (const trigger of els.filterTriggers) {
+  trigger.addEventListener('click', () => toggleFilterMenu(trigger));
+}
+
+for (const item of els.filterItems) {
+  item.addEventListener('click', () => {
+    const axis = filterAxisOf(item);
+    const value = item.dataset['value'];
+    if (axis === null || value === undefined) return;
+    setFilterAxis(axis, value);
+    closeFilterMenu(true);
+  });
+}
+
+for (const menu of els.filterMenus) {
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveFilterFocus(menu, 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveFilterFocus(menu, -1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      moveFilterFocus(menu, 'first');
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      moveFilterFocus(menu, 'last');
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFilterMenu(true);
+    } else if (event.key === 'Tab') {
+      // Tab sale del menú y lo cierra: el chip recupera su estado cerrado.
+      closeFilterMenu();
+    }
+  });
+}
+
+paintFilters();
+
+const STORAGE_THEME = 'fxbLoader.theme';
+type ThemeMode = 'auto' | 'dark' | 'light';
+
+const themeIcons = [...els.themeToggle.querySelectorAll<SVGElement>('[data-icon]')];
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme(mode: ThemeMode): void {
+  if (mode === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    els.themeToggle.title = 'Tema: Oscuro (clic para cambiar a Claro)';
+  } else if (mode === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    els.themeToggle.title = 'Tema: Claro (clic para cambiar a Sistema)';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    els.themeToggle.title = 'Tema: Sistema (clic para cambiar a Oscuro)';
+  }
+
+  // Sol y luna son excluyentes. En «Sistema» se enseña el dibujo del tema que
+  // esté aplicando el SO, para que el botón diga siempre lo que se ve.
+  const shown = mode === 'auto' ? (prefersDark.matches ? 'dark' : 'light') : mode;
+  for (const icon of themeIcons) {
+    icon.toggleAttribute('hidden', icon.dataset['icon'] !== shown);
+  }
+}
+
+/**
+ * Modo guardado en este navegador. «Sistema» se guarda como `auto` igual que
+ * los otros dos: cualquier valor ausente o desconocido también cae en `auto`,
+ * que es lo que había antes de existir la clave.
+ */
+function readTheme(): ThemeMode {
+  const stored = localStorage.getItem(STORAGE_THEME);
+  return stored === 'dark' || stored === 'light' ? stored : 'auto';
+}
+
+function cycleTheme(): void {
+  const current = readTheme();
+  const next: ThemeMode = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
+  localStorage.setItem(STORAGE_THEME, next);
+  applyTheme(next);
+}
+
+applyTheme(readTheme());
+
+// Con «Sistema», si el SO cambia de claro a oscuro hay que cambiar el dibujo.
+prefersDark.addEventListener('change', () => {
+  if (readTheme() === 'auto') applyTheme('auto');
+});
+
+els.themeToggle.addEventListener('click', cycleTheme);
+
+let importPackageInspection: LibraryInspectPackageResponse | null = null;
+let importPackageBusy = false;
+let importPlugCheckboxes: { name: string; input: HTMLInputElement }[] = [];
+let importBankCheckboxes: { name: string; input: HTMLInputElement }[] = [];
+
+function setImportPackageBusy(busy: boolean): void {
+  importPackageBusy = busy;
+  els.importPackageInspectBtn.disabled = busy;
+  els.importPackageBrowse.disabled = busy;
+  els.importPackageExecuteBtn.disabled = busy;
+  els.importPackagePolicy.disabled = busy;
+  els.importPackageRepair.disabled = busy;
+}
+
+function openImportPackageDrawer(opener?: HTMLElement): void {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  showPanel(els.importPackageDrawer, opener);
+  if (!els.importPackagePath.value.trim() && libraryRoot) {
+    const parent = parentDir(libraryRoot);
+    if (parent) {
+      els.importPackagePath.value = parent;
+    }
+  }
+  els.importPackagePath.focus();
+}
+
+function closeImportPackageDrawer(): void {
+  if (els.importPackageDrawer.hidden) return;
+  hidePanel(els.importPackageDrawer);
+  importPackageInspection = null;
+  els.importPackagePreview.hidden = true;
+  els.importPackageStatus.textContent = '';
+  els.importPackageStatus.className = 'status';
+}
+
+function renderImportPackageInspection(result: LibraryInspectPackageResponse): void {
+  importPackageInspection = result;
+  els.importPackagePreview.hidden = false;
+  els.importPackageKind.textContent = result.resolvedKind === 'vfxlibrary' ? 'Paquete .vfxlibrary' : 'Carpeta de plugin';
+  els.importPackageSource.textContent = result.sourcePath;
+
+  importPlugCheckboxes = [];
+  els.importPackagePluginsRows.replaceChildren();
+  if (result.plugins.length === 0) {
+    const tr = document.createElement('tr');
+    tr.append(cell(6, 'No se detectaron plugins en el origen.'));
+    els.importPackagePluginsRows.append(tr);
+  } else {
+    for (const plug of result.plugins) {
+      const tr = document.createElement('tr');
+      const tdCheck = document.createElement('td');
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = true;
+      chk.title = `Seleccionar ${plug.name}`;
+      importPlugCheckboxes.push({ name: plug.sourceDir || plug.name, input: chk });
+      tdCheck.append(chk);
+
+      const tdName = document.createElement('td');
+      const nameTitle = document.createElement('div');
+      nameTitle.textContent = plug.name;
+      tdName.append(nameTitle);
+
+      const plugWizard = (plug as { matchedWizard?: { name: string; vendor: string } }).matchedWizard;
+      if (plugWizard) {
+        const wizardSubtitle = document.createElement('div');
+        wizardSubtitle.className = 'note';
+        wizardSubtitle.style.color = 'var(--accent)';
+        wizardSubtitle.textContent = `Wizard: ${plugWizard.vendor} ${plugWizard.name}`;
+        tdName.append(wizardSubtitle);
+      }
+
+      if ((plug as { packageSource?: string }).packageSource) {
+        const srcSubtitle = document.createElement('div');
+        srcSubtitle.className = 'note';
+        srcSubtitle.style.fontSize = '0.75rem';
+        srcSubtitle.textContent = (plug as { packageSource?: string }).packageSource!;
+        tdName.append(srcSubtitle);
+      }
+
+      const tdDll = document.createElement('td');
+      tdDll.textContent = plug.dllName ?? '—';
+
+      const tdVfxinfo = document.createElement('td');
+      const badgeVfx = document.createElement('span');
+      badgeVfx.className = plug.hasVfxinfo ? 'badge on' : 'badge off';
+      badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No';
+      tdVfxinfo.append(badgeVfx);
+
+      const tdSize = document.createElement('td');
+      tdSize.textContent = formatBytes(plug.totalSizeBytes);
+
+      const tdTarget = document.createElement('td');
+      const badgeTarget = document.createElement('span');
+      if (plug.alreadyExistsInTarget) {
+        badgeTarget.className = 'badge';
+        badgeTarget.textContent = 'Ya existe';
+      } else {
+        badgeTarget.className = 'badge on';
+        badgeTarget.textContent = 'Nuevo';
+      }
+      tdTarget.append(badgeTarget);
+
+      tr.append(tdCheck, tdName, tdDll, tdVfxinfo, tdSize, tdTarget);
+      els.importPackagePluginsRows.append(tr);
+    }
+  }
+
+  importBankCheckboxes = [];
+  els.importPackageBanksRows.replaceChildren();
+  if (result.banks.length === 0) {
+    const tr = document.createElement('tr');
+    tr.append(cell(6, 'No se detectaron bancos en el origen.'));
+    els.importPackageBanksRows.append(tr);
+  } else {
+    for (const bank of result.banks) {
+      const tr = document.createElement('tr');
+      const tdCheck = document.createElement('td');
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = true;
+      chk.title = `Seleccionar ${bank.name}`;
+      importBankCheckboxes.push({ name: bank.sourceDir || bank.name, input: chk });
+      tdCheck.append(chk);
+
+      const tdName = document.createElement('td');
+      const nameTitle = document.createElement('div');
+      nameTitle.textContent = bank.name;
+      tdName.append(nameTitle);
+      if ((bank as { packageSource?: string }).packageSource) {
+        const srcSubtitle = document.createElement('div');
+        srcSubtitle.className = 'note';
+        srcSubtitle.style.fontSize = '0.75rem';
+        srcSubtitle.textContent = (bank as { packageSource?: string }).packageSource!;
+        tdName.append(srcSubtitle);
+      }
+
+      const tdPresets = document.createElement('td');
+      tdPresets.textContent = `${bank.presetCount} presets`;
+
+      const tdConcordance = document.createElement('td');
+      const bInfo = bank as {
+        isConcordant?: boolean;
+        chunkPluginFourCc?: string;
+        chunkPluginId?: number;
+        matchedWizardName?: string;
+        canRepair?: boolean;
+        deficiencies?: string[];
+      };
+      if (bInfo.isConcordant) {
+        const badge = document.createElement('span');
+        badge.className = 'badge on';
+        const label = bInfo.chunkPluginFourCc || (bInfo.chunkPluginId ? `ID ${bInfo.chunkPluginId}` : 'OK');
+        badge.textContent = `Concordante (${label})`;
+        if (bInfo.matchedWizardName) {
+          badge.title = `Compatible con wizard: ${bInfo.matchedWizardName}`;
+        }
+        tdConcordance.append(badge);
+      } else if (bInfo.deficiencies && bInfo.deficiencies.length > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'badge off';
+        badge.textContent = bInfo.canRepair ? 'Carencias (reparable)' : 'Carencias';
+        badge.title = bInfo.deficiencies.join('; ');
+        tdConcordance.append(badge);
+      } else {
+        tdConcordance.textContent = '—';
+      }
+
+      const tdSize = document.createElement('td');
+      tdSize.textContent = formatBytes(bank.totalSizeBytes);
+
+      const tdTarget = document.createElement('td');
+      const badgeTarget = document.createElement('span');
+      if (bank.alreadyExistsInTarget) {
+        badgeTarget.className = 'badge';
+        badgeTarget.textContent = 'Ya existe';
+      } else {
+        badgeTarget.className = 'badge on';
+        badgeTarget.textContent = 'Nuevo';
+      }
+      tdTarget.append(badgeTarget);
+
+      tr.append(tdCheck, tdName, tdPresets, tdConcordance, tdSize, tdTarget);
+      els.importPackageBanksRows.append(tr);
+    }
+  }
+
+  els.importPackageAllPlugs.checked = true;
+  els.importPackageAllBanks.checked = true;
+  els.importPackageStatus.textContent = `Inspección completada: ${result.plugins.length} plugin(s), ${result.banks.length} banco(s) detectados.`;
+  els.importPackageStatus.className = 'status ok';
+}
+
+async function inspectPackage(): Promise<void> {
+  const pkgPath = els.importPackagePath.value.trim();
+  if (!pkgPath) {
+    els.importPackageStatus.textContent = 'Escribe o elige la ruta del paquete o instrumento a importar.';
+    els.importPackageStatus.className = 'status error';
+    els.importPackagePath.focus();
+    return;
+  }
+  if (!libraryRoot) {
+    els.importPackageStatus.textContent = 'Debes tener seleccionada una librería activa de destino.';
+    els.importPackageStatus.className = 'status error';
+    return;
+  }
+
+  setImportPackageBusy(true);
+  els.importPackageStatus.textContent = 'Inspeccionando origen…';
+  els.importPackageStatus.className = 'status busy';
+
+  try {
+    const result = await client.library.inspectPackage({
+      packagePath: pkgPath,
+      targetLibraryRoot: libraryRoot,
+    });
+    renderImportPackageInspection(result);
+  } catch (error) {
+    els.importPackagePreview.hidden = true;
+    els.importPackageStatus.textContent = `Error al inspeccionar: ${describeError(error)}`;
+    els.importPackageStatus.className = 'status error';
+  } finally {
+    setImportPackageBusy(false);
+  }
+}
+
+async function executeImportPackage(): Promise<void> {
+  if (!importPackageInspection || importPackageBusy) return;
+  if (!libraryRoot) return;
+
+  const pkgPath = els.importPackagePath.value.trim();
+  const selectedPlugins = importPlugCheckboxes.filter((item) => item.input.checked).map((item) => item.name);
+  const selectedBanks = importBankCheckboxes.filter((item) => item.input.checked).map((item) => item.name);
+
+  if (selectedPlugins.length === 0 && selectedBanks.length === 0) {
+    els.importPackageStatus.textContent = 'Selecciona al menos un plugin o un banco para importar.';
+    els.importPackageStatus.className = 'status error';
+    return;
+  }
+
+  const collisionPolicy = els.importPackagePolicy.value as 'skip' | 'overwrite';
+
+  setImportPackageBusy(true);
+  els.importPackageStatus.textContent = 'Importando elementos seleccionados a la librería…';
+  els.importPackageStatus.className = 'status busy';
+
+  try {
+    const result = await client.library.importPackage({
+      packagePath: pkgPath,
+      targetLibraryRoot: libraryRoot,
+      selectedPlugins,
+      selectedBanks,
+      collisionPolicy,
+      repairBanks: els.importPackageRepair.checked,
+    });
+
+    const repairedMsg =
+      (result as { repairedBanks?: string[] }).repairedBanks &&
+      (result as { repairedBanks?: string[] }).repairedBanks!.length > 0
+        ? ` Reparados: ${(result as { repairedBanks?: string[] }).repairedBanks!.length} banco(s).`
+        : '';
+
+    const msg =
+      `Importación finalizada con éxito: ` +
+      `${result.importedPlugins.length} plugins y ${result.importedBanks.length} bancos importados (${formatBytes(result.totalCopiedBytes)}).` +
+      repairedMsg +
+      (result.skippedPlugins.length > 0 || result.skippedBanks.length > 0
+        ? ` Omitidos: ${result.skippedPlugins.length} plugins, ${result.skippedBanks.length} bancos.`
+        : '');
+
+    els.importPackageStatus.textContent = msg;
+    els.importPackageStatus.className = 'status ok';
+
+    // Refrescar plugins principales
+    const scanResult = await fetchPlugins();
+    render(scanResult);
+
+    // Re-inspeccionar para actualizar estados
+    await inspectPackage();
+  } catch (error) {
+    els.importPackageStatus.textContent = `Error durante la importación: ${describeError(error)}`;
+    els.importPackageStatus.className = 'status error';
+  } finally {
+    setImportPackageBusy(false);
+  }
+}
+
+els.importPkgNavBtn.addEventListener('click', () => {
+  requestOpenImportPackageDrawer(els.importPkgNavBtn);
+});
+
+els.importPackageClose.addEventListener('click', () => {
+  closeImportPackageDrawer();
+});
+
+els.importPackageBrowse.addEventListener('click', async () => {
+  try {
+    const current = els.importPackagePath.value.trim();
+    const start = current || (libraryRoot ? (parentDir(libraryRoot) ?? undefined) : undefined);
+    const res = await client.system.pick({ kind: 'folder', title: 'Elegir carpeta o paquete a importar', initialDir: start });
+    if (res.paths && res.paths.length > 0 && res.paths[0]) {
+      els.importPackagePath.value = res.paths[0];
+      void inspectPackage();
+    }
+  } catch (error) {
+    els.importPackageStatus.textContent = `No se pudo abrir el selector: ${describeError(error)}`;
+    els.importPackageStatus.className = 'status error';
+  }
+});
+
+els.importPackageInspectBtn.addEventListener('click', () => {
+  void inspectPackage();
+});
+
+els.importPackageExecuteBtn.addEventListener('click', () => {
+  void executeImportPackage();
+});
+
+els.importPackageAllPlugs.addEventListener('change', () => {
+  for (const item of importPlugCheckboxes) {
+    item.input.checked = els.importPackageAllPlugs.checked;
+  }
+});
+
+els.importPackageAllBanks.addEventListener('change', () => {
+  for (const item of importBankCheckboxes) {
+    item.input.checked = els.importPackageAllBanks.checked;
+  }
+});
+
+els.drawerBackdrop.addEventListener('click', () => {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  closeImportPackageDrawer();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeBanks();
+    closeMeta();
+    closeWizards();
+    closePluginWizard();
+    closeLogDrawer();
+    closeImportPackageDrawer();
+    closeAllRowMenus();
+    closeFilterMenu(true);
+  }
+});
+
+// Diálogo modal: el Tab da la vuelta dentro del cajón abierto en vez de saltar
+// a la página que queda tapada por el fondo.
+window.addEventListener('keydown', (event) => {
+  const panel = openPanel;
+  if (event.key !== 'Tab' || panel === null) return;
+
+  const items = panelFocusables(panel);
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (first === undefined || last === undefined) {
+    event.preventDefault();
+    panel.focus({ preventScroll: true });
+    return;
+  }
+
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || active === panel || !panel.contains(active)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return;
+  }
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
+document.addEventListener('click', (event) => {
+  if (!(event.target as HTMLElement | null)?.closest('.row-menu')) {
+    closeAllRowMenus();
+  }
+  if (!(event.target as HTMLElement | null)?.closest('.filter-menu')) {
+    closeFilterMenu();
+  }
 });
 
 void pruneRecents();

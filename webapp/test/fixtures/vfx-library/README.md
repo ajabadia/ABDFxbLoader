@@ -20,7 +20,7 @@ Los fixtures que se crean en cada test hacen lo mismo con
 real (o un PE32+ cuando el test espera un rechazo) en la ruta que declara
 `dll_name`. Un `vfxinfo.txt` cuyo binario no existe ya no vale como fixture: el
 escaneo lo marca **incompatible** (`Instalar` deshabilitado) y
-`POST /library/install` lo rechaza con **422** en vez de dejar el plugin
+`POST /library/loader/add` lo rechaza con **422** en vez de dejar el plugin
 apuntando a un archivo inexistente. `OB-Xd` existe para que
 [`synth-bank.fixture.test.ts`](../../synth-bank.fixture.test.ts) importe su
 banco de fábrica real en un plugin de esta librería. La DLL que sí se prueba de

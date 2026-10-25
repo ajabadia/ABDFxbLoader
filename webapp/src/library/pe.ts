@@ -14,11 +14,11 @@ export const MACHINE_ARMNT = 0x01c4;
 export const MACHINE_ARM64 = 0xaa64;
 export const MACHINE_IA64 = 0x0200;
 
-const OPTIONAL_MAGIC_PE32 = 0x10b;
-const OPTIONAL_MAGIC_PE32_PLUS = 0x20b;
-const DOS_HEADER_SIZE = 64;
-const COFF_HEADER_AND_OPTIONAL_MAGIC = 26;
-const PE_SIGNATURE = 0x00004550;
+export const OPTIONAL_MAGIC_PE32 = 0x10b;
+export const OPTIONAL_MAGIC_PE32_PLUS = 0x20b;
+export const DOS_HEADER_SIZE = 64;
+export const COFF_HEADER_AND_OPTIONAL_MAGIC = 26;
+export const PE_SIGNATURE = 0x00004550;
 
 const MACHINE_NAMES: Readonly<Record<number, string>> = {
   [MACHINE_I386]: 'i386',

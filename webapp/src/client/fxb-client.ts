@@ -49,8 +49,8 @@ export type ErrorBody<
   : never;
 
 export type LibraryScanResponse = SuccessBody<'/library/scan', 'post'>;
-export type LibraryInstallResponse = SuccessBody<'/library/install', 'post'>;
-export type LibraryUninstallResponse = SuccessBody<'/library/uninstall', 'post'>;
+export type LibraryLoaderAddResponse = SuccessBody<'/library/loader/add', 'post'>;
+export type LibraryLoaderRemoveResponse = SuccessBody<'/library/loader/remove', 'post'>;
 export type LibraryBatchResponse = SuccessBody<'/library/batch', 'post'>;
 export type LibraryBanksListResponse = SuccessBody<'/library/banks/list', 'post'>;
 export type LibraryBanksImportResponse = SuccessBody<'/library/banks/import', 'post'>;
@@ -60,13 +60,21 @@ export type LibraryBankDiscardBackupResponse = SuccessBody<
   '/library/banks/discard-backup',
   'post'
 >;
-export type LibraryBankExportResponse = SuccessBody<'/library/banks/export', 'post'>;
 export type LibraryBankInspectResponse = SuccessBody<'/library/banks/inspect', 'post'>;
+export type LibraryInspectPackageResponse = SuccessBody<'/library/inspect-package', 'post'>;
+export type LibraryImportPackageResponse = SuccessBody<'/library/import-package', 'post'>;
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
 export type SystemPickResponse = SuccessBody<'/system/pick', 'post'>;
 export type SystemPathsResponse = SuccessBody<'/system/paths', 'post'>;
 export type PluginMetaSnapshotResponse = SuccessBody<'/plugins/{id}/meta', 'get'>;
 export type PluginMetaWriteResponse = SuccessBody<'/plugins/{id}/meta', 'post'>;
+export type PluginLogSnapshotResponse = SuccessBody<'/plugins/{id}/log', 'get'>;
+export type WizardListResponse = SuccessBody<'/wizards', 'get'>;
+export type WizardRecordResponse = SuccessBody<'/wizards/{id}', 'get'>;
+export type WizardMatchResponse = SuccessBody<'/wizards/match', 'get'>;
+export type WizardApplyMetaResponse = SuccessBody<'/wizards/apply-meta', 'post'>;
+export type WizardCreateVfxinfoResponse = SuccessBody<'/wizards/create-vfxinfo', 'post'>;
+export type WizardInstallPluginResponse = SuccessBody<'/wizards/install', 'post'>;
 
 /** Adaptador de `fetch`; permite inyectar uno instrumentado en tests o en la UI. */
 export type FxbFetch = typeof globalThis.fetch;
@@ -121,14 +129,14 @@ export interface FxbClient {
     scan(
       body: RequestBody<'/library/scan', 'post'>,
     ): Promise<SuccessBody<'/library/scan', 'post'>>;
-    /** Instala el cargador; con `dryRun` devuelve solo el plan. */
-    install(
-      body: RequestBody<'/library/install', 'post'>,
-    ): Promise<SuccessBody<'/library/install', 'post'>>;
+    /** Pone el cargador en un plugin; con `dryRun` devuelve solo el plan. */
+    addLoader(
+      body: RequestBody<'/library/loader/add', 'post'>,
+    ): Promise<SuccessBody<'/library/loader/add', 'post'>>;
     /** Restaura `vfxinfo.txt` y borra la configuración del cargador. */
-    uninstall(
-      body: RequestBody<'/library/uninstall', 'post'>,
-    ): Promise<SuccessBody<'/library/uninstall', 'post'>>;
+    removeLoader(
+      body: RequestBody<'/library/loader/remove', 'post'>,
+    ): Promise<SuccessBody<'/library/loader/remove', 'post'>>;
     /** Instala o desinstala varios plugins en una llamada, con resultado por plugin. */
     batch(
       body: RequestBody<'/library/batch', 'post'>,
@@ -188,6 +196,25 @@ export interface FxbClient {
     inspectBank(
       body: RequestBody<'/library/banks/inspect', 'post'>,
     ): Promise<SuccessBody<'/library/banks/inspect', 'post'>>;
+    /** Inspecciona un paquete externo (.vfxlibrary o carpeta de plugin). */
+    inspectPackage(
+      body: RequestBody<'/library/inspect-package', 'post'>,
+    ): Promise<SuccessBody<'/library/inspect-package', 'post'>>;
+    /** Importa plugins y bancos desde un paquete externo a la librería activa. */
+    importPackage(
+      body: RequestBody<'/library/import-package', 'post'>,
+    ): Promise<SuccessBody<'/library/import-package', 'post'>>;
+    /**
+     * Guarda la preferencia local de DLL del plugin: escribe `dll_name` en su
+     * `vfxinfo.txt` con respaldo inicial. La DLL debe estar en su carpeta.
+     */
+    updateDllPreference(
+      body: RequestBody<'/library/plugin-dll-preference', 'post'>,
+    ): Promise<SuccessBody<'/library/plugin-dll-preference', 'post'>>;
+    /** Inspecciona estáticamente un archivo DLL para detectar exportaciones VST y compatibilidad PE32. */
+    inspectDll(body: any): Promise<any>;
+    /** Crea un nuevo instrumento o efecto en la librería a partir de un DLL externo sin wizard previo. */
+    createCustomPlugin(body: any): Promise<any>;
   };
   readonly config: {
     /** Lee `fxbLoader.config`; no crea el archivo si falta. */
@@ -217,6 +244,13 @@ export interface FxbClient {
         input: RequestBody<'/plugins/{id}/meta', 'post'> & { id: string },
       ): Promise<PluginMetaWriteResponse>;
     };
+    /**
+     * `fxbLoader.log[.N]`: el log por plugin rotado por tamaño.
+     */
+    log: {
+      /** Lee las entradas y el texto concatenado del log. */
+      read(input: { id: string; dir: string }): Promise<PluginLogSnapshotResponse>;
+    };
   };
   readonly system: {
     /**
@@ -235,6 +269,31 @@ export interface FxbClient {
     paths(
       body: RequestBody<'/system/paths', 'post'>,
     ): Promise<SuccessBody<'/system/paths', 'post'>>;
+  };
+  readonly wizards: {
+    /** Lista paginada de wizards disponibles en el repositorio con filtros. */
+    list(query?: {
+      query?: string;
+      genre?: string;
+      offset?: number;
+      limit?: number;
+    }): Promise<WizardListResponse>;
+    /** Busca un wizard coincidente por ID VST, nombre o nombre de DLL. */
+    match(query: { id?: string; name?: string; dllName?: string }): Promise<WizardMatchResponse>;
+    /** Detalles completos de un wizard específico por su ID. */
+    getById(id: string): Promise<WizardRecordResponse>;
+    /** Aplica metadatos del wizard a fxbLoader.meta.json del plugin. */
+    applyMeta(
+      body: RequestBody<'/wizards/apply-meta', 'post'>,
+    ): Promise<WizardApplyMetaResponse>;
+    /** Crea vfxinfo.txt a partir de los datos del wizard. */
+    createVfxinfo(
+      body: RequestBody<'/wizards/create-vfxinfo', 'post'>,
+    ): Promise<WizardCreateVfxinfoResponse>;
+    /** Instala un nuevo plugin en la librería activa desde un Wizard certificado. */
+    install(
+      body: RequestBody<'/wizards/install', 'post'>,
+    ): Promise<WizardInstallPluginResponse>;
   };
 }
 
@@ -455,13 +514,13 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
     library: {
       scan: (body) =>
         request('POST', '/library/scan', body) as Promise<SuccessBody<'/library/scan', 'post'>>,
-      install: (body) =>
-        request('POST', '/library/install', body) as Promise<
-          SuccessBody<'/library/install', 'post'>
+      addLoader: (body) =>
+        request('POST', '/library/loader/add', body) as Promise<
+          SuccessBody<'/library/loader/add', 'post'>
         >,
-      uninstall: (body) =>
-        request('POST', '/library/uninstall', body) as Promise<
-          SuccessBody<'/library/uninstall', 'post'>
+      removeLoader: (body) =>
+        request('POST', '/library/loader/remove', body) as Promise<
+          SuccessBody<'/library/loader/remove', 'post'>
         >,
       batch: (body) =>
         request('POST', '/library/batch', body) as Promise<
@@ -497,6 +556,22 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/banks/inspect', body) as Promise<
           SuccessBody<'/library/banks/inspect', 'post'>
         >,
+      inspectPackage: (body) =>
+        request('POST', '/library/inspect-package', body) as Promise<
+          SuccessBody<'/library/inspect-package', 'post'>
+        >,
+      importPackage: (body) =>
+        request('POST', '/library/import-package', body) as Promise<
+          SuccessBody<'/library/import-package', 'post'>
+        >,
+      updateDllPreference: (body) =>
+        request('POST', '/library/plugin-dll-preference', body) as Promise<
+          SuccessBody<'/library/plugin-dll-preference', 'post'>
+        >,
+      inspectDll: (body: any) =>
+        request('POST', '/library/inspect-dll', body) as Promise<any>,
+      createCustomPlugin: (body: any) =>
+        request('POST', '/library/create-custom-plugin', body) as Promise<any>,
     },
     config: {
       read: (body) =>
@@ -518,12 +593,46 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
             body,
           ) as Promise<PluginMetaWriteResponse>,
       },
+      log: {
+        read: ({ id, dir }) =>
+          request(
+            'GET',
+            `/plugins/${encodeURIComponent(id)}/log?dir=${encodeURIComponent(dir)}`,
+          ) as Promise<PluginLogSnapshotResponse>,
+      },
     },
     system: {
       pick: (body) =>
         request('POST', '/system/pick', body) as Promise<SuccessBody<'/system/pick', 'post'>>,
       paths: (body) =>
         request('POST', '/system/paths', body) as Promise<SuccessBody<'/system/paths', 'post'>>,
+    },
+    wizards: {
+      list: (query = {}) => {
+        const params = new URLSearchParams();
+        if (query.query) params.set('query', query.query);
+        if (query.genre) params.set('genre', query.genre);
+        if (query.offset !== undefined) params.set('offset', String(query.offset));
+        if (query.limit !== undefined) params.set('limit', String(query.limit));
+        const qs = params.toString();
+        return request('GET', `/wizards${qs ? `?${qs}` : ''}`) as Promise<WizardListResponse>;
+      },
+      match: (query) => {
+        const params = new URLSearchParams();
+        if (query.id) params.set('id', query.id);
+        if (query.name) params.set('name', query.name);
+        if (query.dllName) params.set('dllName', query.dllName);
+        const qs = params.toString();
+        return request('GET', `/wizards/match${qs ? `?${qs}` : ''}`) as Promise<WizardMatchResponse>;
+      },
+      getById: (id) =>
+        request('GET', `/wizards/${encodeURIComponent(id)}`) as Promise<WizardRecordResponse>,
+      applyMeta: (body) =>
+        request('POST', '/wizards/apply-meta', body) as Promise<WizardApplyMetaResponse>,
+      createVfxinfo: (body) =>
+        request('POST', '/wizards/create-vfxinfo', body) as Promise<WizardCreateVfxinfoResponse>,
+      install: (body) =>
+        request('POST', '/wizards/install', body) as Promise<WizardInstallPluginResponse>,
     },
   };
 }

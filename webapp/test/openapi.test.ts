@@ -29,17 +29,17 @@ import {
   LIBRARY_INSPECT_EXAMPLE,
   LIBRARY_INCOMPATIBLE_ERROR_EXAMPLE,
   LIBRARY_INSPECT_WITHOUT_PLUGIN_EXAMPLE,
-  LIBRARY_INSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_INSTALL_DRY_RUN_EXAMPLE,
+  LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE,
   LIBRARY_MISSING_PLUGIN_DLL_ERROR_EXAMPLE,
-  LIBRARY_INSTALL_EXAMPLE,
+  LIBRARY_LOADER_ADD_EXAMPLE,
   LIBRARY_RESTORE_EXAMPLE,
   LIBRARY_RESTORE_INVALID_BACKUP_EXAMPLE,
   LIBRARY_RESTORE_NO_BACKUP_EXAMPLE,
   LIBRARY_RESTORE_UNCHANGED_EXAMPLE,
   LIBRARY_SCAN_EXAMPLE,
-  LIBRARY_UNINSTALL_CONFLICT_EXAMPLE,
-  LIBRARY_UNINSTALL_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE,
+  LIBRARY_LOADER_REMOVE_EXAMPLE,
   LIBRARY_VFXINFO_ERROR_EXAMPLE,
 } from '../src/library/library.dto';
 import {
@@ -95,12 +95,22 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/banks/restore',
     '/library/batch',
     '/library/batch/stream',
-    '/library/install',
+    '/library/import-package',
+    '/library/inspect-package',
+    '/library/loader/add',
+    '/library/loader/remove',
+    '/library/plugin-dll-preference',
     '/library/scan',
-    '/library/uninstall',
+    '/plugins/{id}/log',
     '/plugins/{id}/meta',
     '/system/paths',
     '/system/pick',
+    '/wizards',
+    '/wizards/apply-meta',
+    '/wizards/create-vfxinfo',
+    '/wizards/install',
+    '/wizards/match',
+    '/wizards/{id}',
   ]);
   assert.equal(document.paths['/fxb-config/read']?.post?.tags?.[0], 'fxb-config');
 });
@@ -283,19 +293,19 @@ test('POST /library/scan documenta cuerpo, 200 y 400', () => {
   ]);
 });
 
-test('POST /library/install documenta 200 (real y dryRun), 400, 404, 409 y 422', () => {
-  const body = requestContent('/library/install', 'post');
-  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryInstallRequestDto');
-  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['instalacion', 'simulacion']);
+test('POST /library/loader/add documenta 200 (real y dryRun), 400, 404, 409 y 422', () => {
+  const body = requestContent('/library/loader/add', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryLoaderAddRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['cargador', 'simulacion']);
 
-  const install = responses('/library/install', 'post');
+  const install = responses('/library/loader/add', 'post');
   assert.deepEqual(Object.keys(install).sort(), ['200', '400', '404', '409', '422']);
 
   const ok = jsonBody(install['200']);
   const okExamples = ok['examples'] as Record<string, { value: unknown }>;
-  assert.deepEqual(Object.keys(okExamples).sort(), ['dryRun', 'instalado']);
-  assert.deepEqual(okExamples['instalado']!.value, LIBRARY_INSTALL_EXAMPLE);
-  assert.deepEqual(okExamples['dryRun']!.value, LIBRARY_INSTALL_DRY_RUN_EXAMPLE);
+  assert.deepEqual(Object.keys(okExamples).sort(), ['dryRun', 'puesto']);
+  assert.deepEqual(okExamples['puesto']!.value, LIBRARY_LOADER_ADD_EXAMPLE);
+  assert.deepEqual(okExamples['dryRun']!.value, LIBRARY_LOADER_ADD_DRY_RUN_EXAMPLE);
 
   assert.deepEqual(
     (jsonBody(install['404'])['example'] as unknown),
@@ -310,7 +320,7 @@ test('POST /library/install documenta 200 (real y dryRun), 400, 404, 409 y 422',
   ]);
   const conflictExamples = conflict['examples'] as Record<string, { value: Record<string, unknown> }>;
   assert.deepEqual(Object.keys(conflictExamples).sort(), ['configCambiada', 'yaInstalado']);
-  assert.deepEqual(conflictExamples['yaInstalado']!.value, LIBRARY_INSTALL_CONFLICT_EXAMPLE);
+  assert.deepEqual(conflictExamples['yaInstalado']!.value, LIBRARY_LOADER_ADD_CONFLICT_EXAMPLE);
   assert.deepEqual(conflictExamples['configCambiada']!.value['current'], FXB_CONFIG_SNAPSHOT_EXAMPLE);
 
   const unprocessable = jsonBody(install['422']);
@@ -334,22 +344,22 @@ test('POST /library/install documenta 200 (real y dryRun), 400, 404, 409 y 422',
   );
 });
 
-test('POST /library/uninstall documenta 200, 400, 404 y 409', () => {
-  const body = requestContent('/library/uninstall', 'post');
-  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryUninstallRequestDto');
-  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['desinstalacion', 'simulacion']);
+test('POST /library/loader/remove documenta 200, 400, 404 y 409', () => {
+  const body = requestContent('/library/loader/remove', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryLoaderRemoveRequestDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['simulacion', 'sinCargador']);
 
-  const uninstall = responses('/library/uninstall', 'post');
+  const uninstall = responses('/library/loader/remove', 'post');
   assert.deepEqual(Object.keys(uninstall).sort(), ['200', '400', '404', '409']);
 
   const okExamples = jsonBody(uninstall['200'])['examples'] as Record<string, { value: unknown }>;
-  assert.deepEqual(okExamples['desinstalado']!.value, LIBRARY_UNINSTALL_EXAMPLE);
-  assert.deepEqual(jsonBody(uninstall['409'])['example'], LIBRARY_UNINSTALL_CONFLICT_EXAMPLE);
+  assert.deepEqual(okExamples['quitado']!.value, LIBRARY_LOADER_REMOVE_EXAMPLE);
+  assert.deepEqual(jsonBody(uninstall['409'])['example'], LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE);
 });
 
 test('POST /library/batch documenta 200 con resultado por plugin, 400 y 422', () => {
   const body = requestContent('/library/batch', 'post');
-  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['instalacion', 'reconexion', 'simulacion']);
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['cargador', 'simulacion', 'sinCargador']);
 
   const batch = responses('/library/batch', 'post');
   assert.deepEqual(Object.keys(batch).sort(), ['200', '400', '422']);
@@ -381,7 +391,7 @@ test('POST /library/batch documenta 200 con resultado por plugin, 400 y 422', ()
 test('POST /library/batch/stream documenta el NDJSON y los mismos errores', () => {
   const body = requestContent('/library/batch/stream', 'post');
   assert.equal(body.schema?.$ref, '#/components/schemas/LibraryBatchRequestDto');
-  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['instalacion', 'simulacion']);
+  assert.deepEqual(Object.keys(body.examples ?? {}).sort(), ['cargador', 'simulacion']);
 
   const stream = responses('/library/batch/stream', 'post');
   assert.deepEqual(Object.keys(stream).sort(), ['200', '400', '422']);
@@ -653,8 +663,8 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
   for (const name of [
     'LibraryScanRequestDto',
     'LibraryScanResponseDto',
-    'LibraryInstallRequestDto',
-    'LibraryUninstallRequestDto',
+    'LibraryLoaderAddRequestDto',
+    'LibraryLoaderRemoveRequestDto',
     'LibraryBanksImportRequestDto',
     'LibraryBanksImportResponseDto',
     'LibraryBankConvertRequestDto',
@@ -673,6 +683,8 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
     'LibraryActionDto',
     'LoaderDllDto',
     'PluginEntryDto',
+    'LibraryScanPluginDto',
+    'PluginBanksSummaryDto',
     'BankInfoDto',
     'BankReferenceDto',
     'BankImportResultDto',
@@ -693,21 +705,30 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
   assert.deepEqual(Object.keys(plugin.properties).sort(), [
     'compatibilityIssues',
     'compatible',
+    'hasLoader',
+    'hasMeta',
     'hasVfxinfo',
-    'installed',
+    'hasWizard',
     'name',
     'path',
     'pluginName',
     'warnings',
+    'wizardId',
   ]);
   assert.equal(plugin.properties['pluginName']?.nullable, true);
   assert.equal(plugin.properties['compatible']?.nullable, true);
+  assert.equal(plugin.properties['wizardId']?.nullable, true);
 
   const scan = schemas['LibraryScanResponseDto'] as { properties: Record<string, Prop> };
   assert.equal(scan.properties['plugins']?.type, 'array');
   assert.deepEqual(scan.properties['plugins']?.items, {
-    $ref: '#/components/schemas/PluginEntryDto',
+    $ref: '#/components/schemas/LibraryScanPluginDto',
   });
+
+  const scanPlugin = schemas['LibraryScanPluginDto'] as { properties: Record<string, Prop> };
+  assert.deepEqual(scanPlugin.properties['banks']?.allOf, [
+    { $ref: '#/components/schemas/PluginBanksSummaryDto' },
+  ]);
   assert.deepEqual(scan.properties['loader']?.allOf, [
     { $ref: '#/components/schemas/LoaderDllDto' },
   ]);

@@ -280,8 +280,8 @@ const NESTED_MUTATIONS: ExampleCase[] = [
     },
   },
   {
-    label: 'current del 409 de /library/install',
-    route: '/library/install',
+    label: 'current del 409 de /library/loader/add',
+    route: '/library/loader/add',
     method: 'post',
     status: '409',
     example: 'configCambiada',

@@ -117,6 +117,10 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       'system',
       'Diálogos nativos y comprobación de rutas de la máquina donde corre el servidor',
     )
+    .addTag(
+      'wizards',
+      'Repositorio de wizards certificados de SM Pro Audio / VFX para plugins VST',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

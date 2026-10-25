@@ -23,10 +23,10 @@
  */
 export const MAX_PLUGINS_PER_BATCH = 500;
 
-export type BatchStreamAction = 'install' | 'uninstall';
+export type BatchStreamAction = 'add' | 'remove';
 
 /** Estado final de un plugin dentro del lote. */
-export type BatchStreamPluginStatus = 'installed' | 'uninstalled' | 'planned' | 'failed';
+export type BatchStreamPluginStatus = 'added' | 'removed' | 'planned' | 'failed';
 
 /**
  * Pasos internos de la operación de un plugin, en el orden en que ocurren. Son

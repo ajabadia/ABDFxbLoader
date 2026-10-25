@@ -98,7 +98,7 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
   const result = await service.runBatch(
     {
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Missing', 'Bass'],
       dllSourcePath: lib.dllSource,
     },
@@ -117,12 +117,12 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
     'start',
     'Synth:running',
     ...INSTALL_STEPS.map((step) => `Synth:${step}`),
-    'Synth:installed',
+    'Synth:added',
     'Missing:running',
     'Missing:failed',
     'Bass:running',
     ...INSTALL_STEPS.map((step) => `Bass:${step}`),
-    'Bass:installed',
+    'Bass:added',
     'end',
   ]);
 
@@ -152,7 +152,7 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
 
   assert.deepEqual(events[0], {
     type: 'start',
-    action: 'install',
+    action: 'add',
     dryRun: false,
     total: 3,
     plugins: ['Synth', 'Missing', 'Bass'],
@@ -162,11 +162,11 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
   // Cada aviso de "en curso" llega antes de que ese plugin esté escrito.
   assert.deepEqual(diskAtEvent, [
     { label: 'Synth:running', synth: false, bass: false },
-    { label: 'Synth:installed', synth: true, bass: false },
+    { label: 'Synth:added', synth: true, bass: false },
     { label: 'Missing:running', synth: true, bass: false },
     { label: 'Missing:failed', synth: true, bass: false },
     { label: 'Bass:running', synth: true, bass: false },
-    { label: 'Bass:installed', synth: true, bass: true },
+    { label: 'Bass:added', synth: true, bass: true },
   ]);
 
   // Al desinstalar, los pasos son conservar el vfxinfo modificado, restaurar el
@@ -175,7 +175,7 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
   const removed = await service.runBatch(
     {
       libraryRoot: lib.root,
-      action: 'uninstall',
+      action: 'remove',
       plugins: ['Synth', 'Bass'],
       dllSourcePath: lib.dllSource,
     },
@@ -188,19 +188,19 @@ test('runBatch avisa del plugin en curso antes de escribir su estado en disco', 
     'Synth:restore',
     'Synth:restore',
     'Synth:delete',
-    'Synth:uninstalled',
+    'Synth:removed',
     'Bass:running',
     'Bass:restore',
     'Bass:restore',
     'Bass:delete',
-    'Bass:uninstalled',
+    'Bass:removed',
     'end',
   ]);
 
   // Sin callback, `runBatch` devuelve exactamente el mismo resultado.
   const silent = await service.runBatch({
     libraryRoot: lib.root,
-    action: 'install',
+    action: 'add',
     plugins: ['Synth', 'Bass'],
     dllSourcePath: lib.dllSource,
   });
@@ -218,13 +218,13 @@ test('runBatch se detiene tras el plugin en curso si la respuesta se cerró', as
   const result = await service.runBatch(
     {
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Bass'],
       dllSourcePath: lib.dllSource,
     },
     (event) => {
       events.push(event);
-      if (event.type === 'plugin' && event.status === 'installed') closed = true;
+      if (event.type === 'plugin' && event.status === 'added') closed = true;
     },
     () => closed,
   );
@@ -233,7 +233,7 @@ test('runBatch se detiene tras el plugin en curso si la respuesta se cerró', as
     'start',
     'Synth:running',
     ...INSTALL_STEPS.map((step) => `Synth:${step}`),
-    'Synth:installed',
+    'Synth:added',
     'end',
   ]);
   assert.equal(result.total, 1, 'solo cuenta el plugin que llegó a procesarse');
@@ -254,7 +254,7 @@ test('un dryRun calcula el plan sin avisar de pasos internos', async (t) => {
   const result = await service.runBatch(
     {
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth'],
       dllSourcePath: lib.dllSource,
       dryRun: true,
@@ -280,7 +280,7 @@ test('POST /library/batch/stream responde NDJSON con un evento por línea', asyn
     headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
     body: JSON.stringify({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Missing', 'Bass'],
       dllSourcePath: lib.dllSource,
     }),
@@ -303,28 +303,28 @@ test('POST /library/batch/stream responde NDJSON con un evento por línea', asyn
     'start',
     'Synth:running',
     ...INSTALL_STEPS.map((step) => `Synth:${step}`),
-    'Synth:installed',
+    'Synth:added',
     'Missing:running',
     'Missing:failed',
     'Bass:running',
     ...INSTALL_STEPS.map((step) => `Bass:${step}`),
-    'Bass:installed',
+    'Bass:added',
     'end',
   ]);
 
   const last = events[events.length - 1]!;
   assert.equal(last.type, 'end');
   assert.ok(last.type === 'end');
-  assert.equal(last.result.action, 'install');
+  assert.equal(last.result.action, 'add');
   assert.equal(last.result.total, 3);
   assert.equal(last.result.succeeded, 2);
   assert.equal(last.result.failed, 1);
   assert.deepEqual(
     last.result.results.map((result) => [result.name, result.status]),
     [
-      ['Synth', 'installed'],
+      ['Synth', 'added'],
       ['Missing', 'failed'],
-      ['Bass', 'installed'],
+      ['Bass', 'added'],
     ],
   );
   assert.match(
@@ -339,7 +339,7 @@ test('POST /library/batch/stream responde NDJSON con un evento por línea', asyn
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       libraryRoot: twin.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth', 'Missing', 'Bass'],
       dllSourcePath: twin.dllSource,
     }),
@@ -370,7 +370,7 @@ test('el flujo no escribe nada si la petición no pasa la validación', async (t
   const invalid = await fetch(`${baseUrl}/library/batch/stream`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ libraryRoot: lib.root, action: 'install', plugins: [] }),
+    body: JSON.stringify({ libraryRoot: lib.root, action: 'add', plugins: [] }),
   });
   assert.equal(invalid.status, 400);
   assert.match(invalid.headers.get('content-type') ?? '', /application\/json/);
@@ -381,7 +381,7 @@ test('el flujo no escribe nada si la petición no pasa la validación', async (t
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: ['Synth'],
       dllSourcePath: badLoader,
     }),
@@ -396,7 +396,7 @@ test('el flujo no escribe nada si la petición no pasa la validación', async (t
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       libraryRoot: lib.root,
-      action: 'install',
+      action: 'add',
       plugins: Array.from({ length: MAX_PLUGINS_PER_BATCH + 1 }, (_, index) => `P${index}`),
       dllSourcePath: lib.dllSource,
     }),

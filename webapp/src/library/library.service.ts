@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { promises as fs, type Stats } from 'node:fs';
+import { existsSync, promises as fs, type Stats } from 'node:fs';
 import * as path from 'node:path';
 import { MAX_BANKS_PER_REQUEST } from '../client/bank-limits';
 import type { BankImportStreamEvent } from '../client/bank-import-stream';
@@ -10,6 +16,11 @@ import { moveToTrash, type TrashInfo } from '../common/trash';
 import { FXB_CONFIG_FILENAME } from '../fxb-config/fxb-config.constants';
 import { FxbConfigService } from '../fxb-config/fxb-config.service';
 import type { FxbConfigSnapshot } from '../fxb-config/fxb-config.types';
+import { PluginLogService } from '../plugin-log/plugin-log.service';
+import { META_FILENAME } from '../plugin-meta/plugin-meta.constants';
+import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
+import { resolveWizardsDir, WizardService } from '../wizard/wizard.service';
+import { inspectPeExports } from './pe-exports';
 import {
   checkBankCompatibility,
   convertFxbEndianness,
@@ -23,6 +34,7 @@ import {
 import type { BankReference, FxbBankInfo, FxbEndianness } from './fxb-bank';
 import {
   analyzeVfxinfo,
+  dllBasename,
   LOADER_DLL_FILENAME,
   patchVfxinfo,
   readVfxinfo,
@@ -33,6 +45,7 @@ import {
 import { defaultLoaderDllPath } from './loader-dll';
 import { describePe, inspectPeFile, isX86Pe32 } from './pe';
 import {
+  DllPreferenceError,
   LibraryOperationError,
   LibraryPathError,
   PluginNotFoundError,
@@ -61,14 +74,22 @@ import type {
   BatchPluginResult,
   BatchResult,
   BatchStreamEvent,
+  DllPreferenceInput,
+  DllPreferenceResult,
   InstallInput,
   InstallResult,
   LibraryAction,
+  LibraryCreateCustomPluginInput,
+  LibraryCreateCustomPluginResult,
+  LibraryInspectDllInput,
+  LibraryInspectDllResult,
   LibraryScanResult,
   LoaderDllInfo,
   PluginBankEntry,
   PluginBankSummary,
+  PluginBanksSummary,
   PluginEntry,
+  ScanPluginEntry,
   StepListener,
   UninstallInput,
   UninstallResult,
@@ -134,6 +155,20 @@ function hasPathSeparator(fileName: string): boolean {
  * Aviso de los pasos de una operación: emite `actions[index]` con su posición,
  * o no hace nada si no hay oyente. Cada paso se avisa justo antes de ejecutarlo.
  */
+/**
+ * Reescribe la línea `dll_name` con un valor arbitrario, conservando todo lo
+ * demás byte a byte (incluidos los finales de línea y el CRLF del resto).
+ */
+function replacePatchLine(text: string, value: string): string | null {
+  const match = /[^\r\n]*dll_name[^\r\n]*/.exec(text);
+  if (match === null) return null;
+  return (
+    text.slice(0, match.index) +
+    `dll_name: ${value}` +
+    text.slice(match.index + match[0].length)
+  );
+}
+
 function stepReporter(
   actions: readonly LibraryAction[],
   onStep: StepListener | undefined,
@@ -180,9 +215,52 @@ function orderLabel(endianness: FxbEndianness): string {
   return endianness === 'little' ? 'little-endian' : 'big-endian';
 }
 
+function parsePluginId(input?: string | number | null): number {
+  if (typeof input === 'number') {
+    return input >>> 0;
+  }
+  if (!input) return 0;
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const num = Number.parseInt(trimmed, 10);
+    if (!Number.isNaN(num) && num >= 0 && num <= 0xffffffff) {
+      return num >>> 0;
+    }
+  }
+  if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+    const hex = Number.parseInt(trimmed, 16);
+    if (!Number.isNaN(hex) && hex >= 0 && hex <= 0xffffffff) {
+      return hex >>> 0;
+    }
+  }
+  try {
+    return parseUniqueIdInput(trimmed);
+  } catch {
+    return 0;
+  }
+}
+
+function derivePluginId(name: string): number {
+  const cleaned = name.replace(/[^a-zA-Z0-9]/g, '');
+  if (cleaned.length >= 4) {
+    try {
+      return parseUniqueIdInput(cleaned.slice(0, 4));
+    } catch {
+      // ignore
+    }
+  }
+  const hash = createHash('md5').update(name).digest();
+  return hash.readUInt32BE(0);
+}
+
 @Injectable()
 export class LibraryService {
-  constructor(private readonly configService: FxbConfigService) {}
+  constructor(
+    private readonly configService: FxbConfigService,
+    private readonly logService?: PluginLogService,
+    @Optional() private readonly wizardService?: WizardService,
+    @Optional() private readonly metaService?: PluginMetaService,
+  ) {}
 
   /**
    * Enumera `plugs\*`, valida el `fxbLoader.dll` que se instalaría y marca
@@ -193,10 +271,19 @@ export class LibraryService {
     const loader = await this.inspectLoader(dllSourcePath ?? defaultLoaderDllPath());
     const entries = await fs.readdir(plugsPath, { withFileTypes: true });
 
-    const plugins: PluginEntry[] = [];
+    const plugins: ScanPluginEntry[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      plugins.push(await this.describe(plugsPath, entry.name, loader));
+      const described = await this.describe(plugsPath, entry.name, loader);
+      const summary = await this.scanBankSummary(path.join(plugsPath, entry.name));
+      plugins.push({
+        ...described,
+        warnings:
+          summary.warning === null
+            ? described.warnings
+            : [...described.warnings, summary.warning],
+        banks: summary.banks,
+      });
     }
 
     plugins.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
@@ -235,7 +322,7 @@ export class LibraryService {
     const installed = await exists(configPath);
     if (installed && input.force !== true) {
       throw new PluginStateError(
-        `${input.plugin} ya tiene fxbLoader instalado (usa force para reinstalar)`,
+        `${input.plugin} ya tiene el cargador (usa force para volver a ponerlo)`,
       );
     }
 
@@ -330,6 +417,12 @@ export class LibraryService {
       if (error.code !== 'EEXIST') throw error;
     });
 
+    await this.logService?.append(
+      pluginDir,
+      'install',
+      `Instalado fxbLoader.dll (${pluginName})`,
+    );
+
     return {
       plugin: await this.describe(plugsPath, input.plugin, loaderCheck),
       actions,
@@ -353,7 +446,7 @@ export class LibraryService {
     const disabledPath = path.join(pluginDir, VFXINFO_DISABLED_FILENAME);
 
     if (!(await exists(configPath))) {
-      throw new PluginStateError(`${input.plugin} no tiene fxbLoader instalado`);
+      throw new PluginStateError(`${input.plugin} no tiene el cargador`);
     }
     if (!(await exists(backupPath))) {
       throw new PluginStateError(
@@ -387,6 +480,12 @@ export class LibraryService {
     report(2);
     await fs.rm(configPath, { force: true });
 
+    await this.logService?.append(
+      pluginDir,
+      'uninstall',
+      `Desinstalado fxbLoader.dll, restaurado ${VFXINFO_FILENAME}`,
+    );
+
     return {
       plugin: await this.describe(plugsPath, input.plugin),
       actions,
@@ -418,7 +517,7 @@ export class LibraryService {
     emit: (event: BatchStreamEvent) => void = () => undefined,
     shouldStop: () => boolean = () => false,
   ): Promise<BatchResult> {
-    if (input.action !== 'install' && input.action !== 'uninstall') {
+    if (input.action !== 'add' && input.action !== 'remove') {
       throw new LibraryPathError(`acción de lote no válida: ${String(input.action)}`);
     }
     if (input.plugins.length === 0) {
@@ -434,7 +533,7 @@ export class LibraryService {
 
     // Validación común a todo el lote: si falla, no se toca ningún plugin.
     await this.resolvePlugs(input.libraryRoot);
-    if (input.action === 'install') {
+    if (input.action === 'add') {
       const source = await this.resolveDllSource(input.dllSourcePath);
       const loaderCheck = await this.inspectLoader(source);
       if (!loaderCheck.valid) {
@@ -469,7 +568,7 @@ export class LibraryService {
 
       let result: BatchPluginResult;
       try {
-        if (input.action === 'install') {
+        if (input.action === 'add') {
           const outcome = await this.install(
             {
               libraryRoot: input.libraryRoot,
@@ -482,7 +581,7 @@ export class LibraryService {
           );
           result = {
             name,
-            status: dryRun ? 'planned' : 'installed',
+            status: dryRun ? 'planned' : 'added',
             message: null,
             entry: outcome.plugin,
             actions: outcome.actions,
@@ -498,7 +597,7 @@ export class LibraryService {
           );
           result = {
             name,
-            status: dryRun ? 'planned' : 'uninstalled',
+            status: dryRun ? 'planned' : 'removed',
             message: null,
             entry: outcome.plugin,
             actions: outcome.actions,
@@ -727,6 +826,14 @@ export class LibraryService {
       reference,
       results,
     };
+    const importedCount = results.filter((r) => r.status === 'imported' || r.status === 'overwritten').length;
+    if (importedCount > 0) {
+      await this.logService?.append(
+        pluginDir,
+        'import-banks',
+        `Importados ${importedCount} de ${results.length} banco(s) .fxb`,
+      );
+    }
     emit({ type: 'end', result: response });
     return response;
   }
@@ -819,6 +926,12 @@ export class LibraryService {
 
     await fs.mkdir(presetsDir, { recursive: true });
     await writeFileAtomic(targetPath, converted.data);
+
+    await this.logService?.append(
+      pluginDir,
+      'export-bank',
+      `Exportado banco ${fileName} a ${path.basename(targetPath)} (${endianness})`,
+    );
 
     return {
       plugin,
@@ -924,6 +1037,12 @@ export class LibraryService {
 
     await writeFileAtomic(sourcePath, converted.data);
 
+    await this.logService?.append(
+      plugin.path,
+      'convert-bank',
+      `Convertido banco por defecto ${fileName} (${orderLabel(target)})`,
+    );
+
     return {
       plugin,
       presetsDir,
@@ -1004,6 +1123,12 @@ export class LibraryService {
 
     await writeFileAtomic(sourcePath, data);
 
+    await this.logService?.append(
+      plugin.path,
+      'restore-bank',
+      `Restaurado respaldo original de ${fileName}`,
+    );
+
     return {
       plugin,
       presetsDir,
@@ -1055,6 +1180,12 @@ export class LibraryService {
         `no se pudo enviar ${path.basename(backupPath)} a la papelera: ${reason}`,
       );
     }
+
+    await this.logService?.append(
+      plugin.path,
+      'discard-backup',
+      `Descartado respaldo de ${fileName} hacia papelera`,
+    );
 
     return { plugin, presetsDir, fileName, discarded, trash };
   }
@@ -1268,6 +1399,29 @@ export class LibraryService {
     return presetsDir;
   }
 
+  /**
+   * Resumen de bancos para la tabla del escaneo, con la misma lista que verá el
+   * panel de bancos. Un `programDirName` raro o una carpeta ilegible no tumban
+   * el escaneo: la entrada queda sin bancos y con el motivo en `warnings`.
+   */
+  private async scanBankSummary(
+    pluginDir: string,
+  ): Promise<{ banks: PluginBanksSummary; warning: string | null }> {
+    try {
+      const presetsDir = await this.resolvePresetsDir(pluginDir, 'contar los bancos');
+      const banks = await this.listPluginBanks(presetsDir);
+      return {
+        banks: { count: banks.length, names: banks.map((bank) => bank.fileName) },
+        warning: null,
+      };
+    } catch (error) {
+      return {
+        banks: { count: 0, names: [] },
+        warning: `no se pudieron contar los bancos: ${(error as Error).message}`,
+      };
+    }
+  }
+
   /** Bancos válidos de la carpeta de presets, leyendo solo su cabecera. */
   private async listPluginBanks(presetsDir: string): Promise<PluginBankEntry[]> {
     let names: string[];
@@ -1411,12 +1565,13 @@ export class LibraryService {
     const compatibilityIssues: string[] = [];
     let compatible: boolean | null = true;
     const hasVfxinfo = (await statOrNull(path.join(dir, VFXINFO_FILENAME)))?.isFile() === true;
+    const hasMeta = (await statOrNull(path.join(dir, META_FILENAME)))?.isFile() === true;
 
-    let installed = false;
+    let hasLoader = false;
     let pluginName: string | null = null;
     const configPath = path.join(dir, FXB_CONFIG_FILENAME);
     if (await exists(configPath)) {
-      installed = true;
+      hasLoader = true;
       try {
         const snapshot = await this.configService.read(dir);
         pluginName = snapshot.config.pluginName;
@@ -1440,7 +1595,7 @@ export class LibraryService {
       if (analysis === null) {
         compatible = false;
         compatibilityIssues.push(`${VFXINFO_FILENAME} no contiene ninguna línea dll_name`);
-      } else if (installed && analysis.hasLoader) {
+      } else if (hasLoader && analysis.hasLoader) {
         const backupRaw = await readVfxinfo(path.join(dir, VFXINFO_BACKUP_FILENAME));
         const backupAnalysis = backupRaw === null ? null : analyzeVfxinfo(backupRaw);
         if (backupAnalysis === null) {
@@ -1463,7 +1618,7 @@ export class LibraryService {
       compatibilityIssues.push(...check.issues);
     }
 
-    if (installed) {
+    if (hasLoader) {
       const installedLoader = path.join(dir, LOADER_DLL_FILENAME);
       if (!(await exists(installedLoader))) {
         compatible = false;
@@ -1486,11 +1641,31 @@ export class LibraryService {
       );
     }
 
+    let hasWizard = false;
+    let wizardId: string | null = null;
+    if (this.wizardService !== undefined) {
+      try {
+        const match = this.wizardService.match({
+          name,
+          dllName: dllNameValue ?? pluginName ?? undefined,
+        });
+        if (match !== null) {
+          hasWizard = true;
+          wizardId = match.id;
+        }
+      } catch {
+        // match lookups are in-memory
+      }
+    }
+
     return {
       name,
       path: dir,
-      installed,
+      hasLoader,
       hasVfxinfo,
+      hasWizard,
+      wizardId,
+      hasMeta,
       pluginName,
       warnings,
       compatible,
@@ -1543,13 +1718,13 @@ export class LibraryService {
       };
     }
 
-    const binary = path.resolve(pluginDir, normalized);
-    const relative = path.relative(pluginDir, binary);
+    const directCandidate = path.resolve(pluginDir, normalized);
+    const relativeToPlugin = path.relative(pluginDir, directCandidate);
     if (
-      relative === '' ||
-      relative === '..' ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative)
+      relativeToPlugin === '' ||
+      relativeToPlugin === '..' ||
+      relativeToPlugin.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeToPlugin)
     ) {
       return {
         compatible: false,
@@ -1557,7 +1732,40 @@ export class LibraryService {
       };
     }
 
-    const declared = await statOrNull(binary);
+    let binary = directCandidate;
+    let declared = await statOrNull(binary);
+
+    // En librerías oficiales de V-Machine / VFX, dll_name suele incluir el nombre de la carpeta
+    // del plugin (ej. "V-Station Demo/V-Station.dll" o "Bass Module/Bass Module.dll")
+    // como convención relativa a plugs\. Si no existe en una subcarpeta interna con ese nombre,
+    // comprobamos si quitando el prefijo del directorio del plugin coincide con el archivo en pluginDir.
+    if (declared === null || !declared.isFile()) {
+      const pluginDirName = path.basename(pluginDir).toLowerCase();
+      const parts = value.split(/[\\/]+/).filter(Boolean);
+      if (parts.length > 1 && parts[0]!.toLowerCase() === pluginDirName) {
+        const strippedRelative = parts.slice(1).join(path.sep);
+        const candidate = path.resolve(pluginDir, strippedRelative);
+        const candidateStat = await statOrNull(candidate);
+        if (candidateStat !== null && candidateStat.isFile()) {
+          binary = candidate;
+          declared = candidateStat;
+        }
+      }
+    }
+
+    // Fallback adicional: buscar el nombre base del DLL directamente en pluginDir.
+    if (declared === null || !declared.isFile()) {
+      const baseName = dllBasename(value);
+      if (baseName !== '') {
+        const candidate = path.resolve(pluginDir, baseName);
+        const candidateStat = await statOrNull(candidate);
+        if (candidateStat !== null && candidateStat.isFile()) {
+          binary = candidate;
+          declared = candidateStat;
+        }
+      }
+    }
+
     if (declared === null || !declared.isFile()) {
       return {
         compatible: false,
@@ -1633,6 +1841,348 @@ export class LibraryService {
       throw new PluginNotFoundError(`no existe el plugin "${plugin}" en ${plugsPath}`);
     }
     return dir;
+  }
+
+  /**
+   * Guarda la preferencia local de DLL del plugin reescribiendo la línea
+   * `dll_name` de su `vfxinfo.txt`. La DLL debe estar dentro de la carpeta del
+   * plugin; el respaldo `vfxinfo.tx_` inicial se conserva tal cual, igual que
+   * hace el instalador, y la operación queda registrada en el log del plugin.
+   */
+  async updateDllPreference(input: DllPreferenceInput): Promise<DllPreferenceResult> {
+    if (typeof input?.pluginDir !== 'string' || input.pluginDir.trim() === '') {
+      throw new LibraryPathError('pluginDir es obligatorio y ha de ser una ruta absoluta');
+    }
+    if (!path.isAbsolute(input.pluginDir)) {
+      throw new LibraryPathError(`pluginDir debe ser una ruta absoluta: "${input.pluginDir}"`);
+    }
+
+    const pluginDir = path.resolve(input.pluginDir);
+    const stats = await statOrNull(pluginDir);
+    if (stats === null || !stats.isDirectory()) {
+      throw new LibraryPathError(`no existe el directorio del plugin: ${pluginDir}`);
+    }
+
+    // Validación del valor de `dll_name`: relativo, sin NUL ni rutas fuera de
+    // la carpeta del plugin. Es la misma política que usa la comprobación de
+    // compatibilidad durante la instalación.
+    const value = typeof input.dllName === 'string' ? input.dllName.trim() : '';
+    if (value === '') {
+      throw new DllPreferenceError('dllName no puede estar vacío');
+    }
+    if (value.includes('\0')) {
+      throw new DllPreferenceError('dllName contiene un NUL');
+    }
+    const normalized = value.replace(/[\\/]+/g, path.sep);
+    if (path.isAbsolute(normalized)) {
+      throw new DllPreferenceError(`dllName debe ser relativo al plugin: "${value}"`);
+    }
+    const candidate = path.resolve(pluginDir, normalized);
+    const relativeToPlugin = path.relative(pluginDir, candidate);
+    if (
+      relativeToPlugin === '' ||
+      relativeToPlugin === '..' ||
+      relativeToPlugin.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeToPlugin)
+    ) {
+      throw new DllPreferenceError(`dllName apunta fuera del plugin: "${value}"`);
+    }
+
+    const targetStats = await statOrNull(candidate);
+    if (targetStats === null || !targetStats.isFile()) {
+      throw new DllPreferenceError(
+        `no existe el archivo declarado en dllName dentro del plugin: "${value}"`,
+      );
+    }
+
+    const vfxinfoPath = path.join(pluginDir, VFXINFO_FILENAME);
+    const raw = await readVfxinfo(vfxinfoPath);
+    if (raw === null) {
+      throw new LibraryOperationError(`no existe ${VFXINFO_FILENAME} en ${pluginDir}`);
+    }
+    const analysis = analyzeVfxinfo(raw);
+    if (analysis === null) {
+      throw new LibraryOperationError(
+        `${VFXINFO_FILENAME} no contiene ninguna línea "dll_name"`,
+      );
+    }
+
+    const previousDllName = analysis.hasLoader ? null : analysis.dllNameValue;
+    if (analysis.dllNameValue === value) {
+      // Ya es esa preferencia: no se escribe nada y no hay respaldo duplicado.
+      await this.logService?.append(
+        pluginDir,
+        'dll-preference',
+        `La preferencia de DLL ya era "${value}"`,
+      );
+      return {
+        pluginDir,
+        previousDllName,
+        dllName: value,
+        backupFile: null,
+        changed: false,
+        actions: [],
+      };
+    }
+
+    const backupPath = path.join(pluginDir, VFXINFO_BACKUP_FILENAME);
+    const backupRaw = await readVfxinfo(backupPath);
+    const backupExists = backupRaw !== null;
+
+    const newlineResult = replacePatchLine(raw, value);
+    if (newlineResult === null) {
+      throw new LibraryOperationError(
+        `${VFXINFO_FILENAME} no contiene ninguna línea "dll_name" reemplazable`,
+      );
+    }
+
+    const actions: LibraryAction[] = [
+      backupExists
+        ? { kind: 'backup', path: backupPath, detail: `${VFXINFO_BACKUP_FILENAME} ya existe; se conserva` }
+        : { kind: 'backup', path: backupPath, detail: 'copia del vfxinfo.txt original' },
+      {
+        kind: 'patch',
+        path: vfxinfoPath,
+        detail: `dll_name: ${value}`,
+      },
+    ];
+
+    if (!backupExists) await copyFileAtomic(vfxinfoPath, backupPath);
+    await writeFileAtomic(vfxinfoPath, Buffer.from(newlineResult, 'latin1'));
+
+    await this.logService?.append(
+      pluginDir,
+      'dll-preference',
+      `Preferencia de DLL guardada: ${analysis.dllNameValue} → ${value}`,
+    );
+
+    return {
+      pluginDir,
+      previousDllName,
+      dllName: value,
+      backupFile: backupExists ? null : backupPath,
+      changed: true,
+      actions,
+    };
+  }
+
+  /**
+   * Inspecciona estáticamente un archivo DLL sin ejecutar código nativo:
+   * arquitectura PE, exportaciones VST (VSTPluginMain / main) y coincidencia con wizard certificado.
+   */
+  async inspectDll(input: LibraryInspectDllInput): Promise<LibraryInspectDllResult> {
+    if (!input || typeof input.dllPath !== 'string' || input.dllPath.trim() === '') {
+      throw new BadRequestException('dllPath es obligatorio');
+    }
+    const resolvedPath = path.resolve(input.dllPath.trim());
+    if (!path.isAbsolute(resolvedPath)) {
+      throw new BadRequestException(`dllPath debe ser una ruta absoluta: "${input.dllPath}"`);
+    }
+    const stats = await statOrNull(resolvedPath);
+    if (stats === null || !stats.isFile()) {
+      throw new NotFoundException(`No existe el archivo DLL: "${resolvedPath}"`);
+    }
+
+    const pe = await inspectPeExports(resolvedPath);
+    const validPe = pe.validPe;
+    const bitness = pe.bitness;
+    const is32BitCompatible = pe.is32BitCompatible;
+    const isVstPlugin = pe.isVstPlugin;
+    const vstEntrypoint = pe.vstEntrypoint;
+    const internalDllName = pe.internalDllName;
+    const exportedNames = pe.exportedNames;
+    const issues = [...pe.issues];
+    const suggestedName = path.basename(resolvedPath, path.extname(resolvedPath));
+    const derivedNumericId = derivePluginId(suggestedName);
+    const suggestedId = uniqueIdToText(derivedNumericId);
+
+    let matchingWizard: LibraryInspectDllResult['matchingWizard'] = null;
+    if (this.wizardService) {
+      const match = this.wizardService.match({
+        dllName: path.basename(resolvedPath),
+        name: suggestedName,
+      });
+      if (match) {
+        matchingWizard = {
+          id: match.id,
+          name: match.name,
+          vendor: match.vendor,
+          genre: match.genre,
+          dllName: match.dllName,
+          isSynth: match.isSynth,
+        };
+      }
+    }
+
+    return {
+      validPe,
+      bitness,
+      is32BitCompatible,
+      isVstPlugin,
+      vstEntrypoint,
+      internalDllName,
+      suggestedName,
+      suggestedId,
+      exportedNames,
+      issues,
+      matchingWizard,
+    };
+  }
+
+  /**
+   * Crea un nuevo plugin en la librería a partir de un DLL externo:
+   * copia el DLL, genera vfxinfo.txt con id y parámetros declarados, crea fxbLoader.meta.json,
+   * carpeta presets y opcionalmente guarda un .vfxwizard reutilizable.
+   */
+  async createCustomPlugin(
+    input: LibraryCreateCustomPluginInput,
+  ): Promise<LibraryCreateCustomPluginResult> {
+    if (!input || typeof input.libraryRoot !== 'string' || input.libraryRoot.trim() === '') {
+      throw new BadRequestException('libraryRoot es obligatorio');
+    }
+    if (typeof input.sourceDllPath !== 'string' || input.sourceDllPath.trim() === '') {
+      throw new BadRequestException('sourceDllPath es obligatorio');
+    }
+    if (typeof input.folderName !== 'string' || !isSimpleDirectoryName(input.folderName.trim())) {
+      throw new BadRequestException(
+        `folderName debe ser un nombre simple de directorio sin caracteres especiales ni rutas: "${input.folderName}"`,
+      );
+    }
+
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const folderName = input.folderName.trim();
+    const pluginDir = path.join(plugsPath, folderName);
+
+    const folderExists = await exists(pluginDir);
+    if (folderExists && !input.overwrite) {
+      throw new ConflictException(`Ya existe una carpeta para el plugin en: "${pluginDir}"`);
+    }
+
+    const sourceDll = path.resolve(input.sourceDllPath.trim());
+    const dllStats = await statOrNull(sourceDll);
+    if (dllStats === null || !dllStats.isFile()) {
+      throw new NotFoundException(`No existe el archivo DLL origen: "${sourceDll}"`);
+    }
+
+    const warnings: string[] = [];
+    try {
+      const pe = await inspectPeExports(sourceDll);
+      if (!pe.is32BitCompatible) {
+        warnings.push(
+          `El binario DLL es de ${pe.bitness ?? 'desconocido'} bits. Muse Receptor requiere ejecutables PE32 (x86 32-bit).`,
+        );
+      }
+      if (pe.vstEntrypoint === null) {
+        warnings.push(
+          'El archivo DLL no exporta "VSTPluginMain" ni "main". Puede no responder a la API VST2.',
+        );
+      }
+    } catch (err) {
+      warnings.push(`No se pudo verificar la cabecera PE del DLL: ${(err as Error).message}`);
+    }
+
+    await fs.mkdir(pluginDir, { recursive: true });
+    const dllFilename = path.basename(sourceDll);
+    const targetDllPath = path.join(pluginDir, dllFilename);
+    await copyFileAtomic(sourceDll, targetDllPath);
+
+    // Carpeta presets
+    const presetsDir = path.join(pluginDir, PRESETS_DIRNAME);
+    await fs.mkdir(presetsDir, { recursive: true });
+
+    // Parámetros y campos de vfxinfo.txt
+    const pluginName = input.name?.trim() || folderName;
+    let numericId = parsePluginId(input.id);
+    if (numericId === 0) {
+      numericId = derivePluginId(pluginName);
+    }
+
+    const isSynth = input.isSynth !== undefined ? Boolean(input.isSynth) : true;
+    const parameterCount = Math.max(0, input.parameterCount ?? 0);
+    const programCount = Math.max(1, input.programCount ?? 1);
+    const hasEditor = input.hasEditor !== undefined ? Boolean(input.hasEditor) : true;
+    const editorWidth = Math.max(0, input.editorWidth ?? 0);
+    const editorHeight = Math.max(0, input.editorHeight ?? 0);
+
+    const vfxinfoLines: string[] = [
+      `dll_name: ${folderName}/${dllFilename}`,
+      `id: ${numericId}`,
+      `name: ${pluginName}`,
+      `is_synth: ${isSynth ? '1' : '0'}`,
+      `parameter_count: ${parameterCount}`,
+      `program_count: ${programCount}`,
+      `has_editor: ${hasEditor ? '1' : '0'}`,
+    ];
+    if (editorWidth > 0) vfxinfoLines.push(`editor_width: ${editorWidth}`);
+    if (editorHeight > 0) vfxinfoLines.push(`editor_height: ${editorHeight}`);
+
+    const vfxinfoContent = vfxinfoLines.join('\r\n') + '\r\n';
+    const vfxinfoPath = path.join(pluginDir, VFXINFO_FILENAME);
+    await writeFileAtomic(vfxinfoPath, Buffer.from(vfxinfoContent, 'latin1'));
+
+    // fxbLoader.meta.json
+    const metaPath = path.join(pluginDir, META_FILENAME);
+    const genre = input.genre?.trim() || (isSynth ? 'Synth' : 'Effect');
+    const vendor = input.vendor?.trim() || '';
+
+    if (this.metaService) {
+      await this.metaService.write({
+        pluginDir,
+        expectedMtimeMs: null,
+        common: {
+          id: String(numericId),
+          name: pluginName,
+          vendor,
+          vendor_url: '',
+          genre,
+          name_abbreviation: pluginName.slice(0, 8),
+          notes: 'Creado mediante el asistente de plugins nuevos.',
+          created: new Date().toISOString().slice(0, 10),
+        },
+        extended: {},
+      });
+    }
+
+    // Guardar como wizard si se solicitó
+    let wizardPath: string | null = null;
+    if (input.saveAsWizard) {
+      try {
+        const wizardsDir = resolveWizardsDir();
+        const customDir = path.join(wizardsDir, 'custom');
+        await fs.mkdir(customDir, { recursive: true });
+        const wizardFileName = `${folderName}.vfxwizard`;
+        const targetWizardPath = path.join(customDir, wizardFileName);
+
+        const wizardLines = [
+          `# VFX Wizard generado para ${pluginName}`,
+          ...vfxinfoLines,
+        ];
+        await writeFileAtomic(targetWizardPath, Buffer.from(wizardLines.join('\r\n') + '\r\n', 'utf8'));
+        wizardPath = targetWizardPath;
+
+        if (this.wizardService) {
+          await this.wizardService.initIndex({ customDir: wizardsDir });
+        }
+      } catch (wizardErr) {
+        warnings.push(`No se pudo guardar el archivo .vfxwizard: ${(wizardErr as Error).message}`);
+      }
+    }
+
+    await this.logService?.append(
+      pluginDir,
+      'create-custom-plugin',
+      `Plugin personalizado creado: "${pluginName}" (${dllFilename}, ID: ${numericId})`,
+    );
+
+    return {
+      created: true,
+      pluginDir,
+      dllRelativePath: `${folderName}/${dllFilename}`,
+      vfxinfoPath,
+      metaPath,
+      wizardPath,
+      warnings,
+    };
   }
 
   private async resolveDllSource(dllSourcePath: string): Promise<string> {

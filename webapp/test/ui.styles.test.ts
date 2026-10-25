@@ -139,6 +139,7 @@ async function realPage(): Promise<{ html: HtmlNode; css: string; dynamic: Set<s
     .filter((file) => file.endsWith('.ts'))
     .map((file) => path.join(UI, file));
   const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
+  sources.push(await readFile(path.join(PUBLIC, 'index.html'), 'utf8'));
   return { html, css, dynamic: sourceNames(sources) };
 }
 
@@ -162,6 +163,22 @@ test('styles.css no tiene reglas que no puedan pintar ningún elemento', async (
   );
   assert.ok(audit.dynamic >= 15, `solo ${audit.dynamic} selectores dependen de la vista`);
   assert.ok(audit.unverified >= 1, 'los combinadores + / ~ deben quedar como no comprobados');
+});
+
+test('un selector con [open] de un details queda sin verificar, no muerto', () => {
+  const html = parseHtml(`
+    <details>
+      <summary><svg class="chevron"></svg>Opciones</summary>
+      <p>Contenido</p>
+    </details>
+  `);
+  const audit = auditCss(
+    html,
+    'details[open] > summary .chevron { transform: rotate(90deg); }',
+  );
+
+  assert.deepEqual(audit.dead, [], 'open lo pone el navegador al desplegar');
+  assert.equal(audit.unverified, 1, 'el estado nativo no se comprueba contra el HTML');
 });
 
 test('la auditoría detecta una regla muerta añadida al styles.css real', async () => {

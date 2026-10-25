@@ -37,10 +37,23 @@ test('sirve la UI y carga el módulo tipado', async () => {
     .expect('content-type', /text\/html/);
 
   assert.match(response.text, /fxbLoader/);
+  assert.match(response.text, /id="theme-toggle"/);
+  // El conmutador de tema dibuja un sol (claro) y una luna (oscuro), no
+  // emojis; con «Sistema» se enseña el que corresponda al SO.
+  assert.match(response.text, /data-icon="light"/);
+  assert.match(response.text, /data-icon="dark"/);
+  assert.doesNotMatch(response.text, /data-icon="auto"/);
+  assert.doesNotMatch(response.text, /🎛|🌓|☀|🌙/);
   assert.match(response.text, /id="plugins"/);
   assert.match(response.text, /id="scan-form"/);
   assert.match(response.text, /id="library-root-recents"/);
   assert.match(response.text, /list="library-root-recents"/);
+  // La explicación de la carpeta es un aviso que empieza oculto; el campo la
+  // usa como descripción cuando aparece.
+  assert.match(response.text, /aria-describedby="root-warning"/);
+  assert.match(response.text, /id="root-warning" class="warning" hidden/);
+  assert.match(response.text, /La carpeta debe contener <code>plugs\\<\/code>/);
+  assert.doesNotMatch(response.text, /class="hint"/);
   assert.match(response.text, /id="root-browse"/);
   assert.match(response.text, /Elegir carpeta…/);
   assert.match(response.text, /id="dll-source-recents"/);
@@ -51,7 +64,11 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /Vaciar historial de rutas/);
   assert.match(response.text, /id="import-browse"/);
   assert.match(response.text, /Añadir archivos…/);
-  assert.match(response.text, /id="banks"/);
+  // Los cajones son diálogos modales: el rol, el nombre y el foco inicial.
+  assert.match(
+    response.text,
+    /id="banks"[\s\S]{0,200}role="dialog"[\s\S]{0,200}aria-modal="true"[\s\S]{0,200}aria-labelledby="banks-title"[\s\S]{0,200}tabindex="-1"/,
+  );
   assert.match(response.text, /id="banks-rows"/);
   assert.match(response.text, /id="default-bank"/);
   assert.match(response.text, /id="default-convert"/);
@@ -84,13 +101,91 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="loader-status"/);
   assert.match(response.text, /Compatibilidad/);
   assert.match(response.text, /data-field="compatibility"/);
-  // El catálogo del plugin es un panel más, abierto desde la fila.
-  assert.match(response.text, /id="meta"/);
+  // Los botones llevan iconos monocromos de un sprite: si falta una `<use>`, el
+  // botón se queda sin marca y nadie más lo nota.
+  assert.match(response.text, /class="icon-sprite"/);
+  assert.match(response.text, /<use href="#icon-search"><\/use>/);
+  assert.match(response.text, /<use href="#icon-save"><\/use>/);
+  // La tabla dice cuántos bancos tiene cada plugin, sin abrir el panel.
+  assert.match(response.text, /<th>Bancos<\/th>/);
+  assert.match(response.text, /data-field="banks"/);
+  // La tabla dice qué plugins ya tienen catálogo propio, sin abrir el panel.
+  assert.match(response.text, /<th>Catálogo<\/th>/);
+  assert.match(response.text, /data-field="meta"/);
+  assert.match(response.text, /id="plugin-filter"/);
+  assert.match(response.text, /aria-label="Filtros de la tabla"/);
+  // Cuatro ejes, cada uno con un chip que abre sus tres estados. Un solo
+  // control por eje evita los chips duplicados de «con» y «sin».
+  for (const [axis, menu] of [
+    ['install', 'filter-install-menu'],
+    ['banks', 'filter-banks-menu'],
+    ['wizard', 'filter-wizard-menu'],
+    ['compat', 'filter-compat-menu'],
+  ] as const) {
+    // El chip anuncia si filtra (`aria-pressed`), que abre un menú
+    // (`aria-haspopup`/`aria-expanded`) y cuál controla (`aria-controls`).
+    assert.match(
+      response.text,
+      new RegExp(
+        `id="filter-${axis}"[\\s\\S]{0,400}aria-expanded="false"[\\s\\S]{0,200}` +
+          `aria-controls="${menu}"[\\s\\S]{0,200}aria-pressed="false"`,
+      ),
+      `chip del eje ${axis}`,
+    );
+    assert.match(
+      response.text,
+      new RegExp(`id="${menu}"[\\s\\S]{0,200}role="menu"`),
+      `menú del eje ${axis}`,
+    );
+  }
+  assert.equal(
+    [...response.text.matchAll(/role="menuitemradio"/g)].length,
+    12,
+    'tres opciones por cada uno de los cuatro ejes',
+  );
+  assert.equal(
+    [...response.text.matchAll(/aria-checked="true"/g)].length,
+    4,
+    'cada eje arranca en su estado «todos»',
+  );
+  for (const label of [
+    'Con cargador',
+    'Sin cargador',
+    'Con y sin cargador',
+    'Con bancos',
+    'Sin bancos',
+    'Con y sin bancos',
+    'Con wizard',
+    'Sin wizard',
+    'Con y sin wizard',
+    'Ningún incompatible',
+    'Solo incompatibles',
+    'Compatibles e incompatibles',
+  ]) {
+    assert.match(response.text, new RegExp(`>${label}<`), label);
+  }
+  assert.match(response.text, /id="filter-count"/);
+  // El catálogo del plugin es un panel más, abierto desde la fila, y también
+  // un diálogo modal.
+  assert.match(
+    response.text,
+    /id="meta"[\s\S]{0,200}role="dialog"[\s\S]{0,200}aria-modal="true"[\s\S]{0,200}aria-labelledby="meta-title"[\s\S]{0,200}tabindex="-1"/,
+  );
   assert.match(response.text, /id="meta-extended"/);
   assert.match(response.text, /id="meta-save"/);
+  // La nota que explica de dónde salen los valores al abrir el panel.
+  assert.match(response.text, /id="meta-origin"/);
   assert.match(response.text, /Campos propios \(JSON\)/);
   assert.match(response.text, /data-action="meta"/);
   assert.match(response.text, /Catálogo/);
+  // El log del plugin, con su ruta, sus entradas y los archivos rotados en su propio cajón.
+  assert.match(response.text, /id="log-path"/);
+  assert.match(response.text, /id="log-summary"/);
+  assert.match(response.text, /id="log-table"/);
+  assert.doesNotMatch(response.text, /id="log-entries"/);
+  assert.match(response.text, /id="log-rotated"/);
+  assert.match(response.text, /data-action="log"/);
+  assert.match(response.text, /Historial/);
 
   // La UI es un módulo ESM compilado desde TypeScript; `app.js` ya no existe.
   assert.match(response.text, /<script type="module" src="\/js\/ui\/browser\/main\.js">/);
@@ -162,12 +257,29 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   // El escaneo bloquea los plugins incompatibles.
   assert.match(main.text, /plugin\.compatible === false/);
   assert.match(main.text, /dataset\[['"]blocked['"]\]/);
+  // Filtrado en tiempo real por texto y por los cuatro ejes de tres estados.
+  assert.match(main.text, /pluginFilter/);
+  assert.match(main.text, /setFilterAxis/);
+  assert.match(main.text, /FILTER_AXES/);
+  assert.match(main.text, /dataset\[['"]axis['"]\]/);
+  assert.match(main.text, /dataset\[['"]value['"]\]/);
   // El catálogo del plugin se lee y se guarda con el cliente tipado, y el
   // `mtimeMs` leído es el testigo que se manda al guardar.
   assert.match(main.text, /client\.plugins\.meta\.read/);
   assert.match(main.text, /client\.plugins\.meta\.write/);
   assert.match(main.text, /renderMeta/);
   assert.match(main.text, /readExtended/);
+  // Cuando aún no hay archivo, el panel dice si los campos vienen del vfxinfo
+  // y qué falta para poder guardar, en vez de abrirse vacío sin explicación.
+  assert.match(main.text, /metaOriginText/);
+  assert.match(main.text, /metaOrigin/);
+  // El historial del plugin se lee con el cliente tipado y se pinta por partes.
+  assert.match(main.text, /client\.plugins\.log\.read/);
+  assert.match(main.text, /renderPluginLog/);
+  assert.match(main.text, /pluginHistoryTableView/);
+  assert.match(main.text, /import-result/);
+  // Y la columna de la tabla se actualiza al guardar, sin volver a escanear.
+  assert.match(main.text, /markPluginHasMeta/);
 
   const batch = await request(app.getHttpServer())
     .get('/js/ui/batch.js')
@@ -207,6 +319,8 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
 
   assert.match(styles.text, /\.default-row/);
   assert.match(styles.text, /\.batch-errors/);
+  assert.match(styles.text, /\.table-sort/);
+  assert.match(styles.text, /\.table-view/);
   assert.match(styles.text, /\.batch-progress/);
   assert.match(styles.text, /\.import-progress/);
   assert.match(styles.text, /\.recents/);

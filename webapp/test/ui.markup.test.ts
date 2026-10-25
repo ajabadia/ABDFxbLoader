@@ -353,9 +353,11 @@ test('index.html no tiene ids, clases, data-* ni estados ARIA que no use nadie',
 
 test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.html', async () => {
   const { html, css, sources } = await realMarkup();
+  // `aria-selected` no lo usa nadie: `aria-checked` lo mantienen las opciones de
+  // los filtros, `aria-pressed` sus chips y `aria-expanded` los menús.
   const marker =
     '<p id="fxb-id-fantasma" class="fxb-clase-fantasma" data-field="fxb-campo-fantasma" ' +
-    'aria-expanded="false">x</p>';
+    'aria-selected="false">x</p>';
   const mutated = html.replace('</main>', `${marker}\n    </main>`);
   assert.notEqual(mutated, html, 'la mutación debe llegar al documento');
 
@@ -370,7 +372,7 @@ test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.h
   );
   assert.deepEqual(
     audit.deadAria,
-    ['aria-expanded="false"'],
-    'nadie mantiene ese estado aria-expanded en la vista real',
+    ['aria-selected="false"'],
+    'nadie mantiene ese estado aria-selected en la vista real',
   );
 });

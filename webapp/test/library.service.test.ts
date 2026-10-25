@@ -6,7 +6,7 @@ import { test, type TestContext } from 'node:test';
 import { FXB_CONFIG_FILENAME } from '../src/fxb-config/fxb-config.constants';
 import { FxbConfigService } from '../src/fxb-config/fxb-config.service';
 import { LibraryService } from '../src/library/library.service';
-import type { PluginEntry } from '../src/library/library.types';
+import type { PluginEntry, ScanPluginEntry } from '../src/library/library.types';
 import {
   LibraryOperationError,
   LibraryPathError,
@@ -18,10 +18,15 @@ import {
   VFXINFO_DISABLED_FILENAME,
   VFXINFO_FILENAME,
 } from '../src/library/vfxinfo';
+import { PluginLogService } from '../src/plugin-log/plugin-log.service';
+import { PLUGIN_LOG_FILENAME } from '../src/plugin-log/plugin-log.types';
+import { META_FILENAME } from '../src/plugin-meta/plugin-meta.constants';
+import { buildBank } from './helpers/fxb-bank';
 import { pe32Dll, pe64Dll } from './helpers/pe';
 import { writePluginDll } from './helpers/vfx-plugin';
 
 const configService = new FxbConfigService();
+const logService = new PluginLogService();
 const service = new LibraryService(configService);
 
 function vfxinfo(dllName: string, eol = '\r\n'): string {
@@ -81,6 +86,11 @@ test('scan enumera solo directorios y marca los instalados', async (t) => {
     expectedMtimeMs: null,
     config: { pluginName: 'Synth.dll' },
   });
+  // Solo «Synth» tiene catálogo: el escaneo lo dice sin abrir el panel.
+  await writeFile(
+    path.join(pluginDir, META_FILENAME),
+    JSON.stringify({ common: { id: 'Synth', name: 'Test Plugin' }, extended: {} }),
+  );
 
   const result = await service.scan(root, dllSource);
 
@@ -95,21 +105,59 @@ test('scan enumera solo directorios y marca los instalados', async (t) => {
     ['Empty', 'Synth'],
   );
 
-  const [empty, synth] = result.plugins as [PluginEntry, PluginEntry];
-  assert.equal(empty.installed, false);
+  const [empty, synth] = result.plugins as [ScanPluginEntry, ScanPluginEntry];
+  assert.equal(empty.hasLoader, false);
   assert.equal(empty.hasVfxinfo, false);
+  assert.equal(empty.hasWizard, false);
+  assert.equal(empty.wizardId, null);
+  assert.equal(empty.hasMeta, false);
   assert.equal(empty.pluginName, null);
   assert.equal(empty.compatible, false);
   assert.match(empty.compatibilityIssues.join(' '), /falta vfxinfo\.txt/);
 
-  assert.equal(synth.installed, true);
+  assert.equal(synth.hasLoader, true);
   assert.equal(synth.hasVfxinfo, true);
+  assert.equal(typeof synth.hasWizard, 'boolean');
+  assert.equal(synth.hasMeta, true);
   assert.equal(synth.pluginName, 'Synth.dll');
   assert.deepEqual(synth.warnings, []);
   // El config se escribió a mano: falta el DLL instalado.
   assert.equal(synth.compatible, false);
   assert.match(synth.compatibilityIssues.join(' '), /falta fxbLoader\.dll/);
   assert.deepEqual(await readFile(path.join(pluginDir, VFXINFO_FILENAME)), originalVfxinfo);
+});
+
+test('scan resume los bancos válidos de cada plugin', async (t) => {
+  const { root, plugs, pluginDir, dllSource } = await fixture(t);
+  const presets = path.join(pluginDir, 'presets');
+  await mkdir(presets, { recursive: true });
+  await writeFile(path.join(presets, 'Zip.fxb'), buildBank({ uniqueId: 'MySy' }));
+  await writeFile(path.join(presets, 'Rhodes.fxb'), buildBank({ uniqueId: 'MySy', programs: 1 }));
+  // Un `.fxb` que no es un banco no cuenta, pero tampoco tumba el escaneo.
+  await writeLatin1(path.join(presets, 'Roto.fxb'), 'no es un banco');
+  await mkdir(path.join(plugs, 'SinBancos'));
+
+  const result = await service.scan(root, dllSource);
+  const [sinBancos, synth] = result.plugins as [ScanPluginEntry, ScanPluginEntry];
+
+  assert.deepEqual(sinBancos.banks, { count: 0, names: [] });
+  assert.deepEqual(synth.banks, { count: 2, names: ['Rhodes.fxb', 'Zip.fxb'] });
+  assert.deepEqual(synth.warnings, []);
+});
+
+test('scan avisa si el programDirName impide contar los bancos', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  await configService.write({
+    pluginDir,
+    expectedMtimeMs: null,
+    config: { pluginName: 'Synth.dll', programDirName: '..\\fuera' },
+  });
+
+  const result = await service.scan(root, dllSource);
+  const plugin = result.plugins[0]!;
+
+  assert.deepEqual(plugin.banks, { count: 0, names: [] });
+  assert.match(plugin.warnings.join(' '), /no se pudieron contar los bancos/);
 });
 
 test('scan marca incompatible un plugin de 64 bits', async (t) => {
@@ -177,6 +225,21 @@ test('scan marca incompatible un plugin cuyo DLL declarado no existe', async (t)
   // binario que no sirve.
   assert.equal(plugin.compatible, false);
   assert.match(plugin.compatibilityIssues.join(' '), /no existe el binario declarado en dll_name/);
+});
+
+test('scan acepta dll_name con el prefijo del directorio del plugin (convención oficial de VFX)', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  // En librerías oficiales vfxinfo.txt suele tener "Synth/Synth.dll" aunque el binario esté directamente en pluginDir
+  await writeLatin1(
+    path.join(pluginDir, VFXINFO_FILENAME),
+    vfxinfo('Synth/Synth.dll'),
+  );
+
+  const result = await service.scan(root, dllSource);
+  const plugin = result.plugins[0]!;
+
+  assert.equal(plugin.compatible, true);
+  assert.deepEqual(plugin.compatibilityIssues, []);
 });
 
 test('scan marca incompatible un supuesto DLL que no es un PE', async (t) => {
@@ -263,7 +326,7 @@ test('install respalda, copia el DLL, parchea vfxinfo y crea config + presets', 
   });
 
   assert.equal(result.dryRun, false);
-  assert.equal(result.plugin.installed, true);
+  assert.equal(result.plugin.hasLoader, true);
   assert.equal(result.plugin.pluginName, 'Synth.dll');
   assert.deepEqual(
     result.actions.map((action) => action.kind),
@@ -489,7 +552,7 @@ test('uninstall restaura el original y conserva DLL, bancos y copia modificada',
 
   const result = await service.uninstall({ libraryRoot: root, plugin: 'Synth' });
 
-  assert.equal(result.plugin.installed, false);
+  assert.equal(result.plugin.hasLoader, false);
   assert.equal(result.plugin.pluginName, null);
   assert.deepEqual(
     result.actions.map((action) => action.kind),
@@ -624,7 +687,7 @@ test('uninstall dryRun no toca el disco', async (t) => {
   const result = await service.uninstall({ libraryRoot: root, plugin: 'Synth', dryRun: true });
 
   assert.equal(result.dryRun, true);
-  assert.equal(result.plugin.installed, true);
+  assert.equal(result.plugin.hasLoader, true);
   assert.deepEqual(await pluginEntries(pluginDir), before);
 });
 
@@ -666,3 +729,44 @@ test('plugin inexistente devuelve not found', async (t) => {
     PluginNotFoundError,
   );
 });
+
+test('install y uninstall registran entradas legibles en fxbLoader.log', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+  const loggingService = new LibraryService(configService, logService);
+
+  await loggingService.install({ libraryRoot: root, plugin: 'Synth', dllSourcePath: dllSource });
+  const logContent1 = await readFile(path.join(pluginDir, PLUGIN_LOG_FILENAME), 'utf8');
+  assert.match(logContent1, /\[install\] Instalado fxbLoader\.dll \(Synth\.dll\)/);
+
+  await loggingService.uninstall({ libraryRoot: root, plugin: 'Synth' });
+  const logContent2 = await readFile(path.join(pluginDir, PLUGIN_LOG_FILENAME), 'utf8');
+  assert.match(logContent2, /\[uninstall\] Desinstalado fxbLoader\.dll, restaurado vfxinfo\.txt/);
+});
+
+test('install tiene éxito incluso si el log falla (degradación no bloqueante)', async (t) => {
+  const { root, pluginDir, dllSource } = await fixture(t);
+
+  // Creamos un servicio con un logService que falla intencionadamente
+  const failingLogService = {
+    append: async () => false,
+    read: async () => ({
+      logPath: '',
+      exists: false,
+      size: 0,
+      totalEntries: 0,
+      entries: [],
+      raw: '',
+      rotatedFiles: [],
+    }),
+  } as unknown as PluginLogService;
+
+  const resilientService = new LibraryService(configService, failingLogService);
+  const result = await resilientService.install({
+    libraryRoot: root,
+    plugin: 'Synth',
+    dllSourcePath: dllSource,
+  });
+
+  assert.equal(result.plugin.hasLoader, true);
+});
+

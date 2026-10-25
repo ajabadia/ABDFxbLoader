@@ -19,7 +19,12 @@ export function describeError(error: unknown): string {
         : '';
     return `${error.message}${issues}`;
   }
-  if (error instanceof TypeError) {
+  if (
+    error instanceof TypeError &&
+    (error.message.includes('fetch') ||
+      error.message.includes('NetworkError') ||
+      error.message.includes('Failed to fetch'))
+  ) {
     return `No se pudo contactar con el servidor: ${error.message}`;
   }
   return error instanceof Error ? error.message : String(error);
