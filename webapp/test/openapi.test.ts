@@ -82,7 +82,11 @@ function jsonBody(response: unknown): Record<string, unknown> {
 
 test('el documento expone los endpoints de fxb-config', () => {
   assert.equal(document.openapi?.startsWith('3.'), true);
-  assert.deepEqual(Object.keys(document.paths).sort(), [
+  // La lista recibida ya se ordena aquí y se compara de forma estricta, para
+  // que un desorden del servidor o un duplicado no se cuelen.
+  const routes = Object.keys(document.paths).sort();
+  assert.ok(routes.length === new Set(routes).size, 'rutas duplicadas en el documento');
+  assert.deepStrictEqual(routes, [
     '/fxb-config',
     '/fxb-config/read',
     '/library/banks/convert',
@@ -95,7 +99,9 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/banks/restore',
     '/library/batch',
     '/library/batch/stream',
+    '/library/create-custom-plugin',
     '/library/import-package',
+    '/library/inspect-dll',
     '/library/inspect-package',
     '/library/loader/add',
     '/library/loader/remove',
@@ -830,6 +836,58 @@ test('los esquemas de /library existen y encadenan sus referencias', () => {
     'overwrite',
     'plugin',
   ]);
+});
+
+test('POST /library/inspect-dll documenta 200, 400 y 404 con ejemplos', () => {
+  const body = requestContent('/library/inspect-dll', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryInspectDllDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}), ['inspect']);
+
+  const inspect = responses('/library/inspect-dll', 'post');
+  assert.deepEqual(Object.keys(inspect).sort(), ['200', '400', '404']);
+  assert.equal(document.paths['/library/inspect-dll']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(inspect['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryInspectDllResponseDto',
+  );
+  assert.ok(ok['example'], 'debe tener un ejemplo 200');
+
+  const bad = jsonBody(inspect['400']);
+  assert.equal(
+    (bad['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryErrorDto',
+  );
+});
+
+test('POST /library/create-custom-plugin documenta 200, 400, 404 y 409 con ejemplos', () => {
+  const body = requestContent('/library/create-custom-plugin', 'post');
+  assert.equal(body.schema?.$ref, '#/components/schemas/LibraryCreateCustomPluginDto');
+  assert.deepEqual(Object.keys(body.examples ?? {}), ['crear']);
+
+  const create = responses('/library/create-custom-plugin', 'post');
+  assert.deepEqual(Object.keys(create).sort(), ['200', '400', '404', '409']);
+  assert.equal(document.paths['/library/create-custom-plugin']?.post?.tags?.[0], 'library');
+
+  const ok = jsonBody(create['200']);
+  assert.equal(
+    (ok['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryCreateCustomPluginResponseDto',
+  );
+  assert.ok(ok['example'], 'debe tener un ejemplo 200');
+
+  const bad = jsonBody(create['400']);
+  assert.equal(
+    (bad['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryErrorDto',
+  );
+
+  const conflict = jsonBody(create['409']);
+  assert.equal(
+    (conflict['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/LibraryErrorDto',
+  );
 });
 
 test('openapi.json está sincronizado con el documento generado', async () => {
