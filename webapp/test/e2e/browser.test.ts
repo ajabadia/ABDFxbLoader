@@ -11,7 +11,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { MAX_BANKS_PER_REQUEST } from '../../src/client/bank-limits';
 import { MAX_PLUGINS_PER_BATCH } from '../../src/client/batch-stream';
 import { parseFxbBank } from '../../src/library/fxb-bank';
-import { pe32Dll } from '../helpers/pe';
+import { pe32Dll, peWithExportsDll } from '../helpers/pe';
 import { MAX_RECENTS } from '../../src/ui/recents';
 
 /**
@@ -2898,18 +2898,18 @@ test(
       assert.equal(await page.locator('#meta-dll-save').isDisabled(), true);      assert.match(
         (await readFile(vfxinfoPath, 'latin1')),
         new RegExp(`^dll_name: ${value.replace(/\./g, '\\.')}\\r?$`, 'm'),
-      );      // El respaldo de la instalación queda intacto tras guardar la
-      // preferencia: guarda el vfxinfo.txt original, no el parcheado.
-      assert.equal(existsSync(backupPath), true, 'el respaldo sigue ahí');
-      assert.equal(
-        Buffer.compare(await readFile(backupPath), backupBefore),
-        0,
-        'el primer guardado de preferencia no toca el respaldo existente',
-      );
-      assert.notEqual(
-        Buffer.compare(await readFile(backupPath), await readFile(vfxinfoPath)),
-        0,
-        'el respaldo conserva el original, distinto del vfxinfo parcheado',
+      );      // El respaldo de la instalación queda intacto tras guardar la
+      // preferencia: guarda el vfxinfo.txt original, no el parcheado.
+      assert.equal(existsSync(backupPath), true, 'el respaldo sigue ahí');
+      assert.equal(
+        Buffer.compare(await readFile(backupPath), backupBefore),
+        0,
+        'el primer guardado de preferencia no toca el respaldo existente',
+      );
+      assert.notEqual(
+        Buffer.compare(await readFile(backupPath), await readFile(vfxinfoPath)),
+        0,
+        'el respaldo conserva el original, distinto del vfxinfo parcheado',
       );
       // La operación queda en el historial del plugin.
       assert.match(
@@ -2920,10 +2920,10 @@ test(
       /* Aviso de borrador al abrir el importador --------------------- */
       // Otro borrador (la preferencia guardada ahora es la alternativa): se
 
-//      // abre el importador y el diálogo pregunta antes de continuar. El
-      // cajón del catálogo tapa la barra: se cierra y el borrador sobrevive.
-      await page.fill('#meta-dll', original);      await page.click('#meta-close');      await page.locator('#meta').waitFor({ state: 'hidden' });
-
+//      // abre el importador y el diálogo pregunta antes de continuar. El
+      // cajón del catálogo tapa la barra: se cierra y el borrador sobrevive.
+      await page.fill('#meta-dll', original);      await page.click('#meta-close');      await page.locator('#meta').waitFor({ state: 'hidden' });
+
       await page.click('#import-pkg-nav-btn');
       await page.locator('#dialog-dll-draft').waitFor({ state: 'visible' });
       assert.equal(
@@ -2959,6 +2959,165 @@ test(
       await mkdir(ARTIFACTS, { recursive: true });
       await page.screenshot({
         path: path.join(ARTIFACTS, 'e2e-dll-preference-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * Fase III.D: asistente de plugins nuevos sin wizard. Recorre en el navegador
+ * lo que hace una persona: abrir el cajón, analizar un binario DLL sintético
+ * (PE válido con `VSTPluginMain`), dejar que el análisis rellene el nombre y el
+ * id sugeridos, y crear el plugin en una librería temporal vacía. La prueba
+ * ancla el resultado en archivos reales: la DLL copiada y el `vfxinfo.txt`.
+ */
+test(
+  'asistente de plugin nuevo sin wizard: analiza el DLL y da de alta el plugin',
+  {
+    skip: existsSync(SERVER_ENTRY)
+      ? false
+      : `falta ${path.relative(process.cwd(), SERVER_ENTRY)}; ejecuta npm run build`,
+  },
+  async (t) => {
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-custom-'));
+    const library = path.join(temp, 'library');
+    await mkdir(path.join(library, 'plugs'), { recursive: true });
+
+    const dllName = 'DemoSynth.dll';
+    const dllPath = path.join(temp, dllName);
+    await writeFile(dllPath, peWithExportsDll(['VSTPluginMain', 'main'], { bitness: 32 }));
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    try {
+      await page.goto(url);
+      await page.waitForSelector('#custom-plugin-nav-btn');
+      await page.click('#custom-plugin-nav-btn');
+      await page.locator('#custom-plugin-drawer').waitFor({ state: 'visible' });
+
+      // El cajón es un diálogo modal con nombre accesible.
+      assert.equal(
+        await page.getAttribute('#custom-plugin-drawer', 'aria-labelledby'),
+        'custom-plugin-title',
+      );
+
+      await page.fill('#custom-plugin-path', dllPath);
+      await page.fill('#custom-plugin-root', library);
+      await page.click('#custom-plugin-inspect-btn');
+      await waitForText(page, '#custom-plugin-status', 'Binario analizado.');
+
+      // El análisis muestra el diagnóstico del binario y prefiere el nombre y
+      // el id sugeridos por el servidor.
+      assert.equal(await page.locator('#custom-plugin-result').isVisible(), true);
+      assert.equal(
+        ((await page.textContent('#custom-plugin-valid-pe')) ?? '').trim(),
+        'PE válido',
+      );
+      assert.equal(
+        ((await page.textContent('#custom-plugin-vst')) ?? '').trim(),
+        'VST: VSTPluginMain',
+      );
+      assert.match(
+        await page.inputValue('#custom-plugin-folder'),
+        /^DemoSynth$/,
+        'el análisis rellena el nombre con el base del DLL',
+      );
+      assert.equal((await page.inputValue('#custom-plugin-id')).length > 0, true);
+
+      // Crear con los valores sugeridos: sin editor, sin wizard guardado.
+      await page.click('#custom-plugin-create-btn');
+      await waitForText(page, '#custom-plugin-status', 'Plugin creado.');
+
+      // La creé en archivos reales: la DLL copiada, el vfxinfo y el meta.
+      const pluginDir = path.join(library, 'plugs', 'DemoSynth');
+      const binaryDir = path.join(pluginDir, 'DemoSynth');
+      assert.equal(existsSync(path.join(binaryDir, dllName)), true, 'la DLL quedó copiada');
+      const vfxinfo = await readFile(path.join(pluginDir, 'vfxinfo.txt'), 'latin1');
+      assert.match(vfxinfo, /dll_name/i);
+      assert.equal(existsSync(path.join(pluginDir, 'presets')), true);
+      assert.equal(existsSync(path.join(pluginDir, 'fxbLoader.meta.json')), true);
+      // El `dll_name` escrito apunta al binario que se acaba de copiar y la
+      // casilla del editor (desmarcada) llega al vfxinfo.
+      assert.match(vfxinfo, /^dll_name: DemoSynth\/DemoSynth\.dll\r$/m);
+      assert.match(vfxinfo, /^has_editor: 0\r$/m);
+
+      // Repetir el alta sin «Sobrescribir» devuelve 409: la vista enseña el
+      // mensaje del API, no un error genérico.
+      await page.click('#custom-plugin-create-btn');
+      await waitForText(page, '#custom-plugin-status', /Ya existe una carpeta para el plugin/);
+      assert.match(
+        (await page.textContent('#custom-plugin-status')) ?? '',
+        /^No se pudo crear el plugin: Ya existe una carpeta para el plugin en:/,
+      );
+
+      // El cajón es clicable solo una vez por revisión: al cerrarlo y abrir el
+      // importador, el cajón del asistente queda oculto y sin estado pintado.
+      await page.click('#custom-plugin-close');
+      await page.locator('#custom-plugin-drawer').waitFor({ state: 'hidden' });
+      await page.click('#import-pkg-nav-btn');
+      await page.locator('#import-package-drawer').waitFor({ state: 'visible' });
+      assert.equal(
+        await page.locator('#custom-plugin-drawer').isHidden(),
+        true,
+        'abrir el importador cierra el asistente',
+      );
+      await page.keyboard.press('Escape');
+      await page.locator('#import-package-drawer').waitFor({ state: 'hidden' });
+
+      // El plugin recién creado entra en la tabla al escanear la librería:
+      // el asistente y el listado hablan del mismo catálogo.
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
+      const createdRow = page.locator('#plugins tr').filter({ hasText: 'DemoSynth' });
+      assert.equal(await createdRow.count(), 1, 'falta la fila del plugin creado');
+      assert.equal(await createdRow.locator('[data-field="status"]').textContent(), 'sin cargador');
+      assert.equal(
+        await createdRow.locator('[data-field="compatibility"]').textContent(),
+        'compatible',
+      );
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-custom-plugin-failure.png'),
         fullPage: true,
       });
       console.error(`Servidor:\n${logs.join('')}`);

@@ -165,6 +165,14 @@
         >
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar
         </button>
+        <button
+          id="custom-plugin-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Dar de alta un plugin VST nuevo sin wizard, analizando su archivo DLL"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Plugin nuevo
+        </button>
         <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
       </div>
     </header>
@@ -985,6 +993,182 @@
         </div>
 
         <p id="import-package-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section
+        id="custom-plugin-drawer"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="custom-plugin-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="custom-plugin-title">Plugin nuevo sin wizard</h2>
+          <button id="custom-plugin-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p class="note">
+          Da de alta un plugin VST (a partir de un binario DLL) en la librería acti-
+          va sin disponer de un asistente previo: el servidor analiza la cabecera
+          PE y sus exportaciones VST sin ejecutar código, y con lo detectado
+          genera `vfxinfo.txt`, `presets/` y `fxbLoader.meta.json`.
+        </p>
+
+        <div class="field">
+          <label for="custom-plugin-path">Archivo DLL del plugin</label>
+          <div class="row">
+            <input
+              id="custom-plugin-path"
+              placeholder="C:\\Vst\\NewSynth.dll"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              id="custom-plugin-browse"
+              type="button"
+              title="Elegir el archivo con el diálogo del sistema"
+            >
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Elegir DLL…
+            </button>
+            <button id="custom-plugin-inspect-btn" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Analizar binario
+            </button>
+          </div>
+        </div>
+
+        <div id="custom-plugin-result" hidden>
+          <div class="summary">
+            <span id="custom-plugin-valid-pe" class="badge"></span>
+            <span id="custom-plugin-bitness" class="badge"></span>
+            <span id="custom-plugin-vst" class="badge"></span>
+          </div>
+          <p id="custom-plugin-suggestion" class="note"></p>
+          <p id="custom-plugin-wizard" class="note"></p>
+          <ul id="custom-plugin-exports" class="note"></ul>
+          <ul id="custom-plugin-issues" class="warning"></ul>
+        </div>
+
+        <h3>Configuración del nuevo plugin</h3>
+        <div class="field">
+          <label for="custom-plugin-root">Carpeta de la librería</label>
+          <input
+            id="custom-plugin-root"
+            placeholder="C:\\VFX\\Library"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="custom-plugin-folder">Nombre de nuevo plugin</label>
+            <input
+              id="custom-plugin-folder"
+              placeholder="NewSynth"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-name">Nombre interno (vfxinfo)</label>
+            <input
+              id="custom-plugin-name"
+              placeholder="NewSynth"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-id">Identificador VST (id numérico)</label>
+            <input
+              id="custom-plugin-id"
+              placeholder="1313820828"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-vendor">Fabricante</label>
+            <input id="custom-plugin-vendor" placeholder="Custom Audio" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-genre">Género o categoría</label>
+            <input id="custom-plugin-genre" placeholder="Synth" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="custom-plugin-params">Parámetros VST</label>
+            <input
+              id="custom-plugin-params"
+              type="number"
+              min="1"
+              max="256"
+              placeholder="16"
+            />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-programs">Programas VST</label>
+            <input
+              id="custom-plugin-programs"
+              type="number"
+              min="1"
+              max="256"
+              placeholder="16"
+            />
+          </div>
+        </div>
+        <div class="row">
+          <label class="check" for="custom-plugin-synth">
+            <input id="custom-plugin-synth" type="checkbox" checked />
+            <span>Es un sintetizador o generador (no solo un efecto)</span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="check" for="custom-plugin-editor">
+            <input id="custom-plugin-editor" type="checkbox" />
+            <span>Tiene editor gráfico de dimensiones concretas</span>
+          </label>
+        </div>
+        <div class="row" id="custom-plugin-editor-row" hidden>
+          <div class="field">
+            <label for="custom-plugin-width">Ancho del editor (px)</label>
+            <input id="custom-plugin-width" type="number" min="0" max="4096" placeholder="800" />
+          </div>
+          <div class="field">
+            <label for="custom-plugin-height">Alto del editor (px)</label>
+            <input id="custom-plugin-height" type="number" min="0" max="4096" placeholder="600" />
+          </div>
+        </div>
+        <div class="row">
+          <label class="check" for="custom-plugin-save-wizard">
+            <input id="custom-plugin-save-wizard" type="checkbox" />
+            <span>Guardar además un .vfxwizard reutilizable en el catálogo local</span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="check" for="custom-plugin-overwrite">
+            <input id="custom-plugin-overwrite" type="checkbox" />
+            <span>Sobrescribir si la carpeta del plugin ya existe</span>
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="custom-plugin-create-btn" class="primary" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Crear plugin en la librería
+          </button>
+        </div>
+
+        <div id="custom-plugin-created" hidden>
+          <div class="summary"><h3>Plugin creado</h3></div>
+          <ul id="custom-plugin-created-paths" class="note"></ul>
+          <ul id="custom-plugin-created-warnings" class="warning"></ul>
+        </div>
+
+        <p id="custom-plugin-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <dialog

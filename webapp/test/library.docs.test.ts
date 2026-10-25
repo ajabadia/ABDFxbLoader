@@ -7,7 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { pe32Dll } from './helpers/pe';
+import { pe32Dll, peWithExportsDll } from './helpers/pe';
 import {
   LIBRARY_BANK_EXAMPLE,
   LIBRARY_BANKS_LIST_EXAMPLE,
@@ -29,6 +29,8 @@ import {
   LIBRARY_SCAN_PATH_ERROR_EXAMPLE,
   LIBRARY_LOADER_REMOVE_CONFLICT_EXAMPLE,
   LIBRARY_LOADER_REMOVE_EXAMPLE,
+  LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE,
+  LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE,
 } from '../src/library/library.dto';
 import { buildBank } from './helpers/fxb-bank';
 
@@ -333,4 +335,71 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
     .send({ libraryRoot: data.root, plugin: 'NoExiste', dllSourcePath: data.dll })
     .expect(404);
   assertSameKeys(notFound.body, LIBRARY_SCAN_PATH_ERROR_EXAMPLE, 'install 404');
+});
+
+test('los ejemplos de inspect-dll y create-custom-plugin coinciden con las respuestas reales', async (t) => {
+  const data = await library(t);
+
+  // La inspección lee una DLL real con exportaciones VST de 32 bits.
+  const probe = path.join(data.root, 'Probe.dll');
+  await writeFile(probe, peWithExportsDll(['VSTPluginMain'], { internalName: 'Probe.dll' }));
+
+  const inspected = await http().post('/library/inspect-dll').send({ dllPath: probe }).expect(200);
+  assertSameKeys(inspected.body, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE, 'inspect-dll 200');
+  assert.equal(inspected.body.validPe, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.validPe);
+  assert.equal(inspected.body.bitness, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.bitness);
+  assert.equal(inspected.body.is32BitCompatible, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.is32BitCompatible);
+  assert.equal(inspected.body.isVstPlugin, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.isVstPlugin);
+  assert.equal(inspected.body.vstEntrypoint, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.vstEntrypoint);
+  assert.equal(inspected.body.internalDllName, 'Probe.dll');
+  assert.deepEqual(inspected.body.exportedNames, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.exportedNames);
+  assert.equal(inspected.body.matchingWizard, LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE.matchingWizard);
+
+  const missingDll = await http()
+    .post('/library/inspect-dll')
+    .send({ dllPath: path.join(data.root, 'no-existe.dll') })
+    .expect(404);
+  assert.deepEqual(Object.keys(missingDll.body), ['message'], 'inspect-dll 404: sin sobre de Nest');
+  assert.match(missingDll.body.message, /No existe el archivo DLL/);
+
+  // El alta usa una DLL VST válida fuera de la librería.
+  const custom = path.join(data.root, 'Custom.dll');
+  await writeFile(custom, peWithExportsDll(['VSTPluginMain'], { internalName: 'Custom.dll' }));
+
+  const payload = {
+    libraryRoot: data.root,
+    sourceDllPath: custom,
+    folderName: 'Custom',
+    name: 'Custom Synth',
+    id: 'Cust',
+    isSynth: true,
+    vendor: 'ABD',
+    genre: 'Synth',
+  };
+
+  const created = await http().post('/library/create-custom-plugin').send(payload).expect(200);
+  assertSameKeys(created.body, LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE, 'create-custom-plugin 200');
+  assert.equal(created.body.created, LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE.created);
+  assert.equal(created.body.pluginDir, path.join(data.root, 'plugs', 'Custom'));
+  assert.equal(created.body.dllRelativePath, 'Custom/Custom.dll');
+  assert.equal(created.body.wizardPath, LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE.wizardPath);
+  assert.deepEqual(created.body.warnings, LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE.warnings);
+
+  const conflict = await http().post('/library/create-custom-plugin').send(payload).expect(409);
+  assert.deepEqual(Object.keys(conflict.body), ['message'], 'create-custom-plugin 409: sin sobre de Nest');
+  assert.match(conflict.body.message, /Ya existe una carpeta para el plugin/);
+
+  const missingSource = await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, folderName: 'Otro', sourceDllPath: path.join(data.root, 'no-existe.dll') })
+    .expect(404);
+  assert.deepEqual(Object.keys(missingSource.body), ['message'], 'create-custom-plugin 404: sin sobre');
+  assert.match(missingSource.body.message, /No existe el archivo DLL origen/);
+
+  const invalidFolder = await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, folderName: '../Evil' })
+    .expect(400);
+  assert.deepEqual(Object.keys(invalidFolder.body), ['message'], 'create-custom-plugin 400: sin sobre');
+  assert.match(invalidFolder.body.message, /folderName/);
 });

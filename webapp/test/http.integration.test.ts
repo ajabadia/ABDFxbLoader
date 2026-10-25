@@ -8,7 +8,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { pe32Dll, pe64Dll } from './helpers/pe';
+import { pe32Dll, pe64Dll, peWithExportsDll } from './helpers/pe';
 
 let app: INestApplication;
 
@@ -350,6 +350,203 @@ test('POST /library/loader/remove responde 409 sin tocar vfxinfo.txt si falta el
     [],
     'no deben quedar temporales',
   );
+});
+
+test('POST /library/inspect-dll analiza la DLL sin ejecutarla y distingue 32 y 64 bits', async (t) => {
+  const lib = await makeLibrary(t);
+  const probes = path.join(lib.root, 'probes');
+  await mkdir(probes);
+
+  const vst32 = path.join(probes, 'Probe.dll');
+  await writeFile(vst32, peWithExportsDll(['VSTPluginMain'], { bitness: 32, internalName: 'Probe.dll' }));
+
+  const found = await http().post('/library/inspect-dll').send({ dllPath: vst32 }).expect(200);
+  assert.equal(found.body.validPe, true);
+  assert.equal(found.body.bitness, 32);
+  assert.equal(found.body.is32BitCompatible, true);
+  assert.equal(found.body.isVstPlugin, true);
+  assert.equal(found.body.vstEntrypoint, 'VSTPluginMain');
+  assert.equal(found.body.internalDllName, 'Probe.dll');
+  assert.deepEqual(found.body.exportedNames, ['VSTPluginMain']);
+  assert.deepEqual(found.body.issues, []);
+  // El nombre y el ID sugeridos salen del nombre del archivo: «Probe» → «Prob».
+  assert.equal(found.body.suggestedName, 'Probe');
+  assert.equal(found.body.suggestedId, 'Prob');
+  // Sin wizard en el catálogo para esta DLL no hay coincidencia que ofrecer.
+  assert.equal(found.body.matchingWizard, null);
+
+  const vst64 = path.join(probes, 'Probe64.dll');
+  await writeFile(
+    vst64,
+    peWithExportsDll(['VSTPluginMain'], { bitness: 64, internalName: 'Probe64.dll' }),
+  );
+  const wide = await http().post('/library/inspect-dll').send({ dllPath: vst64 }).expect(200);
+  assert.equal(wide.body.bitness, 64);
+  assert.equal(wide.body.is32BitCompatible, false);
+  assert.match(wide.body.issues.join(' '), /64 bits/);
+
+  const generic = path.join(probes, 'Helper.dll');
+  await writeFile(generic, peWithExportsDll(['CalculateSum'], { internalName: 'Helper.dll' }));
+  const notVst = await http().post('/library/inspect-dll').send({ dllPath: generic }).expect(200);
+  assert.equal(notVst.body.isVstPlugin, false);
+  assert.equal(notVst.body.vstEntrypoint, null);
+  assert.match(notVst.body.issues.join(' '), /VST2/);
+});
+
+test('POST /library/inspect-dll responde 400 con rutas inválidas y 404 si no existe', async (t) => {
+  const lib = await makeLibrary(t);
+
+  const missing = await http().post('/library/inspect-dll').send({}).expect(400);
+  assert.deepEqual(missing.body, { message: 'dllPath es obligatorio' });
+
+  // Una ruta relativa se rechaza: no se resuelve contra el cwd del servidor.
+  const relative = await http()
+    .post('/library/inspect-dll')
+    .send({ dllPath: 'Probe.dll' })
+    .expect(400);
+  assert.deepEqual(Object.keys(relative.body), ['message']);
+  assert.match(relative.body.message, /ruta absoluta/);
+
+  const absent = path.join(lib.root, 'no-existe.dll');
+  const notFound = await http().post('/library/inspect-dll').send({ dllPath: absent }).expect(404);
+  // Sin el sobre de Nest: el cuerpo es el que documenta el DTO.
+  assert.deepEqual(notFound.body, { message: `No existe el archivo DLL: "${absent}"` });
+
+  // Un directorio tampoco es un DLL inspeccionable.
+  await http().post('/library/inspect-dll').send({ dllPath: lib.pluginDir }).expect(404);
+});
+
+test('POST /library/create-custom-plugin crea el plugin desde un DLL externo', async (t) => {
+  const lib = await makeLibrary(t);
+  const sourceDir = path.join(lib.root, 'origen');
+  await mkdir(sourceDir);
+  const sourceDll = path.join(sourceDir, 'NewSynth.dll');
+  const dllBytes = peWithExportsDll(['VSTPluginMain'], {
+    bitness: 32,
+    internalName: 'NewSynth.dll',
+  });
+  await writeFile(sourceDll, dllBytes);
+
+  const payload = {
+    libraryRoot: lib.root,
+    sourceDllPath: sourceDll,
+    folderName: 'NewSynth',
+    name: 'New Synth Pro',
+    id: '12345678',
+    isSynth: true,
+    parameterCount: 32,
+    programCount: 16,
+    hasEditor: true,
+    editorWidth: 800,
+    editorHeight: 600,
+    vendor: 'Custom Audio',
+    genre: 'Synth',
+  };
+
+  const pluginDir = path.join(lib.root, 'plugs', 'NewSynth');
+  const created = await http().post('/library/create-custom-plugin').send(payload).expect(200);
+  assert.equal(created.body.created, true);
+  assert.equal(created.body.pluginDir, pluginDir);
+  assert.equal(created.body.dllRelativePath, 'NewSynth/NewSynth.dll');
+  assert.equal(created.body.vfxinfoPath, path.join(pluginDir, 'vfxinfo.txt'));
+  assert.equal(created.body.metaPath, path.join(pluginDir, 'fxbLoader.meta.json'));
+  assert.equal(created.body.wizardPath, null);
+  assert.deepEqual(created.body.warnings, []);
+
+  // El DLL se copia tal cual dentro de su propia carpeta.
+  assert.deepEqual(await readFile(path.join(pluginDir, 'NewSynth', 'NewSynth.dll')), dllBytes);
+
+  // `vfxinfo.txt` con la identidad declarada, en el formato del cargador.
+  assert.equal(
+    (await readFile(path.join(pluginDir, 'vfxinfo.txt'))).toString('latin1'),
+    'dll_name: NewSynth/NewSynth.dll\r\n' +
+      'id: 12345678\r\n' +
+      'name: New Synth Pro\r\n' +
+      'is_synth: 1\r\n' +
+      'parameter_count: 32\r\n' +
+      'program_count: 16\r\n' +
+      'has_editor: 1\r\n' +
+      'editor_width: 800\r\n' +
+      'editor_height: 600\r\n',
+  );
+
+  // La carpeta de presets y los metadatos que lee el catálogo.
+  assert.equal(existsSync(path.join(pluginDir, 'presets')), true);
+  const meta = JSON.parse(
+    await readFile(path.join(pluginDir, 'fxbLoader.meta.json'), 'utf8'),
+  ) as { common: Record<string, string> };
+  assert.equal(meta.common['id'], '12345678');
+  assert.equal(meta.common['name'], 'New Synth Pro');
+  assert.equal(meta.common['vendor'], 'Custom Audio');
+  assert.equal(meta.common['genre'], 'Synth');
+  assert.equal(meta.common['name_abbreviation'], 'New Synt');
+  assert.match(meta.common['created'] ?? '', /^\d{4}-\d{2}-\d{2}$/);
+
+  // El alta se ve en el escaneo y nace sin cargador.
+  const scan = await http().post('/library/scan').send({ libraryRoot: lib.root }).expect(200);
+  const entry = scan.body.plugins.find((plugin: { name: string }) => plugin.name === 'NewSynth');
+  assert.ok(entry, 'el plugin creado debe aparecer en el escaneo');
+  assert.equal(entry.hasLoader, false);
+
+  const conflict = await http().post('/library/create-custom-plugin').send(payload).expect(409);
+  // El 409 tampoco lleva el sobre de Nest.
+  assert.deepEqual(conflict.body, {
+    message: `Ya existe una carpeta para el plugin en: "${pluginDir}"`,
+  });
+
+  // `overwrite` rehace el plugin con los valores nuevos.
+  const overwritten = await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, parameterCount: 8, overwrite: true })
+    .expect(200);
+  assert.equal(overwritten.body.pluginDir, pluginDir);
+  assert.match(
+    (await readFile(path.join(pluginDir, 'vfxinfo.txt'))).toString('latin1'),
+    /^parameter_count: 8\r$/m,
+  );
+
+  const absent = path.join(sourceDir, 'no-existe.dll');
+  const notFound = await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, folderName: 'Fantasma', sourceDllPath: absent })
+    .expect(404);
+  assert.deepEqual(notFound.body, { message: `No existe el archivo DLL origen: "${absent}"` });
+  // Un fallo no deja una carpeta a medias.
+  assert.equal(existsSync(path.join(lib.root, 'plugs', 'Fantasma')), false);
+
+  await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, folderName: '../Evil' })
+    .expect(400);
+  await http()
+    .post('/library/create-custom-plugin')
+    .send({ ...payload, libraryRoot: 'plugs' })
+    .expect(400);
+  const empty = await http().post('/library/create-custom-plugin').send({}).expect(400);
+  assert.deepEqual(empty.body, { message: 'libraryRoot es obligatorio' });
+});
+
+test('POST /library/create-custom-plugin avisa de un DLL de 64 bits o sin VST', async (t) => {
+  const lib = await makeLibrary(t);
+  const sourceDll = path.join(lib.root, 'Wide.dll');
+  await writeFile(sourceDll, pe64Dll());
+
+  const response = await http()
+    .post('/library/create-custom-plugin')
+    .send({
+      libraryRoot: lib.root,
+      sourceDllPath: sourceDll,
+      folderName: 'Wide',
+      name: 'Wide',
+      id: 'Wide',
+    })
+    .expect(200);
+
+  // Se crea igualmente: el aviso no bloquea el alta.
+  assert.equal(response.body.created, true);
+  const warnings = response.body.warnings.join('\n');
+  assert.match(warnings, /64 bits/);
+  assert.match(warnings, /VSTPluginMain/);
 });
 
 test('PUT /fxb-config responde 200, 409 con mtime obsoleto y 400 con config inválida', async (t) => {

@@ -10,6 +10,8 @@
 import type {
   LibraryBanksImportResponse,
   LibraryBanksListResponse,
+  LibraryCreateCustomPluginResponse,
+  LibraryInspectDllResponse,
   LibraryInspectPackageResponse,
   LibraryImportPackageResponse,
   LibraryScanResponse,
@@ -254,6 +256,40 @@ const els = {
   importPackageRepair: byId<HTMLInputElement>('import-package-repair'),
   importPackageExecuteBtn: byId<HTMLButtonElement>('import-package-execute-btn'),
   importPackageStatus: byId<HTMLParagraphElement>('import-package-status'),
+  customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
+  customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
+  customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
+  customPluginPath: byId<HTMLInputElement>('custom-plugin-path'),
+  customPluginBrowse: byId<HTMLButtonElement>('custom-plugin-browse'),
+  customPluginInspectBtn: byId<HTMLButtonElement>('custom-plugin-inspect-btn'),
+  customPluginResult: byId<HTMLElement>('custom-plugin-result'),
+  customPluginValidPe: byId<HTMLElement>('custom-plugin-valid-pe'),
+  customPluginBitness: byId<HTMLElement>('custom-plugin-bitness'),
+  customPluginVst: byId<HTMLElement>('custom-plugin-vst'),
+  customPluginSuggestion: byId<HTMLElement>('custom-plugin-suggestion'),
+  customPluginWizard: byId<HTMLElement>('custom-plugin-wizard'),
+  customPluginExports: byId<HTMLElement>('custom-plugin-exports'),
+  customPluginIssues: byId<HTMLElement>('custom-plugin-issues'),
+  customPluginRoot: byId<HTMLInputElement>('custom-plugin-root'),
+  customPluginFolder: byId<HTMLInputElement>('custom-plugin-folder'),
+  customPluginName: byId<HTMLInputElement>('custom-plugin-name'),
+  customPluginId: byId<HTMLInputElement>('custom-plugin-id'),
+  customPluginVendor: byId<HTMLInputElement>('custom-plugin-vendor'),
+  customPluginGenre: byId<HTMLInputElement>('custom-plugin-genre'),
+  customPluginParams: byId<HTMLInputElement>('custom-plugin-params'),
+  customPluginPrograms: byId<HTMLInputElement>('custom-plugin-programs'),
+  customPluginSynth: byId<HTMLInputElement>('custom-plugin-synth'),
+  customPluginEditor: byId<HTMLInputElement>('custom-plugin-editor'),
+  customPluginEditorRow: byId<HTMLElement>('custom-plugin-editor-row'),
+  customPluginWidth: byId<HTMLInputElement>('custom-plugin-width'),
+  customPluginHeight: byId<HTMLInputElement>('custom-plugin-height'),
+  customPluginSaveWizard: byId<HTMLInputElement>('custom-plugin-save-wizard'),
+  customPluginOverwrite: byId<HTMLInputElement>('custom-plugin-overwrite'),
+  customPluginCreateBtn: byId<HTMLButtonElement>('custom-plugin-create-btn'),
+  customPluginCreated: byId<HTMLElement>('custom-plugin-created'),
+  customPluginCreatedPaths: byId<HTMLElement>('custom-plugin-created-paths'),
+  customPluginCreatedWarnings: byId<HTMLElement>('custom-plugin-created-warnings'),
+  customPluginStatus: byId<HTMLParagraphElement>('custom-plugin-status'),
 };
 
 interface BanksState {
@@ -1952,7 +1988,8 @@ function hidePanel(panel: HTMLElement): void {
     els.wizards.hidden &&
     els.pluginWizard.hidden &&
     els.logDrawer.hidden &&
-    els.importPackageDrawer.hidden
+    els.importPackageDrawer.hidden &&
+    els.customPluginDrawer.hidden
   ) {
     els.drawerBackdrop.hidden = true;
     document.body.classList.remove('drawer-open');
@@ -2154,6 +2191,8 @@ async function openBanks(plugin: ScanPlugin, opener?: HTMLElement): Promise<void
   closeWizards();
   closePluginWizard();
   closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
   showPanel(els.banks, opener);
   clearBanksView(plugin.name);
   setBanksBusy(true);
@@ -2930,6 +2969,8 @@ async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<
   closeMeta();
   closeWizards();
   closePluginWizard();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
   showPanel(els.logDrawer, opener);
 
   els.logPlugin.textContent = plugin.name;
@@ -2981,6 +3022,8 @@ async function openMeta(plugin: ScanPlugin, opener?: HTMLElement): Promise<void>
   closeWizards();
   closePluginWizard();
   closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
   showPanel(els.meta, opener);
   metaState = null;
   clearMetaView(plugin.name);
@@ -3153,6 +3196,8 @@ async function openWizards(): Promise<void> {
   closeMeta();
   closePluginWizard();
   closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
   els.wizards.hidden = false;
   els.wizards.scrollTop = 0;
   els.drawerBackdrop.hidden = false;
@@ -3324,6 +3369,8 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
   closeMeta();
   closeWizards();
   closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
   showPanel(els.pluginWizard, opener);
 
   els.pluginWizardPlugin.textContent = plugin.name;
@@ -3795,6 +3842,7 @@ function openImportPackageDrawer(opener?: HTMLElement): void {
   closeWizards();
   closePluginWizard();
   closeLogDrawer();
+  closeCustomPluginDrawer();
   showPanel(els.importPackageDrawer, opener);
   if (!els.importPackagePath.value.trim() && libraryRoot) {
     const parent = parentDir(libraryRoot);
@@ -3813,6 +3861,265 @@ function closeImportPackageDrawer(): void {
   els.importPackageStatus.textContent = '';
   els.importPackageStatus.className = 'status';
 }
+
+/** Asistente de creación de plugins nuevos sin wizard. */
+let customPluginBusy = false;
+/** Última inspección mostrada, para no releer la DLL al crear. */
+let customPluginInspection: LibraryInspectDllResponse | null = null;
+
+/** Número entero del campo o `undefined` si está vacío o es inválido. */
+function optionalInt(input: HTMLInputElement): number | undefined {
+  const text = input.value.trim();
+  if (text === '') return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? Math.trunc(value) : undefined;
+}
+
+function setCustomPluginBusy(busy: boolean): void {
+  customPluginBusy = busy;
+  els.customPluginInspectBtn.disabled = busy;
+  els.customPluginBrowse.disabled = busy;
+  els.customPluginCreateBtn.disabled = busy;
+}
+
+function setCustomPluginStatus(message: string, kind = 'info'): void {
+  els.customPluginStatus.textContent = message;
+  els.customPluginStatus.className = `status ${kind}`;
+}
+
+function openCustomPluginDrawer(opener?: HTMLElement): void {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  closeImportPackageDrawer();
+  showPanel(els.customPluginDrawer, opener);
+  if (!els.customPluginRoot.value.trim() && libraryRoot) {
+    els.customPluginRoot.value = libraryRoot;
+  }
+  els.customPluginPath.focus();
+}
+
+function closeCustomPluginDrawer(): void {
+  if (els.customPluginDrawer.hidden) return;
+  hidePanel(els.customPluginDrawer);
+  customPluginInspection = null;
+  els.customPluginResult.hidden = true;
+  els.customPluginCreated.hidden = true;
+  els.customPluginStatus.textContent = '';
+  els.customPluginStatus.className = 'status';
+}
+
+/** Pinta el resultado de `/library/inspect-dll` y, con lo detectado, rellena el
+ * nombre y el id sugeridos. */
+function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
+  customPluginInspection = result;
+  els.customPluginResult.hidden = false;
+  els.customPluginCreated.hidden = true;
+
+  els.customPluginValidPe.textContent = result.validPe ? 'PE válido' : 'No es un PE';
+  els.customPluginValidPe.className = `badge ${result.validPe ? 'on' : 'off'}`;
+  els.customPluginBitness.textContent = result.bitness === null ? 'bits ?' : `${result.bitness} bits`;
+  els.customPluginBitness.className = `badge ${result.is32BitCompatible ? 'on' : 'off'}`;
+  if (result.vstEntrypoint !== null) {
+    els.customPluginVst.textContent = `VST: ${result.vstEntrypoint}`;
+    els.customPluginVst.className = 'badge on';
+  } else {
+    els.customPluginVst.textContent = 'sin VSTPluginMain/main';
+    els.customPluginVst.className = 'badge off';
+  }
+
+  const suggestionParts = [`Sugerido: ${result.suggestedName} · id ${result.suggestedId}`];
+  if (result.internalDllName !== null) {
+    suggestionParts.push(` · DLL interno ${result.internalDllName}`);
+  }
+  els.customPluginSuggestion.textContent = suggestionParts.join('');
+  els.customPluginName.value = result.suggestedName;
+  els.customPluginFolder.value = result.suggestedName;
+  if (!els.customPluginId.value.trim()) els.customPluginId.value = result.suggestedId;
+
+  const wizard = result.matchingWizard;
+  if (wizard !== null) {
+    els.customPluginWizard.textContent =
+      `Hay un wizard oficial en el catálogo que coincide con este binario: ` +
+      `${wizard.name} (id ${wizard.id}, ${wizard.vendor}). Revisar «Wizards» antes de crear otro aparte.`;
+    els.customPluginWizard.hidden = false;
+  } else {
+    els.customPluginWizard.hidden = true;
+  }
+
+  els.customPluginExports.replaceChildren();
+  for (const name of result.exportedNames) {
+    const item = document.createElement('li');
+    item.textContent = name;
+    els.customPluginExports.append(item);
+  }
+  els.customPluginExports.hidden = result.exportedNames.length === 0;
+
+  els.customPluginIssues.replaceChildren();
+  for (const issue of result.issues) {
+    const item = document.createElement('li');
+    item.textContent = issue;
+    els.customPluginIssues.append(item);
+  }
+  els.customPluginIssues.hidden = result.issues.length === 0;
+}
+
+/** Botón «Analizar binario»: inspección estática de la DLL. */
+async function inspectCustomPlugin(): Promise<void> {
+  if (customPluginBusy) return;
+  const dllPath = els.customPluginPath.value.trim();
+  if (dllPath === '') {
+    setCustomPluginStatus('Indica la ruta del DLL a analizar.', 'error');
+    return;
+  }
+
+  els.customPluginResult.hidden = true;
+  setCustomPluginBusy(true);
+  setCustomPluginStatus('Analizando el binario…', 'busy');
+  try {
+    const body: RequestBody<'/library/inspect-dll', 'post'> = { dllPath };
+    const result = await client.library.inspectDll(body);
+    renderCustomPluginInspection(result);
+    setCustomPluginStatus('Binario analizado.', 'info');
+  } catch (error) {
+    customPluginInspection = null;
+    setCustomPluginStatus(`No se pudo analizar el DLL: ${describeError(error)}`, 'error');
+  } finally {
+    setCustomPluginBusy(false);
+  }
+}
+
+/** Botón «Crear plugin en la librería»: alta a partir de lo ya analizado. */
+async function createCustomPlugin(): Promise<void> {
+  if (customPluginBusy) return;
+  const libraryRootPath = els.customPluginRoot.value.trim();
+  if (libraryRootPath === '') {
+    setCustomPluginStatus('Indica la carpeta de la librería VFX.', 'error');
+    return;
+  }
+  const folderName = els.customPluginFolder.value.trim();
+  if (folderName === '') {
+    setCustomPluginStatus('Indica el nombre de la carpeta del plugin.', 'error');
+    return;
+  }
+  const name = els.customPluginName.value.trim();
+  if (name === '') {
+    setCustomPluginStatus('Indica el nombre interno del plugin (vfxinfo).', 'error');
+    return;
+  }
+  const id = els.customPluginId.value.trim();
+  if (id === '') {
+    setCustomPluginStatus('Indica el identificador VST (id).', 'error');
+    return;
+  }
+  const sourceDllPath = els.customPluginPath.value.trim();
+  if (sourceDllPath === '') {
+    setCustomPluginStatus('Indica la ruta del DLL origen.', 'error');
+    return;
+  }
+
+  const body: RequestBody<'/library/create-custom-plugin', 'post'> = {
+    libraryRoot: libraryRootPath,
+    sourceDllPath,
+    folderName,
+    name,
+    id,
+    isSynth: els.customPluginSynth.checked,
+    overwrite: els.customPluginOverwrite.checked,
+    saveAsWizard: els.customPluginSaveWizard.checked,
+  };
+  const params = optionalInt(els.customPluginParams);
+  if (params !== undefined) body.parameterCount = params;
+  const programs = optionalInt(els.customPluginPrograms);
+  if (programs !== undefined) body.programCount = programs;
+  if (els.customPluginVendor.value.trim() !== '') body.vendor = els.customPluginVendor.value.trim();
+  if (els.customPluginGenre.value.trim() !== '') body.genre = els.customPluginGenre.value.trim();
+  // Se envía siempre: el servidor asume editor por defecto, así que omitirlo
+  // al desmarcar la casilla dejaría el plugin con editor igualmente.
+  body.hasEditor = els.customPluginEditor.checked;
+  if (els.customPluginEditor.checked) {
+    const width = optionalInt(els.customPluginWidth);
+    if (width !== undefined) body.editorWidth = width;
+    const height = optionalInt(els.customPluginHeight);
+    if (height !== undefined) body.editorHeight = height;
+  }
+
+  setCustomPluginBusy(true);
+  setCustomPluginStatus('Creando el plugin en la librería…', 'busy');
+  try {
+    const result: LibraryCreateCustomPluginResponse = await client.library.createCustomPlugin(body);
+    els.customPluginCreated.hidden = false;
+    els.customPluginCreatedPaths.replaceChildren();
+    for (const line of [
+      `Carpeta: ${result.pluginDir}`,
+      `DLL: ${result.dllRelativePath}`,
+      `vfxinfo.txt: ${result.vfxinfoPath}`,
+      `fxbLoader.meta.json: ${result.metaPath}`,
+      ...(result.wizardPath !== null ? [`Wizard: ${result.wizardPath}`] : []),
+    ]) {
+      const item = document.createElement('li');
+      item.textContent = line;
+      els.customPluginCreatedPaths.append(item);
+    }
+    els.customPluginCreatedWarnings.replaceChildren();
+    for (const warning of result.warnings) {
+      const item = document.createElement('li');
+      item.textContent = warning;
+      els.customPluginCreatedWarnings.append(item);
+    }
+    els.customPluginCreatedWarnings.hidden = result.warnings.length === 0;
+    setCustomPluginStatus(result.created ? 'Plugin creado.' : 'No se creó el plugin.', 'info');
+  } catch (error) {
+    setCustomPluginStatus(`No se pudo crear el plugin: ${describeError(error)}`, 'error');
+  } finally {
+    setCustomPluginBusy(false);
+  }
+}
+
+els.customPluginNavBtn.addEventListener('click', () => {
+  openCustomPluginDrawer(els.customPluginNavBtn);
+});
+
+els.customPluginClose.addEventListener('click', () => {
+  closeCustomPluginDrawer();
+});
+
+els.customPluginInspectBtn.addEventListener('click', () => {
+  void inspectCustomPlugin();
+});
+
+els.customPluginCreateBtn.addEventListener('click', () => {
+  void createCustomPlugin();
+});
+
+els.customPluginEditor.addEventListener('change', () => {
+  els.customPluginEditorRow.hidden = !els.customPluginEditor.checked;
+});
+
+els.customPluginBrowse.addEventListener('click', async () => {
+  try {
+    const current = els.customPluginPath.value.trim();
+    const start =
+      current !== ''
+        ? (parentDir(current) ?? undefined)
+        : (libraryRoot ? (parentDir(libraryRoot) ?? undefined) : undefined);
+    const res = await client.system.pick({
+      kind: 'file',
+      title: 'Elige el DLL del plugin VST',
+      extensions: ['dll'],
+      initialDir: start,
+    });
+    const chosen = res.paths?.[0];
+    if (chosen) {
+      els.customPluginPath.value = chosen;
+      void inspectCustomPlugin();
+    }
+  } catch (error) {
+    setCustomPluginStatus(`No se pudo abrir el selector: ${describeError(error)}`, 'error');
+  }
+});
 
 function renderImportPackageInspection(result: LibraryInspectPackageResponse): void {
   importPackageInspection = result;
@@ -4116,6 +4423,7 @@ els.drawerBackdrop.addEventListener('click', () => {
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
+  closeCustomPluginDrawer();
 });
 
 window.addEventListener('keydown', (event) => {
@@ -4126,6 +4434,7 @@ window.addEventListener('keydown', (event) => {
     closePluginWizard();
     closeLogDrawer();
     closeImportPackageDrawer();
+    closeCustomPluginDrawer();
     closeAllRowMenus();
     closeFilterMenu(true);
   }

@@ -61,8 +61,12 @@ export type LibraryBankDiscardBackupResponse = SuccessBody<
   'post'
 >;
 export type LibraryBankInspectResponse = SuccessBody<'/library/banks/inspect', 'post'>;
-export type LibraryInspectPackageResponse = SuccessBody<'/library/inspect-package', 'post'>;
-export type LibraryImportPackageResponse = SuccessBody<'/library/import-package', 'post'>;
+export type LibraryInspectPackageResponse = SuccessBody<'/library/inspect-package', 'post'>;  export type LibraryImportPackageResponse = SuccessBody<'/library/import-package', 'post'>;
+export type LibraryInspectDllResponse = SuccessBody<'/library/inspect-dll', 'post'>;
+export type LibraryCreateCustomPluginResponse = SuccessBody<
+  '/library/create-custom-plugin',
+  'post'
+>;
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
 export type SystemPickResponse = SuccessBody<'/system/pick', 'post'>;
 export type SystemPathsResponse = SuccessBody<'/system/paths', 'post'>;
@@ -212,9 +216,13 @@ export interface FxbClient {
       body: RequestBody<'/library/plugin-dll-preference', 'post'>,
     ): Promise<SuccessBody<'/library/plugin-dll-preference', 'post'>>;
     /** Inspecciona estáticamente un archivo DLL para detectar exportaciones VST y compatibilidad PE32. */
-    inspectDll(body: any): Promise<any>;
+    inspectDll(
+      body: RequestBody<'/library/inspect-dll', 'post'>,
+    ): Promise<SuccessBody<'/library/inspect-dll', 'post'>>;
     /** Crea un nuevo instrumento o efecto en la librería a partir de un DLL externo sin wizard previo. */
-    createCustomPlugin(body: any): Promise<any>;
+    createCustomPlugin(
+      body: RequestBody<'/library/create-custom-plugin', 'post'>,
+    ): Promise<SuccessBody<'/library/create-custom-plugin', 'post'>>;
   };
   readonly config: {
     /** Lee `fxbLoader.config`; no crea el archivo si falta. */
@@ -568,10 +576,14 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/plugin-dll-preference', body) as Promise<
           SuccessBody<'/library/plugin-dll-preference', 'post'>
         >,
-      inspectDll: (body: any) =>
-        request('POST', '/library/inspect-dll', body) as Promise<any>,
-      createCustomPlugin: (body: any) =>
-        request('POST', '/library/create-custom-plugin', body) as Promise<any>,
+      inspectDll: (body) =>
+        request('POST', '/library/inspect-dll', body) as Promise<
+          SuccessBody<'/library/inspect-dll', 'post'>
+        >,
+      createCustomPlugin: (body) =>
+        request('POST', '/library/create-custom-plugin', body) as Promise<
+          SuccessBody<'/library/create-custom-plugin', 'post'>
+        >,
     },
     config: {
       read: (body) =>

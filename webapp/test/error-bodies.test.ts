@@ -102,6 +102,26 @@ test('ningún cuerpo de error de la API lleva el sobre de Nest', async (t) => {
     'banks/list con plugin inexistente',
     await http().post('/library/banks/list').send({ libraryRoot: lib.root, plugin: 'NoExiste' }).expect(404),
   );
+  record(
+    'inspect-dll con DLL inexistente',
+    await http()
+      .post('/library/inspect-dll')
+      .send({ dllPath: path.join(lib.root, 'no-existe.dll') })
+      .expect(404),
+  );
+  record(
+    'create-custom-plugin con DLL origen inexistente',
+    await http()
+      .post('/library/create-custom-plugin')
+      .send({
+        libraryRoot: lib.root,
+        sourceDllPath: path.join(lib.root, 'no-existe.dll'),
+        folderName: 'Fantasma',
+        name: 'Fantasma',
+        id: 'Fant',
+      })
+      .expect(404),
+  );
 
   // 409: el cargador ya está puesto y la configuración cambió desde la lectura.
   await http()
@@ -113,6 +133,20 @@ test('ningún cuerpo de error de la API lleva el sobre de Nest', async (t) => {
     await http()
       .post('/library/loader/add')
       .send({ libraryRoot: lib.root, plugin: 'Synth', dllSourcePath: lib.dll })
+      .expect(409),
+  );
+
+  record(
+    'create-custom-plugin con carpeta existente',
+    await http()
+      .post('/library/create-custom-plugin')
+      .send({
+        libraryRoot: lib.root,
+        sourceDllPath: lib.dll,
+        folderName: 'Synth',
+        name: 'Synth',
+        id: 'Sy01',
+      })
       .expect(409),
   );
 
