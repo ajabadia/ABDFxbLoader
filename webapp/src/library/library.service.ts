@@ -23,11 +23,14 @@ import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
 import { resolveWizardsDir, WizardService } from '../wizard/wizard.service';
 import { inspectPeExports } from './pe-exports';
 import {
+  buildFxBank,
   checkBankCompatibility,
   convertFxbEndianness,
   FXB_CHUNK_HEADER_SIZE,
   FXB_HEADER_SIZE,
   FXB_MAX_BYTES,
+  FXB_MAX_CREATED_PARAMS,
+  FXB_MAX_CREATED_PROGRAMS,
   parseFxbBank,
   parseUniqueIdInput,
   uniqueIdToText,
@@ -55,6 +58,8 @@ import {
 import type {
   BankBackupFile,
   BankBackupSummary,
+  BankCreateInput,
+  BankCreateResult,
   BankConvertInput,
   BankConvertResult,
   BankDiscardBackupInput,

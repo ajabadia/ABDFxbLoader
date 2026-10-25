@@ -219,7 +219,8 @@ export interface BankCreateInput {
   bankName?: string;
   /**
    * Nombres de programa, en orden. Cada uno genera un `FxCk` con
-   * `numParams` parámetros a cero. Con derivas del `programNames`.
+   * `numParams` parámetros a cero; los nombres vacíos se sustituyen
+   * por `Program <n>`.
    */
   programNames: string[];
   /** Parámetros por programa; por defecto 0. */
