@@ -145,6 +145,20 @@ const els = {
   exportOrder: byId<HTMLSelectElement>('export-order'),
   exportOverwrite: byId<HTMLInputElement>('export-overwrite'),
   exportButton: byId<HTMLButtonElement>('export-button'),
+  createMode: byId<HTMLSelectElement>('create-mode'),
+  createBankName: byId<HTMLInputElement>('create-bank-name'),
+  createOrder: byId<HTMLSelectElement>('create-order'),
+  createProgramRows: byId<HTMLElement>('create-program-rows'),
+  createProgramNames: byId<HTMLTextAreaElement>('create-program-names'),
+  createFxVersion: byId<HTMLInputElement>('create-fx-version'),
+  createNumParams: byId<HTMLInputElement>('create-num-params'),
+  createChunkRows: byId<HTMLElement>('create-chunk-rows'),
+  createChunkHex: byId<HTMLTextAreaElement>('create-chunk-hex'),
+  createChunkVersion: byId<HTMLSelectElement>('create-chunk-version'),
+  createCurrentProgram: byId<HTMLInputElement>('create-current-program'),
+  createChunkPrograms: byId<HTMLInputElement>('create-chunk-programs'),
+  createOverwrite: byId<HTMLInputElement>('create-overwrite'),
+  createBankButton: byId<HTMLButtonElement>('create-bank-button'),
   drawerBackdrop: byId<HTMLElement>('drawer-backdrop'),
   meta: byId<HTMLElement>('meta'),
   metaPlugin: byId<HTMLElement>('meta-plugin'),
@@ -2583,6 +2597,94 @@ async function exportBank(): Promise<void> {
   }
 }
 
+/**
+ * La creación de bancos cambia de payload según el modo: los dos bloques de
+ * campos se muestran y ocultan al vuelo y el selector little/big aplica a los
+ * dos modos, igual que en el endpoint.
+ */
+function syncCreateMode(): void {
+  const chunk = els.createMode.value === 'chunk';
+  els.createProgramRows.hidden = chunk;
+  els.createChunkRows.hidden = !chunk;
+}
+
+/**
+ * Crea un banco `.fxb` desde cero con el contenido del formulario: modo
+ * `programNames` (un `FxBk` con los nombres dados) o modo `chunk` (un `FBCh`
+ * con el chunk opaco en hexadecimal). `endianness` se manda tal cual la elige
+ * el selector de orden de bytes, común a los dos modos; el `uniqueID` lo toma
+ * el servidor de `vfxinfo.txt`. Tras crear, se refresca el listado para que el
+ * banco nuevo aparezca con su tipo.
+ */
+async function createBank(): Promise<void> {
+  if (banks === null || banksBusy) return;
+
+  const { pluginName } = banks;
+  const body: RequestBody<'/library/banks/create', 'post'> = {
+    libraryRoot,
+    plugin: pluginName,
+    endianness: els.createOrder.value as 'big' | 'little',
+    overwrite: els.createOverwrite.checked,
+  };
+
+  const fileName = els.createBankName.value.trim();
+  if (fileName !== '') body.bankName = fileName;
+
+  const fxVersion = parseInt(els.createFxVersion.value, 10);
+  if (Number.isInteger(fxVersion)) body.fxVersion = fxVersion;
+
+  if (els.createMode.value === 'chunk') {
+    const chunkHex = els.createChunkHex.value.trim();
+    if (chunkHex === '') {
+      setBanksStatus('Escribe el contenido del chunk en hexadecimal para crear un banco FBCh.', 'error');
+      return;
+    }
+    body.mode = 'chunk';
+    body.chunkHex = chunkHex;
+    const chunkVersion = parseInt(els.createChunkVersion.value, 10);
+    if (chunkVersion === 1 || chunkVersion === 2) body.chunkVersion = chunkVersion;
+    if (chunkVersion === 2) {
+      const currentProgram = parseInt(els.createCurrentProgram.value, 10);
+      if (Number.isInteger(currentProgram)) body.currentProgram = currentProgram;
+    }
+    const chunkNumPrograms = parseInt(els.createChunkPrograms.value, 10);
+    if (Number.isInteger(chunkNumPrograms)) body.chunkNumPrograms = chunkNumPrograms;
+  } else {
+    const names = els.createProgramNames.value
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => name !== '');
+    if (names.length === 0) {
+      setBanksStatus('Escribe al menos un nombre de programa para crear un banco FxBk.', 'error');
+      return;
+    }
+    body.programNames = names;
+    const numParams = parseInt(els.createNumParams.value, 10);
+    if (Number.isInteger(numParams) && numParams >= 0) body.numParams = numParams;
+  }
+
+  setBanksBusy(true);
+  const kind = body.mode === 'chunk' ? 'FBCh' : 'FxBk';
+  const order = body.endianness === 'big' ? 'big-endian' : 'little-endian';
+  setBanksStatus(
+    `Creando ${body.bankName ?? '<plugin>.fxb'} (${kind}) en ${order}…`,
+    'busy',
+  );
+
+  try {
+    const result = await client.library.createBank(body);
+    await fetchBanks(pluginName, { keepSelection: true });
+    setBanksStatus(
+      `Banco ${result.bank.kind} creado en ${result.target}.`,
+      'ok',
+    );
+  } catch (error) {
+    setBanksStatus(describeError(error), 'error');
+  } finally {
+    setBanksBusy(false);
+  }
+}
+
 function setMetaStatus(message: string, kind = 'info'): void {
   els.metaStatus.textContent = message;
   els.metaStatus.className = message === '' ? 'status' : `status ${kind}`;
@@ -4689,6 +4791,9 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
 
 let auditTableController: TableController<AssociationAuditEntry> | null = null;
 let auditBusy = false;
+/** Huella del último snapshot pintado: cambia cuando el almacén crece. */
+let auditFingerprint = '';
+let auditPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function destroyAssociationAuditTable(): void {
   auditTableController?.destroy();

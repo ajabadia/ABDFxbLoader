@@ -437,6 +437,103 @@
             importado queda intacto.
           </p>
         </details>
+
+        <details class="create">
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Crear un banco .fxb desde cero
+          </summary>
+          <div class="import-row">
+            <div class="field">
+              <label for="create-bank-name">Nombre del archivo</label>
+              <input
+                id="create-bank-name"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Init Bank.fxb"
+              />
+            </div>
+            <div class="field">
+              <label for="create-mode">Contenido</label>
+              <select id="create-mode">
+                <option value="programNames">Programas FxBk (con nombres)</option>
+                <option value="chunk">Chunk opaco FBCh</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="create-order">Orden de bytes</label>
+              <select id="create-order">
+                <option value="little">little-endian (legacy de Windows)</option>
+                <option value="big">big-endian (estándar VST2)</option>
+              </select>
+            </div>
+          </div>
+          <div id="create-program-rows">
+            <div class="import-row">
+              <div class="field field-wide">
+                <label for="create-program-names">Nombres de programa (uno por línea)</label>
+                <textarea
+                  id="create-program-names"
+                  rows="4"
+                  spellcheck="false"
+                  placeholder="Init&#10;Bright Rhodes&#10;Dark Rhodes"
+                ></textarea>
+              </div>
+              <div class="field">
+                <label for="create-fx-version">fxVersion</label>
+                <input id="create-fx-version" type="number" min="0" step="1" placeholder="0" />
+              </div>
+              <div class="field">
+                <label for="create-num-params">Parámetros por programa</label>
+                <input id="create-num-params" type="number" min="0" step="1" placeholder="0" />
+              </div>
+            </div>
+          </div>
+          <div id="create-chunk-rows" hidden>
+            <div class="import-row">
+              <div class="field field-wide">
+                <label for="create-chunk-hex">Chunk en hexadecimal, sin <code>0x</code></label>
+                <textarea
+                  id="create-chunk-hex"
+                  rows="3"
+                  spellcheck="false"
+                  placeholder="beef cafe"
+                ></textarea>
+              </div>
+            </div>
+            <div class="import-row">
+              <div class="field">
+                <label for="create-chunk-version">Versión del formato</label>
+                <select id="create-chunk-version">
+                  <option value="1">1 (solo cabecera)</option>
+                  <option value="2">2 (con programa activo)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="create-current-program">Programa activo (solo v2)</label>
+                <input id="create-current-program" type="number" min="0" step="1" placeholder="0" />
+              </div>
+              <div class="field">
+                <label for="create-chunk-programs">Programas informativos</label>
+                <input id="create-chunk-programs" type="number" min="0" step="1" placeholder="0" />
+              </div>
+            </div>
+          </div>
+          <div class="import-row">
+            <label class="check">
+              <input id="create-overwrite" type="checkbox" />
+              Reemplazar si ya existe
+            </label>
+            <button id="create-bank-button" class="primary" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Crear banco
+            </button>
+          </div>
+          <p class="note">
+            Los campos numéricos del archivo se escriben en el orden elegido
+            (<code>little</code> es lo habitual en Windows, <code>big</code> el estándar
+            VST2). El <code>uniqueID</code> sale del <code>id</code> de
+            <code>vfxinfo.txt</code>; en modo chunk el contenido se incrusta tal cual.
+          </p>
+        </details>
       </section>
 
       <section

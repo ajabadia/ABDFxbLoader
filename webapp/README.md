@@ -247,10 +247,17 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
    resultado por archivo —el servidor responde NDJSON (`POST
    /library/banks/import/stream`), así que la barra avanza en cuanto se resuelve
    cada banco, también dentro del trozo, y no al cerrarlo; por encima de 50
-   rutas la vista las manda en peticiones de 50 y va acumulando el resultado de
+   rutas   la vista las manda en peticiones de 50 y va acumulando el resultado de
    cada archivo en la misma lista, con una barra de progreso que cuenta los
    archivos resueltos sobre el total del cuadro de texto y el avance
-   «Importando 50 de 120 archivo(s)…»—; **Exportar un banco en otro orden de bytes**, que
+   «Importando 50 de 120 archivo(s)…»—; **Crear un banco .fxb desde cero**
+   (`POST /library/banks/create`), con el nombre del archivo, el modo
+   (**Programas FxBk** con nombres, `fxVersion` y parámetros por programa, o
+   **Chunk opaco FBCh** con el chunk en hexadecimal, versión 1/2, programa
+   activo y programas informativos), el orden de bytes `little/big` común a los
+   dos modos y un reemplazo opcional; el `uniqueID` sale del `id` de
+   `vfxinfo.txt` y al terminar se refresca el listado con el banco nuevo;
+   **Exportar un banco en otro orden de bytes**, que
    convierte un banco importado a `little`/`big` y lo guarda al lado como
    `banco-le.fxb`/`banco-be.fxb` sin tocar el original (para los bancos legacy
    que guardó un plugin de Windows); **Convertir orden de bytes**, junto al
@@ -1474,7 +1481,7 @@ tipo).
 ### La acción `create-bank`
 
 La creación de bancos desde cero (endpoint de librería `POST
-/library/banks/create`, sin panel propio en la UI) registra la acción
+/library/banks/create`) registra la acción
 `create-bank`: el resumen narra si creó o reemplazó el `.fxb` y, en el modo
 `chunk`, lo señala como un banco FBCh con el tamaño del chunk («Creado banco
 X.fxb (FBCh, chunk de N bytes)»); el detalle añade el formato (`FBCh` versión 1

@@ -176,6 +176,14 @@ export interface FxbClient {
       handlers?: BankImportStreamHandlers,
     ): Promise<BankImportStreamResult>;
     /**
+     * Crea un banco `.fxb` desde cero en la carpeta de presets del plugin: en
+     * modo `programNames` genera un `FxBk` con programas, y en modo `chunk` un
+     * `FBCh` con el contenido opaco en hexadecimal. Orden little/big común.
+     */
+    createBank(
+      body: RequestBody<'/library/banks/create', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/create', 'post'>>;
+    /**
      * Convierte **en el sitio** el banco por defecto del plugin, guardando una
      * copia del original como `<banco>.orig` antes de reescribirlo.
      */
@@ -560,6 +568,10 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
           SuccessBody<'/library/banks/import', 'post'>
         >,
       importBanksStream: (body, handlers = {}) => streamBankImport(body, handlers),
+      createBank: (body) =>
+        request('POST', '/library/banks/create', body) as Promise<
+          SuccessBody<'/library/banks/create', 'post'>
+        >,
       convertDefaultBank: (body) =>
         request('POST', '/library/banks/convert', body) as Promise<
           SuccessBody<'/library/banks/convert', 'post'>

@@ -1256,15 +1256,22 @@ textarea {
 }
 
 details.import,
-details.export {
+details.export,
+details.create {
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
 details.import summary,
-details.export summary {
+details.export summary,
+details.create summary {
   margin-bottom: 10px;
+}
+
+.field-wide {
+  min-width: 300px;
+  flex: 2;
 }
 
 details.import label[for='import-paths'] {
