@@ -1215,6 +1215,146 @@
         ]
       }
     },
+    "/library/banks/create": {
+      "post": {
+        "description": "Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo escribe en `<plugin>\\<programDirName>\\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.",
+        "operationId": "LibraryController_createBank",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryBanksCreateRequestDto"
+              },
+              "examples": {
+                "basico": {
+                  "summary": "Banco de inicialización con tres programas",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "bankName": "Init Bank.fxb",
+                    "programNames": [
+                      "Init",
+                      "Bright Rhodes",
+                      "Dark Rhodes"
+                    ]
+                  }
+                },
+                "conParametros": {
+                  "summary": "Con parámetros a cero y versión del plugin",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "programNames": [
+                      "Init"
+                    ],
+                    "numParams": 12,
+                    "fxVersion": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "El banco quedó escrito y revalidado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryBanksCreateResponseDto"
+                },
+                "example": {
+                  "plugin": {
+                    "name": "MySynth",
+                    "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                    "hasLoader": true,
+                    "hasVfxinfo": true,
+                    "hasWizard": true,
+                    "wizardId": "MySynth",
+                    "hasMeta": true,
+                    "pluginName": "MySynth.dll",
+                    "warnings": [],
+                    "compatible": true,
+                    "compatibilityIssues": []
+                  },
+                  "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                  "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Init Bank.fxb",
+                  "status": "created",
+                  "fourCc": "MySy",
+                  "bank": {
+                    "kind": "FxBk",
+                    "endianness": "little",
+                    "byteSize": 208,
+                    "version": 1,
+                    "uniqueId": "MySy",
+                    "uniqueIdValue": 1299796857,
+                    "fxVersion": 0,
+                    "numPrograms": 3,
+                    "currentProgram": null,
+                    "chunkSize": null
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "sinProgramas": {
+                    "summary": "Lista de programas vacía",
+                    "value": {
+                      "message": "programNames debe contener al menos un programa"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El archivo ya existe con `overwrite=false`, el plugin no tiene `vfxinfo.txt` o este no tiene línea `id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "sinId": {
+                    "summary": "vfxinfo sin línea `id`",
+                    "value": {
+                      "message": "el `vfxinfo.txt` del plugin no tiene línea `id` con el FourCC"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Crea un banco .fxb desde cero",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/library/banks/import/stream": {
       "post": {
         "description": "El mismo cuerpo que `POST /library/banks/import`, pero la respuesta es NDJSON: `start` con el total, un `bank` con el resultado de cada archivo (importado o rechazado) y `end` con el cuerpo completo. Así la barra avanza banco a banco. La petición se valida entera antes del primer byte: un 400/404 sigue siendo JSON. Si todos los bancos se rechazan, el flujo termina con `end` y la vista cuenta los `rejected`.",
@@ -5568,6 +5708,113 @@
           "presetsDir",
           "reference",
           "results"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryBanksCreateRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Raíz absoluta de la librería.",
+            "example": "C:\\VFX\\Library"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin dentro de `plugs\\`.",
+            "example": "MySynth"
+          },
+          "bankName": {
+            "type": "string",
+            "description": "Nombre del archivo, con o sin `.fxb`. Por defecto `<plugin>.fxb`.",
+            "example": "Init Bank.fxb"
+          },
+          "programNames": {
+            "description": "Nombres de programa, en orden; cada uno genera un `FxCk` con `numParams` parámetros a cero. Un nombre vacío se sustituye por `Program <n>`.",
+            "example": [
+              "Init",
+              "Bright Rhodes",
+              "Dark Rhodes"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "numParams": {
+            "type": "number",
+            "description": "Parámetros por programa; por defecto 0 (solo el nombre).",
+            "example": 12
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Reemplazar el archivo si ya existe. Por defecto `false`.",
+            "example": false
+          },
+          "fxVersion": {
+            "type": "number",
+            "description": "`fxVersion` declarada por el banco; por defecto 0.",
+            "example": 1000
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin",
+          "programNames"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryBanksCreateResponseDto": {
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "description": "Estado del plugin tras la creación.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginEntryDto"
+              }
+            ]
+          },
+          "presetsDir": {
+            "type": "string",
+            "description": "Carpeta de destino: `<plugin>\\<programDirName>\\`.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets"
+          },
+          "target": {
+            "type": "string",
+            "description": "Ruta absoluta del `.fxb` creado.",
+            "example": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Init Bank.fxb"
+          },
+          "status": {
+            "type": "string",
+            "description": "`created` si el archivo no existía, `overwritten` si se reemplazó.",
+            "enum": [
+              "created",
+              "overwritten"
+            ],
+            "example": "created"
+          },
+          "fourCc": {
+            "type": "string",
+            "description": "FourCC del plugin objetivo, del `id` de `vfxinfo.txt`.",
+            "example": "MySy"
+          },
+          "bank": {
+            "description": "Cabecera del banco ya revalidada tras la escritura.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankInfoDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "plugin",
+          "presetsDir",
+          "target",
+          "status",
+          "fourCc",
+          "bank"
         ],
         "additionalProperties": false
       },

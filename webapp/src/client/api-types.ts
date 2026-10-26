@@ -184,6 +184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/banks/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crea un banco .fxb desde cero
+         * @description Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo escribe en `<plugin>\<programDirName>\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.
+         */
+        post: operations["LibraryController_createBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/banks/import/stream": {
         parameters: {
             query?: never;
@@ -1402,6 +1422,74 @@ export interface components {
             reference: components["schemas"]["BankReferenceDto"];
             /** @description Un elemento por archivo enviado, en el mismo orden. */
             results: components["schemas"]["BankImportResultDto"][];
+        };
+        LibraryBanksCreateRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Nombre del archivo, con o sin `.fxb`. Por defecto `<plugin>.fxb`.
+             * @example Init Bank.fxb
+             */
+            bankName?: string;
+            /**
+             * @description Nombres de programa, en orden; cada uno genera un `FxCk` con `numParams` parámetros a cero. Un nombre vacío se sustituye por `Program <n>`.
+             * @example [
+             *       "Init",
+             *       "Bright Rhodes",
+             *       "Dark Rhodes"
+             *     ]
+             */
+            programNames: string[];
+            /**
+             * @description Parámetros por programa; por defecto 0 (solo el nombre).
+             * @example 12
+             */
+            numParams?: number;
+            /**
+             * @description Reemplazar el archivo si ya existe. Por defecto `false`.
+             * @example false
+             */
+            overwrite?: boolean;
+            /**
+             * @description `fxVersion` declarada por el banco; por defecto 0.
+             * @example 1000
+             */
+            fxVersion?: number;
+        };
+        LibraryBanksCreateResponseDto: {
+            /** @description Estado del plugin tras la creación. */
+            plugin: components["schemas"]["PluginEntryDto"];
+            /**
+             * @description Carpeta de destino: `<plugin>\<programDirName>\`.
+             * @example C:\VFX\Library\plugs\MySynth\presets
+             */
+            presetsDir: string;
+            /**
+             * @description Ruta absoluta del `.fxb` creado.
+             * @example C:\VFX\Library\plugs\MySynth\presets\Init Bank.fxb
+             */
+            target: string;
+            /**
+             * @description `created` si el archivo no existía, `overwritten` si se reemplazó.
+             * @example created
+             * @enum {string}
+             */
+            status: "created" | "overwritten";
+            /**
+             * @description FourCC del plugin objetivo, del `id` de `vfxinfo.txt`.
+             * @example MySy
+             */
+            fourCc: string;
+            /** @description Cabecera del banco ya revalidada tras la escritura. */
+            bank: components["schemas"]["BankInfoDto"];
         };
         LibraryBankExportRequestDto: {
             /**
@@ -3706,6 +3794,95 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryBanksImportErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_createBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBanksCreateRequestDto"];
+            };
+        };
+        responses: {
+            /** @description El banco quedó escrito y revalidado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "hasLoader": true,
+                     *         "hasVfxinfo": true,
+                     *         "hasWizard": true,
+                     *         "wizardId": "MySynth",
+                     *         "hasMeta": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "target": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Init Bank.fxb",
+                     *       "status": "created",
+                     *       "fourCc": "MySy",
+                     *       "bank": {
+                     *         "kind": "FxBk",
+                     *         "endianness": "little",
+                     *         "byteSize": 208,
+                     *         "version": 1,
+                     *         "uniqueId": "MySy",
+                     *         "uniqueIdValue": 1299796857,
+                     *         "fxVersion": 0,
+                     *         "numPrograms": 3,
+                     *         "currentProgram": null,
+                     *         "chunkSize": null
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBanksCreateResponseDto"];
+                };
+            };
+            /** @description Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El archivo ya existe con `overwrite=false`, el plugin no tiene `vfxinfo.txt` o este no tiene línea `id`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
                 };
             };
         };

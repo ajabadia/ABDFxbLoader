@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  buildFxBank,
   checkBankCompatibility,
   convertFxbEndianness,
   parseFxbBank,
@@ -175,6 +176,52 @@ test('compatibilidad: compatible, incompatible y sin verificar', () => {
       file: null,
     }).compatibility,
     'unverified',
+  );
+});
+
+test('buildFxBank crea un banco que repasa la validación', () => {
+  const data = buildFxBank({
+    uniqueId: 0x4d795379,
+    fxVersion: 1000,
+    programNames: ['Init', 'Bright Rhodes'],
+    numParams: 3,
+  });
+  const parsed = parseFxbBank(data);
+
+  assert.deepEqual(parsed.issues, []);
+  assert.equal(parsed.bank?.kind, 'FxBk');
+  assert.equal(parsed.bank?.uniqueId, 'MySy');
+  assert.equal(parsed.bank?.uniqueIdValue, 0x4d795379);
+  assert.equal(parsed.bank?.fxVersion, 1000);
+  assert.equal(parsed.bank?.numPrograms, 2);
+  // 156 de cabecera + 2 programas de (8 + 48 + 4*3) bytes.
+  assert.equal(data.length, 156 + 2 * 68);
+  assert.equal(parsed.bank?.byteSize, data.length - 8);
+
+  assert.match(data.toString('latin1'), /Init/);
+  assert.match(data.toString('latin1'), /Bright Rhodes/);
+});
+
+test('buildFxBank sustituye nombres vacíos y valida los límites', () => {
+  const empty = parseFxbBank(buildFxBank({ uniqueId: 1, programNames: ['  '] }));
+  assert.equal(empty.bank?.numPrograms, 1);
+
+  assert.throws(() => buildFxBank({ uniqueId: 1, programNames: [] }), /al menos un programa/);
+  assert.throws(
+    () => buildFxBank({ uniqueId: 1, programNames: ['a', 5 as never] }),
+    /programNames\[1\] debe ser una cadena/,
+  );
+  assert.throws(
+    () => buildFxBank({ uniqueId: 1, programNames: ['a'], numParams: -1 }),
+    /numParams/,
+  );
+  assert.throws(
+    () =>
+      buildFxBank({
+        uniqueId: 1,
+        programNames: Array.from({ length: 4097 }, (_, index) => `p${index}`),
+      }),
+    /4096 programas/,
   );
 });
 

@@ -285,6 +285,8 @@ export interface FxbClient {
       genre?: string;
       offset?: number;
       limit?: number;
+      sort?: string;
+      dir?: 'asc' | 'desc' | string;
     }): Promise<WizardListResponse>;
     /** Busca un wizard coincidente por ID VST, nombre o nombre de DLL. */
     match(query: { id?: string; name?: string; dllName?: string }): Promise<WizardMatchResponse>;

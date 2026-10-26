@@ -92,6 +92,7 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/association-audit/list',
     '/library/association-audit/stream',
     '/library/banks/convert',
+    '/library/banks/create',
     '/library/banks/discard-backup',
     '/library/banks/export',
     '/library/banks/import',

@@ -1506,6 +1506,102 @@ export const LIBRARY_IMPORT_REJECTED_EXAMPLE = {
   ],
 };
 
+/** Cuerpo de `POST /library/banks/create`: crea un banco .fxb desde cero. */
+export class LibraryBanksCreateRequestDto {
+  @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
+  libraryRoot!: string;
+
+  @ApiProperty({ description: 'Nombre de la carpeta del plugin dentro de `plugs\\`.', example: 'MySynth' })
+  plugin!: string;
+
+  @ApiPropertyOptional({
+    description: 'Nombre del archivo, con o sin `.fxb`. Por defecto `<plugin>.fxb`.',
+    example: 'Init Bank.fxb',
+  })
+  bankName?: string;
+
+  @ApiProperty({
+    description:
+      'Nombres de programa, en orden; cada uno genera un `FxCk` con `numParams` ' +
+      'parámetros a cero. Un nombre vacío se sustituye por `Program <n>`.',
+    type: [String],
+    example: ['Init', 'Bright Rhodes', 'Dark Rhodes'],
+  })
+  programNames!: string[];
+
+  @ApiPropertyOptional({
+    description: 'Parámetros por programa; por defecto 0 (solo el nombre).',
+    example: 12,
+  })
+  numParams?: number;
+
+  @ApiPropertyOptional({
+    description: 'Reemplazar el archivo si ya existe. Por defecto `false`.',
+    example: false,
+  })
+  overwrite?: boolean;
+
+  @ApiPropertyOptional({
+    description: '`fxVersion` declarada por el banco; por defecto 0.',
+    example: 1000,
+  })
+  fxVersion?: number;
+}
+
+export class LibraryBanksCreateResponseDto {
+  @ApiProperty({ description: 'Estado del plugin tras la creación.', type: () => PluginEntryDto })
+  plugin!: PluginEntryDto;
+
+  @ApiProperty({
+    description: 'Carpeta de destino: `<plugin>\\<programDirName>\\`.',
+    example: PRESETS_DIR,
+  })
+  presetsDir!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta del `.fxb` creado.',
+    example: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Init Bank.fxb',
+  })
+  target!: string;
+
+  @ApiProperty({
+    description: '`created` si el archivo no existía, `overwritten` si se reemplazó.',
+    enum: ['created', 'overwritten'],
+    example: 'created',
+  })
+  status!: 'created' | 'overwritten';
+
+  @ApiProperty({
+    description: 'FourCC del plugin objetivo, del `id` de `vfxinfo.txt`.',
+    example: 'MySy',
+  })
+  fourCc!: string;
+
+  @ApiProperty({
+    description: 'Cabecera del banco ya revalidada tras la escritura.',
+    type: () => BankInfoDto,
+  })
+  bank!: BankInfoDto;
+}
+
+export const LIBRARY_BANK_CREATE_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+  presetsDir: PRESETS_DIR,
+  target: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Init Bank.fxb',
+  status: 'created',
+  fourCc: 'MySy',
+  bank: {
+    ...LIBRARY_BANK_EXAMPLE,
+    numPrograms: 3,
+    fxVersion: 0,
+  },
+};
+
+/** Sin línea `id` en `vfxinfo.txt` no hay FourCC que usar. */
+export const LIBRARY_BANK_CREATE_NO_ID_ERROR_EXAMPLE = {
+  message: 'el `vfxinfo.txt` del plugin no tiene línea `id` con el FourCC',
+};
+
 /** Vista de bancos: lista el contenido y el estado de la configuración. */
 export const LIBRARY_BANKS_LIST_EXAMPLE = {
   plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,

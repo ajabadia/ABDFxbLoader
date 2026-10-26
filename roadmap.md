@@ -36,7 +36,7 @@
 
 - **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
 - **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [COMPLETO]**
-- **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [PLANIFICADO]**
+- **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [EN MARCHA]**
 
 ## Objetivos Arquitectónicos
 
@@ -358,9 +358,10 @@ Modificados:
 
 > **Objetivo:** Ampliar las capacidades de gestión de presets permitiendo no solo importar y convertir bancos existentes, sino crearlos, descomponerlos y editarlos directamente desde la web sin depender de un DAW externo.
 
-- [ ] **Generador de bancos FXB:**
-  - Creación de archivos `.fxb` válidos desde cero con la cabecera estándar de Steinberg (`CcnK` / `FBCh` o `FxBk`).
-  - Asignación del FourCC / VST Unique ID correspondiente al plugin objetivo para asegurar compatibilidad.
+- [x] **Generador de bancos FXB (parcial: backend, COMPLETO como `POST /library/banks/create`):**
+  - [x] Creación desde cero de bancos `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0), cabecera estándar de Steinberg; el FourCC sale del `id` de `vfxinfo.txt` del plugin objetivo y el banco se revalida al escribirlo.
+  - [ ] Soporte del chunk opaco `FBCh` para plugins con estado que no expongan parámetros.
+  - [ ] Interfaz en la web (el backend y su contrato OpenAPI ya están en verde).
 - [ ] **Empaquetador y extractor `.fxp` ↔ `.fxb`:**
   - Importación por lotes de presets individuales (`.fxp`) para combinarlos en un banco unificado (`.fxb`).
   - Extracción de un banco `.fxb` hacia una colección de archivos `.fxp` individuales con nombre normalizado.

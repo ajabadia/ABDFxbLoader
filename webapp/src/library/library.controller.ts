@@ -86,6 +86,10 @@ import {
   LibraryBanksImportErrorDto,
   LibraryBanksImportRequestDto,
   LibraryBanksImportResponseDto,
+  LibraryBanksCreateRequestDto,
+  LibraryBanksCreateResponseDto,
+  LIBRARY_BANK_CREATE_EXAMPLE,
+  LIBRARY_BANK_CREATE_NO_ID_ERROR_EXAMPLE,
   LibraryBanksListRequestDto,
   LibraryBanksListResponseDto,
   LibraryBankRestoreRequestDto,
@@ -119,6 +123,7 @@ import {
 } from './library.types';
 import type {
   BankConvertInput,
+  BankCreateInput,
   BankDiscardBackupInput,
   BankExportInput,
   BankImportInput,
@@ -198,6 +203,18 @@ function readBankReference(body: Record<string, unknown>): {
       ? {}
       : { expectedFxVersion: expectedFxVersion as number }),
   };
+}
+
+/** Cuerpo de `POST /library/banks/import` y de su variante NDJSON. */
+function readProgramNames(body: Record<string, unknown>): string[] {
+  const value = body['programNames'];
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new BadRequestException('programNames debe ser un array con al menos un nombre');
+  }
+  if (!value.every((item) => typeof item === 'string')) {
+    throw new BadRequestException('programNames debe contener cadenas');
+  }
+  return value as string[];
 }
 
 /** Cuerpo de `POST /library/banks/import` y de su variante NDJSON. */
@@ -671,6 +688,93 @@ export class LibraryController {
         });
       }
       return result;
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+    @Post('banks/create')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Crea un banco .fxb desde cero',
+    description:
+      'Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo ' +
+      'escribe en `<plugin>\\<programDirName>\\`. El FourCC sale del `id` de `vfxinfo.txt` ' +
+      'del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.',
+  })
+  @ApiBody({
+    type: LibraryBanksCreateRequestDto,
+    examples: {
+      basico: {
+        summary: 'Banco de inicialización con tres programas',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          bankName: 'Init Bank.fxb',
+          programNames: ['Init', 'Bright Rhodes', 'Dark Rhodes'],
+        },
+      },
+      conParametros: {
+        summary: 'Con parámetros a cero y versión del plugin',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          programNames: ['Init'],
+          numParams: 12,
+          fxVersion: 1000,
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'El banco quedó escrito y revalidado.',
+    type: LibraryBanksCreateResponseDto,
+    example: LIBRARY_BANK_CREATE_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` ' +
+      'fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      sinProgramas: {
+        summary: 'Lista de programas vacía',
+        value: { message: 'programNames debe contener al menos un programa' },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description:
+      'El archivo ya existe con `overwrite=false`, el plugin no tiene `vfxinfo.txt` o este ' +
+      'no tiene línea `id`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      sinId: {
+        summary: 'vfxinfo sin línea `id`',
+        value: LIBRARY_BANK_CREATE_NO_ID_ERROR_EXAMPLE,
+      },
+    },
+  })
+  async createBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankCreateInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      programNames: readProgramNames(record),
+      ...(typeof record['bankName'] === 'string' ? { bankName: record['bankName'] } : {}),
+      ...(record['numParams'] === undefined ? {} : { numParams: record['numParams'] as number }),
+      ...(record['fxVersion'] === undefined ? {} : { fxVersion: record['fxVersion'] as number }),
+      ...(optionalBoolean(record, 'overwrite') === undefined
+        ? {}
+        : { overwrite: optionalBoolean(record, 'overwrite') }),
+    };
+    try {
+      return await this.service.createBank(input);
     } catch (error) {
       mapDomainError(error);
     }
