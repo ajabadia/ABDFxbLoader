@@ -533,6 +533,15 @@ const DYNAMIC_CALLS = [
 ];
 
 /**
+ * Iconos del sprite usados sin selector: `createIcon('trash')` y el `icon:` de
+ * los chips de filtro generan el `<use href="#icon-…">` sobre la marcha.
+ */
+const ICON_USES = [
+  new RegExp(String.raw`\bcreateIcon\s*\(\s*${STRING_LITERAL}`, 'g'),
+  new RegExp(String.raw`\bicon:\s*${STRING_LITERAL}`, 'g'),
+];
+
+/**
  * Extrae de un fuente de la UI los ids y selectores literales que usa. Los
  * selectores dinámicos se devuelven aparte para que el test pueda rechazarlos.
  */
@@ -561,6 +570,13 @@ export function scanUiSource(source: string, file: string): UiReferences {
         file,
         line: lineAt(source, match.index),
       });
+    }
+  }
+
+  // Un icono pedido por nombre apunta a la `<symbol>` con su id.
+  for (const pattern of ICON_USES) {
+    for (const match of source.matchAll(pattern)) {
+      references.ids.push({ value: `icon-${literalValue(match)}`, file, line: lineAt(source, match.index) });
     }
   }
 

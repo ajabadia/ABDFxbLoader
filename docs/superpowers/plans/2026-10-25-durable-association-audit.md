@@ -15,7 +15,10 @@
 - Lectura tolerante: las líneas corruptas se saltan; sin almacén, snapshot vacío
   con `exists: false`.
 - Tests: `webapp/test/association-audit.service.test.ts` y los contratos de
-  `openapi.test.ts` y `openapi.examples.test.ts`.
+  `openapi.test.ts` y `openapi.examples.test.ts`, más
+  `webapp/test/association-audit.docs.test.ts` con los ejemplos ejecutados
+  contra la API real (vacío, instalación, preferencia e importación con
+  colisión enlazadas por `packageSource`).
 
 Queda fuera lo listado al final del documento: visor de UI, compresión o
 rotación del JSONL y auditoría de más campos de banco.

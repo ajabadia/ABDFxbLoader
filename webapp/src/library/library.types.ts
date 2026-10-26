@@ -230,6 +230,8 @@ export interface BankCreateInput {
   overwrite?: boolean;
   /** Reemplaza el `fxVersion` del fichero; por defecto 0. */
   fxVersion?: number;
+  /** Orden de bytes del archivo: little en Windows (por defecto) o el estándar big de Steinberg. */
+  endianness?: FxbEndianness;
   /**
    * Modo de creación: `programNames` (por defecto) genera programas
    * `FxCk`; `chunk` genera un banco `CcnK/FBCh` con contenido opaco.

@@ -197,3 +197,93 @@ test('el 400 del listado responde el cuerpo exacto que documenta el ejemplo', as
     .expect(400);
   assert.equal(badLimit.body.message, 'limit debe ser un entero positivo');
 });
+
+test('la importación real deja eventos de importación y de colisión enlazados por packageSource', async (t) => {
+  const base = await mkdtemp(path.join(tmpdir(), 'fxb-audit-import-'));
+  t.after(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  // Paquete con dos plugins: uno nuevo y otro que ya existe en destino.
+  const pack = path.join(base, 'pack.vfxlibrary');
+  const packPlugs = path.join(pack, 'plugs');
+  await mkdir(path.join(packPlugs, 'Nuevo', 'Nuevo'), { recursive: true });
+  await writeFile(path.join(packPlugs, 'Nuevo', 'Nuevo.dll'), pe32Dll());
+  await writeFile(
+    path.join(packPlugs, 'Nuevo', 'vfxinfo.txt'),
+    Buffer.from('name: Nuevo\r\nid: 42\r\ndll_name: Nuevo/Nuevo.dll\r\n', 'latin1'),
+  );
+  await mkdir(path.join(packPlugs, 'Repetido', 'Repetido'), { recursive: true });
+  await writeFile(path.join(packPlugs, 'Repetido', 'Repetido.dll'), pe32Dll());
+
+  const target = path.join(base, 'lib');
+  await mkdir(path.join(target, 'plugs', 'Repetido'), { recursive: true });
+  await writeFile(
+    path.join(target, 'plugs', 'Repetido', 'vfxinfo.txt'),
+    Buffer.from('name: Repetido\r\n', 'latin1'),
+  );
+
+  await http()
+    .post('/library/import-package')
+    .send({ packagePath: pack, targetLibraryRoot: target, collisionPolicy: 'skip' })
+    .expect(200);
+
+  const res = await http()
+    .post('/library/association-audit/list')
+    .send({ libraryRoot: target })
+    .expect(200);
+
+  const imported = res.body.entries.find((entry: { kind: string }) => entry.kind === 'import');
+  const collision = res.body.entries.find((entry: { kind: string }) => entry.kind === 'collision');
+  const change = res.body.entries.find(
+    (entry: { kind: string }) => entry.kind === 'association-change',
+  );
+  assert.ok(imported, 'la importación deja su evento');
+  assert.ok(collision, 'la colisión deja su evento');
+  assert.ok(change, 'el plugin importado deja su cambio de asociación');
+
+  // Formas que cada tipo de evento tiene hoy sobre el disco.
+  assert.deepEqual(keys(imported), ['kind', 'libraryRoot', 'packageSource', 'repairedBanks', 'ts']);
+  assert.deepEqual(keys(collision), [
+    'collisionNames',
+    'collisionPolicy',
+    'kind',
+    'libraryRoot',
+    'packageSource',
+    'plugin',
+    'ts',
+  ]);
+  // El cambio enlazado con una importación lleva además su packageSource.
+  const documentedKeys = Object.keys(ASSOCIATION_AUDIT_LIST_EXAMPLE.entries[0]!)
+    .concat('packageSource')
+    .sort();
+  assert.deepEqual(keys(change), documentedKeys);
+
+  assert.equal(imported.libraryRoot, target);
+  assert.deepEqual(imported.repairedBanks, []);
+  assert.equal(collision.plugin, 'Repetido');
+  assert.equal(collision.collisionPolicy, 'skip');
+  assert.deepEqual(collision.collisionNames, ['Repetido']);
+  assert.equal(change.plugin, 'Nuevo');
+  assert.equal(change.field, 'dll_name');
+  assert.equal(change.previousValue, null);
+  assert.equal(change.newValue, 'Nuevo/Nuevo.dll');
+
+  // Los tres vienen de la misma importación: mismo packageSource.
+  const sources = [imported.packageSource, collision.packageSource, change.packageSource];
+  assert.equal(sources[0], sources[1], 'import y collision comparten packageSource');
+  assert.equal(sources[0], sources[2], 'el cambio de asociación comparte packageSource');
+  assert.ok(String(sources[0]).endsWith('pack.vfxlibrary'), 'packageSource es el paquete');
+
+  // El filtro por kind recupera cada evento por separado.
+  const collisions = await http()
+    .post('/library/association-audit/list')
+    .send({ libraryRoot: target, kind: 'collision' })
+    .expect(200);
+  assert.equal(collisions.body.total, 1);
+  const changes = await http()
+    .post('/library/association-audit/list')
+    .send({ libraryRoot: target, kind: 'association-change' })
+    .expect(200);
+  assert.equal(changes.body.total, 1);
+});

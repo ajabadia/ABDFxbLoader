@@ -347,7 +347,7 @@ test('index.html no tiene ids, clases, data-* ni estados ARIA que no use nadie',
   // Sin estos mínimos, un cambio en el escáner dejaría el test comparando nada.
   assert.ok(audit.ids >= 40, `solo se auditaron ${audit.ids} ids`);
   assert.ok(audit.classes >= 25, `solo se auditaron ${audit.classes} clases`);
-  assert.ok(audit.data >= 7, `solo se auditaron ${audit.data} atributos data-*`);
+  assert.ok(audit.data >= 2, `solo se auditaron ${audit.data} atributos data-*`);
   assert.ok(audit.aria >= 8, `solo se auditaron ${audit.aria} atributos ARIA`);
 });
 
@@ -356,7 +356,7 @@ test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.h
   // `aria-selected` no lo usa nadie: `aria-checked` lo mantienen las opciones de
   // los filtros, `aria-pressed` sus chips y `aria-expanded` los menús.
   const marker =
-    '<p id="fxb-id-fantasma" class="fxb-clase-fantasma" data-field="fxb-campo-fantasma" ' +
+    '<p id="fxb-id-fantasma" class="fxb-clase-fantasma" data-fantasma="fxb-campo-fantasma" ' +
     'aria-selected="false">x</p>';
   const mutated = html.replace('</main>', `${marker}\n    </main>`);
   assert.notEqual(mutated, html, 'la mutación debe llegar al documento');
@@ -367,8 +367,8 @@ test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.h
   assert.deepEqual(audit.deadClasses, ['fxb-clase-fantasma']);
   assert.deepEqual(
     audit.deadData,
-    ['data-field="fxb-campo-fantasma"'],
-    'la vista lee otros valores de data-field, pero no este',
+    ['data-fantasma="fxb-campo-fantasma"'],
+    'la vista no lee ese atributo ni su valor',
   );
   assert.deepEqual(
     audit.deadAria,

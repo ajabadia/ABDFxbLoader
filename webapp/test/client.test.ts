@@ -554,6 +554,39 @@ function tick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+test('associationAudit.list manda el filtro por plugin en el cuerpo', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fxb-client-audit-'));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const line = (plugin: string, ts: string): string =>
+    `${JSON.stringify({
+      ts,
+      kind: 'association-change',
+      plugin,
+      libraryRoot: root,
+      field: 'dll_name',
+      previousValue: 'a.dll',
+      newValue: 'b.dll',
+    })}\n`;
+  await writeFile(
+    path.join(root, 'fxbLoader.audit.jsonl'),
+    `${line('Synth', '2026-10-25T09:32:11.482Z')}${line('OtroModulo', '2026-10-25T09:35:02.100Z')}`,
+    'utf8',
+  );
+
+  const client = createFxbClient({ baseUrl });
+
+  const all = await client.associationAudit.list({ libraryRoot: root });
+  assert.equal(all.exists, true);
+  assert.equal(all.total, 2, 'sin filtro se leen las dos líneas del almacén');
+
+  const filtered = await client.associationAudit.list({ libraryRoot: root, plugin: 'Synth' });
+  assert.equal(filtered.total, 1, 'el filtro por plugin viaja en el cuerpo y lo aplica el servidor');
+  assert.equal(filtered.entries[0]?.plugin, 'Synth');
+  assert.match(filtered.auditPath, /fxbLoader\.audit\.jsonl$/);
+});
+
 /** `fetch` falso que devuelve un flujo que el test controla trozo a trozo. */
 function controlledStream(): {
   fetch: typeof globalThis.fetch;

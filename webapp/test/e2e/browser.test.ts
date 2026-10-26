@@ -86,14 +86,32 @@ async function waitForText(page: Page, selector: string, text: string | RegExp):
   await page.locator(selector, { hasText: text }).first().waitFor({ timeout: 20_000 });
 }
 
+/**
+ * Espera a que el número de filas marcadas sea el esperado: los filtros se
+ * aplican con debounce, así que el texto puede aparecer (render anterior) y
+ * volverse a sustituir por el render según llega la respuesta del servidor.
+ */
+async function waitForRowCount(page: Page, selector: string, count: number): Promise<void> {
+  const locator = page.locator(`${selector} tbody tr[data-row-id]`);
+  if (await locator.count() !== count) {
+    await locator.first().waitFor({ state: count === 0 ? 'detached' : 'visible', timeout: 20_000 });
+  }
+  if (await locator.count() !== count) {
+    await page.waitForFunction(
+      `document.querySelectorAll("${selector} tbody tr[data-row-id]").length === ${count}`,
+      { timeout: 20_000 },
+    );
+  }
+}
+
 function pluginRow(page: Page): Locator {
-  return page.locator('#plugins tr').filter({ hasText: PLUGIN });
+  return page.locator('#plugins-table tbody tr').filter({ hasText: PLUGIN });
 }
 
 /** Despliega el menú «···» de la fila y pulsa la opción elegida. */
 async function clickRowAction(
   row: Locator,
-  action: 'toggle' | 'banks' | 'meta',
+  action: 'toggle' | 'banks' | 'meta' | 'log',
 ): Promise<void> {
   await row.locator('[data-action="menu"]').click();
   await row.locator(`[data-action="${action}"]`).click();
@@ -187,7 +205,7 @@ test(
 
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
       await waitForText(page, '#summary-text', '0 de 3 con el cargador');
-      assert.equal(await page.locator('#plugins tr').count(), 3);
+      assert.equal(await page.locator('#plugins-table tbody tr').count(), 3);
 
       const row = pluginRow(page);
       assert.equal(await row.count(), 1, `no hay fila para ${PLUGIN}`);
@@ -216,7 +234,7 @@ test(
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 incompatible/);
 
-      const blockedRow = page.locator('#plugins tr').filter({ hasText: 'GrandPiano' });
+      const blockedRow = page.locator('#plugins-table tbody tr').filter({ hasText: 'GrandPiano' });
       assert.equal(
         await blockedRow.locator('[data-field="compatibility"]').textContent(),
         'incompatible',
@@ -625,7 +643,7 @@ test(
       // La barra de progreso solo vive mientras dura el lote.
       assert.equal(await page.locator('#batch-progress').isHidden(), true);
       assert.equal(
-        await page.locator('#plugins tr.batch-running, #plugins tr.batch-done').count(),
+        await page.locator('#plugins-table tbody tr.batch-running, #plugins-table tbody tr.batch-done').count(),
         0,
         'las filas quedan sin marcar al terminar',
       );
@@ -1837,7 +1855,7 @@ test(
       await page.click('#root-browse');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
       assert.equal(await page.locator('#library-root').inputValue(), library);
-      assert.equal(await page.locator('#plugins tr').count(), 3);
+      assert.equal(await page.locator('#plugins-table tbody tr').count(), 3);
 
       /* 2. DLL del cargador: elige y revalida --------------------------- */
       await page.locator('#scan-form details > summary').click();
@@ -2208,9 +2226,10 @@ test(
     const library = path.join(temp, 'library');
     await cp(LIBRARY_SOURCE, library, { recursive: true });
 
-    // Copiar plugins dummy para tener 8 plugins y probar paginación de 5 en 5.
+    // Copiar plugins dummy para pasar del tamaño de página por defecto (25) y
+    // poder navegar de verdad entre páginas.
     const plugsDir = path.join(library, 'plugs');
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 28; i++) {
       await cp(path.join(plugsDir, 'AnalogSynth'), path.join(plugsDir, `Synth-${i}`), {
         recursive: true,
       });
@@ -2253,33 +2272,38 @@ test(
       await page.click('#scan-button');
 
       await page.waitForSelector('#results:not([hidden])');
-      await page.waitForSelector('#pagination:not([hidden])');
+      await page.waitForSelector('#plugins-table .table-pagination');
 
-      // Tamaño de página por defecto es 10.
-      const defaultPageSize = await page.inputValue('#page-size');
-      assert.equal(defaultPageSize, '10', 'por defecto el paginador muestra 10');
-
-      // El botón Anterior está deshabilitado en la primera página.
-      const prevDisabled = await page.isDisabled('#page-prev');
+      // El tamaño por defecto lo fija la vista del catálogo.
+      const defaultPageSize = await page.inputValue('#plugins-table .pagination-select');
+      assert.equal(defaultPageSize, '25', 'por defecto el paginador muestra 25');
+      const prevDisabled = await page.isDisabled('#plugins-table .pagination-btn:has-text("Anterior")');
       assert.equal(prevDisabled, true, 'el botón Anterior debe estar deshabilitado en página 1');
 
-      // Cambiar a 5 por página.
-      await page.selectOption('#page-size', '5');
-      const rowsCount = await page.$$eval('#plugins tr', (rows) => rows.length);
-      assert.equal(rowsCount, 5, 'debe mostrar exactamente 5 filas al elegir tamaño 5');
+      // Cambiar a 50 por página: caben todos los plugins.
+      await page.selectOption('#plugins-table .pagination-select', '50');
+      const rowsCount = await page.$$eval('#plugins-table tbody tr', (rows) => rows.length);
+      assert.equal(rowsCount, 31, 'con 50 por página se ven todos los plugins');
 
-      const pageInfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
-      assert.match(pageInfoText ?? '', /^1–5 de \d+$/, 'page-info refleja el rango');
+      const pageInfoText = await page.$eval('#plugins-table .pagination-info', (el) => el.textContent?.trim());
+      assert.match(pageInfoText ?? '', /^1–31 de 31$/, 'page-info refleja el rango completo');
+
+      // Volver a 25 por página: quedan 6 plugins fuera de la primera página.
+      await page.selectOption('#plugins-table .pagination-select', '25');
+      const firstPageRows = await page.$$eval('#plugins-table tbody tr', (rows) => rows.length);
+      assert.equal(firstPageRows, 25, 'con 25 por página solo se ven 25 filas');
+      const firstPageInfo = await page.$eval('#plugins-table .pagination-info', (el) => el.textContent?.trim());
+      assert.match(firstPageInfo ?? '', /^1–25 de 31$/, 'page-info refleja la primera página');
 
       // Avanzar a la página siguiente.
-      await page.click('#page-next');
-      const page2InfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
-      assert.match(page2InfoText ?? '', /^6–\d+ de \d+$/, 'page-info avanza a la página 2');
+      await page.click('#plugins-table .pagination-btn:has-text("Siguiente")');
+      const page2InfoText = await page.$eval('#plugins-table .pagination-info', (el) => el.textContent?.trim());
+      assert.match(page2InfoText ?? '', /^26–31 de 31$/, 'page-info avanza a la página 2');
 
       // Volver a la página anterior.
-      await page.click('#page-prev');
-      const backInfoText = await page.$eval('#page-info', (el) => el.textContent?.trim());
-      assert.match(backInfoText ?? '', /^1–5 de \d+$/, 'page-info retrocede a la página 1');
+      await page.click('#plugins-table .pagination-btn:has-text("Anterior")');
+      const backInfoText = await page.$eval('#plugins-table .pagination-info', (el) => el.textContent?.trim());
+      assert.match(backInfoText ?? '', /^1–25 de 31$/, 'page-info retrocede a la página 1');
 
       assert.deepEqual(
         pageErrors,
@@ -2376,7 +2400,7 @@ test(
 
     const rows = async (expected: number, scope: string): Promise<void> => {
       assert.equal(
-        await page.locator('#plugins tr').count(),
+        await page.locator('#plugins-table tbody tr').count(),
         expected === 0 ? 1 : expected,
         `${scope}: filas visibles`,
       );
@@ -2407,14 +2431,14 @@ test(
       await page.waitForSelector('#results:not([hidden])');
 
       // Reparto del fixture, leído de los badges con todos los ejes en «todos».
-      const total = await page.locator('#plugins tr').count();
+      const total = await page.locator('#plugins-table tbody tr').count();
       assert.ok(total > 0, 'el fixture debe traer plugins');
-      const installed = await page.locator('#plugins tr').evaluateAll((trs) =>
+      const installed = await page.locator('#plugins-table tbody tr').evaluateAll((trs) =>
         trs.filter(
           (tr) => tr.querySelector('[data-field="status"]')?.textContent?.trim() === 'con cargador',
         ).length,
       );
-      const incompatible = await page.locator('#plugins tr').evaluateAll((trs) =>
+      const incompatible = await page.locator('#plugins-table tbody tr').evaluateAll((trs) =>
         trs.filter(
           (tr) =>
             tr.querySelector('[data-field="compatibility"]')?.textContent?.trim() ===
@@ -2501,7 +2525,11 @@ test(
 
       await page.click('#filter-banks');
       assert.equal((await stateOf('banks')).expanded, 'true');
+      // El buscador vive ahora dentro de la tabla, así que su clic no cierra;
+      // lo hace un clic en algo ajeno al shell de la tabla.
       await page.click('#plugin-filter');
+      assert.equal((await stateOf('banks')).expanded, 'true', 'un clic dentro de la tabla no cierra');
+      await page.click('#theme-toggle');
       assert.equal((await stateOf('banks')).expanded, 'false', 'el clic fuera cierra el menú');
 
       /* Compatibilidad: el positivo es «Ningún incompatible» ------------------ */
@@ -2546,8 +2574,9 @@ test(
       await choose('banks', 'with-banks');
       assert.equal((await stateOf('banks')).tone, 'positive');
       await rows(0, 'con bancos');
+      // La tabla reutilizable trae toolbar y paginación: el aviso es su fila vacía.
       assert.equal(
-        (await page.textContent('#plugins'))?.trim(),
+        (await page.textContent('#plugins-table .table-empty'))?.trim(),
         'Ningún plugin coincide con el filtro.',
         'sin intersección se enseña el aviso',
       );
@@ -2654,7 +2683,7 @@ test(
 
     /** Nombres visibles ahora mismo, en orden alfabético. */
     const visible = async (): Promise<string[]> =>
-      (await page.locator('#plugins tr [data-field="name"]').allTextContents()).sort();
+      (await page.locator('#plugins-table tbody tr [data-field="name"]').allTextContents()).sort();
 
     const count = async (): Promise<string> =>
       ((await page.textContent('#filter-count')) ?? '').trim();
@@ -2691,7 +2720,7 @@ test(
 
       // Punto de partida comprobado: el banco copiado cuenta y los dos
       // instalados no se confunden con el que quedó sin instalar.
-      const rows = await page.locator('#plugins tr').evaluateAll((trs) =>
+      const rows = await page.locator('#plugins-table tbody tr').evaluateAll((trs) =>
         trs.map((tr) => ({
           name: tr.querySelector('[data-field="name"]')?.textContent?.trim() ?? '',
           status: tr.querySelector('[data-field="status"]')?.textContent?.trim() ?? '',
@@ -2749,7 +2778,7 @@ test(
       await choose('install', 'uninstalled');
       await expectRows([], 'no instalados + con bancos');
       assert.equal(
-        (await page.locator('#plugins').textContent())?.trim(),
+        (await page.locator('#plugins-table .table-empty').textContent())?.trim(),
         'Ningún plugin coincide con el filtro.',
         'sin intersección se enseña el aviso',
       );
@@ -2789,6 +2818,148 @@ test(
     }
   },
 );
+
+/**
+ * Visor de auditoría durable de asociaciones contra el servidor real: el
+ * snapshot de solo lectura montado sobre `mountTable`, primero sin almacén y
+ * después con el evento real que deja en `fxbLoader.audit.jsonl` el guardado
+ * de una preferencia de DLL, ejercitando el multiselección por `kind` y el
+ * rango de fechas por `ts`.
+ */
+test('visor de auditoría: snapshot vacío, evento real y filtros por tipo y fecha', { skip }, async (t) => {
+  assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+  const auditDll = 'OB-Xd-audit.dll';
+  const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-audit-'));
+  const library = path.join(temp, 'library');
+  // Nunca se toca el fixture: se trabaja sobre una copia.
+  await cp(path.join(LIBRARY_SOURCE, 'plugs'), path.join(library, 'plugs'), { recursive: true });
+
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}/`;
+  const logs: string[] = [];
+  const server = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: WEBAPP,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout?.setEncoding('utf8');
+  server.stderr?.setEncoding('utf8');
+  server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+  server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+  let browser: Browser | null = null;
+
+  t.after(async () => {
+    await browser?.close();
+    if (server.exitCode === null && server.signalCode === null) {
+      server.kill();
+      await new Promise((resolve) => server.once('exit', resolve));
+    }
+    await rm(temp, { recursive: true, force: true });
+  });
+
+  await waitForServer(server, url, logs);
+
+  const pluginDir = path.join(library, 'plugs', PLUGIN);
+
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  try {
+    /* Escaneo y visor sin almacén ---------------------------------- */
+    await page.goto(url);
+    await page.waitForSelector('#scan-form');
+    await page.fill('#library-root', library);
+    await page.click('#scan-button');
+    await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
+
+    await page.click('#audit-nav-btn');
+    await page.locator('#audit-drawer').waitFor({ state: 'visible' });
+    await waitForText(page, '#audit-summary', /Todavía no existe el almacén/);
+    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await page.click('#audit-close');
+    await page.locator('#audit-drawer').waitFor({ state: 'hidden' });
+
+    /* Un evento real: la preferencia de DLL ------------------------ */
+    await writeFile(path.join(pluginDir, auditDll), pe32Dll());
+    const row = pluginRow(page);
+    await clickRowAction(row, 'meta');
+    await page.locator('#meta').waitFor({ state: 'visible' });
+    await page.fill('#meta-dll', auditDll);
+    await page.click('#meta-dll-save');
+    await waitForText(page, '#meta-status', `Preferencia de DLL guardada: ${auditDll}`);
+    await page.click('#meta-close');
+    await page.locator('#meta').waitFor({ state: 'hidden' });
+
+    /* El visor monta el snapshot sobre mountTable ------------------ */
+    await page.click('#audit-nav-btn');
+    await page.locator('#audit-drawer').waitFor({ state: 'visible' });
+    await waitForText(page, '#audit-path', /fxbLoader\.audit\.jsonl/);
+    await waitForText(page, '#audit-table', /Cambio de asociación/);
+    assert.equal(
+      await page.locator('#audit-table tbody tr[data-row-id]').count(),
+      1,
+      'la tabla montada pinta el único evento de la auditoría',
+    );
+    // Los dos filtros del sistema de tablas que trae el visor.
+    assert.equal(await page.locator('#audit-table input[aria-label="Fecha desde"]').count(), 1);
+    assert.equal(await page.locator('#audit-table .table-multi-trigger').count(), 1);
+
+    /* Multiselección por tipo -------------------------------------- */
+    await page.click('#audit-table .table-multi-trigger');
+    await page.click('#audit-table .table-multi-menu-list input[value="association-change"]');
+    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await page.click('#audit-table .table-multi-menu-list input[value="association-change"]');
+    await waitForText(page, '#audit-table', /Cambio de asociación/);
+    await page.click('#audit-table .table-multi-trigger');
+    assert.equal(await page.locator('#audit-table .table-multi-menu-list').isVisible(), false);
+
+    /* Rango de fechas por ts --------------------------------------- */
+    await page.fill('#audit-table input[aria-label="Fecha desde"]', '2099-01-01');
+    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await page.fill('#audit-table input[aria-label="Fecha desde"]', '');
+    await waitForText(page, '#audit-table', /Cambio de asociación/);
+
+    /* Filtro por plugin, estrechado en el servidor ------------------ */
+    // El resumen del cajón es lo que prueba que la recarga con filtro terminó:
+    // el texto de «sin eventos» y las opciones del multiselect viven dentro de
+    // `#audit-table` siempre, así que un waitForText sobre la tabla mentiría.
+    await page.fill('#audit-plugin-filter', 'NoExiste');
+    await waitForText(page, '#audit-summary', /filtrado por «NoExiste»/);
+    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await page.fill('#audit-plugin-filter', PLUGIN);
+    await waitForText(page, '#audit-summary', /filtrado por «OB-Xd»/);
+    assert.equal(
+      await page.locator('#audit-table tbody tr[data-row-id]').count(),
+      1,
+      'el filtro por plugin se manda al servidor y devuelve solo ese plugin',
+    );
+    // Al vaciarlo vuelve el snapshot completo, con su recuento inicial.
+    await page.fill('#audit-plugin-filter', '');
+    await page.waitForFunction(
+      `!document.getElementById('audit-summary').textContent.includes('filtrado')`,
+    );
+    assert.equal(
+      await page.locator('#audit-table tbody tr[data-row-id]').count(),
+      1,
+      'sin filtro vuelve el evento a la tabla',
+    );
+
+    assert.deepEqual(
+      pageErrors,
+      [],
+      `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+    );
+  } catch (error) {
+    await mkdir(ARTIFACTS, { recursive: true });
+    await page.screenshot({ path: path.join(ARTIFACTS, 'e2e-audit-viewer-failure.png'), fullPage: true });
+    console.error(`Servidor:\n${logs.join('')}`);
+    throw error;
+  }
+});
 
 /***
  * Preferencia local de DLL por plugin, recorrida en el navegador contra el
@@ -3128,7 +3299,7 @@ test(
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
-      const createdRow = page.locator('#plugins tr').filter({ hasText: 'DemoSynth' });
+      const createdRow = page.locator('#plugins-table tbody tr').filter({ hasText: 'DemoSynth' });
       assert.equal(await createdRow.count(), 1, 'falta la fila del plugin creado');
       assert.equal(await createdRow.locator('[data-field="status"]').textContent(), 'sin cargador');
       assert.equal(
@@ -3138,8 +3309,7 @@ test(
 
       assert.deepEqual(
         pageErrors,
-        [],
-        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+        [],          `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
       );
     } catch (error) {
       await mkdir(ARTIFACTS, { recursive: true });
@@ -3152,3 +3322,165 @@ test(
     }
   },
 );
+
+test(
+  'crea un banco FBCh y lo refleja en el visor y el log del navegador',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+    assert.ok(existsSync(LIBRARY_SOURCE), `la librería no existe: ${LIBRARY_SOURCE}`);
+
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-chunk-'));
+    const library = path.join(temp, 'library');
+    await cp(path.join(LIBRARY_SOURCE, 'plugs'), path.join(library, 'plugs'), { recursive: true });
+
+    // La creación de bancos toma el FourCC del `id` de `vfxinfo.txt`, que el
+    // fixture no trae; se añade solo a la copia temporal.
+    const vfxinfoPath = path.join(library, 'plugs', PLUGIN, 'vfxinfo.txt');
+    await writeFile(
+      vfxinfoPath,
+      Buffer.concat([await readFile(vfxinfoPath), Buffer.from('id: Obxd\r\n', 'latin1')]),
+    );
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    const BANK_NAME = 'Chunk Bank.fxb';
+    const CHUNK_HEX = 'deadbeefcafe';
+
+    try {
+      /* 1. Escanear y poner el cargador --------------------------------- */
+      await page.goto(url);
+      await page.waitForSelector('#scan-form');
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /plugin\(s\) encontrados/);
+
+      const row = pluginRow(page);
+      assert.equal(await row.count(), 1);
+      await row.locator('button[data-field="banks"]').click();
+      await page.locator('#banks').waitFor({ state: 'visible' });
+
+      /* 2. Crear el banco FBCh desde la página: el navegador habla con el  */
+      /*    servidor real con el mismo formulario tipado que usaría la UI.  */
+      const created = (await page.evaluate(
+        `fetch('/library/banks/create', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             libraryRoot: ${JSON.stringify(library)},
+             plugin: ${JSON.stringify(PLUGIN)},
+             bankName: ${JSON.stringify(BANK_NAME)},
+             mode: 'chunk',
+             chunkHex: ${JSON.stringify(CHUNK_HEX)},
+             chunkVersion: 2,
+             currentProgram: 2,
+           }),
+         }).then(async (response) => ({
+           status: response.status,
+           body: await response.json(),
+         }))`,
+      )) as {
+        status: number;
+        body: {
+          status: string;
+          target: string;
+          bank: { kind: string; version: number; uniqueId: string; chunkSize: number | null; currentProgram: number | null };
+        };
+      };
+      assert.equal(created.status, 200);
+      assert.equal(created.body.status, 'created');
+      assert.equal(created.body.bank.kind, 'FBCh');
+      assert.equal(created.body.bank.version, 2);
+      assert.equal(created.body.bank.uniqueId, 'Obxd');
+      assert.equal(created.body.bank.chunkSize, 6);
+      assert.equal(created.body.bank.currentProgram, 2);
+
+      /* 3. El disco confirma el chunk opaco byte a byte ----------------- */
+      const CCNK = 0x43636e4b;
+      const FBCH = 0x46424368;
+      const createdBytes = await readFile(created.body.target);
+      assert.equal(createdBytes.length, 156 + 4 + CHUNK_HEX.length / 2);
+      assert.equal(createdBytes.readUInt32LE(8), FBCH);
+      assert.equal(createdBytes.readUInt32LE(28), 2, 'currentProgram en la cabecera');
+      assert.equal(createdBytes.readUInt32LE(156), CHUNK_HEX.length / 2, 'chunkSize');
+      assert.deepEqual(createdBytes.subarray(160), Buffer.from(CHUNK_HEX, 'hex'));
+      assert.equal((await parseFxbBank(createdBytes)).bank?.kind, 'FBCh');
+
+      /* 4. El visor de bancos muestra el FBCh --------------------------- */
+      // El cajón ya estaba abierto con la carpeta vacía: se cierra y se vuelve
+      // a abrir para que relea el listado con el banco nuevo.
+      await page.click('#banks-close');
+      await page.locator('#banks').waitFor({ state: 'hidden' });
+      await row.locator('button[data-field="banks"]').click();
+      await page.locator('#banks').waitFor({ state: 'visible' });
+      await waitForText(page, '#banks-rows', BANK_NAME);
+
+      const chunkRow = page.locator('#banks-rows tr').filter({ hasText: BANK_NAME });
+      assert.equal(await chunkRow.count(), 1, 'el banco FBCh aparece en la tabla');
+      const cells = await chunkRow.locator('td').allTextContents();
+      assert.ok(cells.some((text) => text.includes('FBCh (opaco)')), `tipo: ${cells.join(' | ')}`);
+      assert.ok(cells.some((text) => text.includes('0 (informativo)')), `programas: ${cells.join(' | ')}`);
+      assert.ok(cells.some((text) => text.includes('6 B')), `chunk: ${cells.join(' | ')}`);
+
+      const kindCell = chunkRow.locator('td[title]', { hasText: 'FBCh (opaco)' });
+      assert.equal(await kindCell.count(), 1, 'la celda Tipo lleva el tooltip del chunk opaco');
+      await kindCell.hover().catch(() => {});
+      assert.match((await kindCell.getAttribute('title')) ?? '', /versión del formato 2/);
+      assert.match((await kindCell.getAttribute('title')) ?? '', /programa activo 2/);
+      assert.match((await kindCell.getAttribute('title')) ?? '', /chunk de 6 bytes/);
+
+      /* 5. El log del plugin muestra la creación con su detalle --------- */
+      await page.keyboard.press('Escape');
+      await page.locator('#banks').waitFor({ state: 'hidden' });
+      await row.locator('[data-action="menu"]').click();
+      await row.locator('[data-action="log"]').click();
+      await page.locator('#log-drawer').waitFor({ state: 'visible' });
+      await waitForText(page, '#log-plugin', PLUGIN);
+
+      const logRow = page.locator('#log-table tbody tr').filter({ hasText: 'create-bank' });
+      await logRow.first().waitFor({ timeout: 20_000 });
+      const logCells = await logRow.first().locator('td').allTextContents();
+      const logText = logCells.join(' | ');
+      assert.ok(logText.includes('(FBCh, chunk de 6 bytes)'), `resumen: ${logText}`);
+      assert.ok(logText.includes('formato FBCh versión 2'), `detalle: ${logText}`);
+      assert.ok(logText.includes('programa activo 2'), `detalle: ${logText}`);
+      assert.ok(logText.includes('sin programas informativos'), `detalle: ${logText}`);
+      assert.ok(logText.includes('chunk de 6 bytes'), `detalle: ${logText}`);
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({ path: path.join(ARTIFACTS, 'e2e-chunk-bank-failure.png'), fullPage: true });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+

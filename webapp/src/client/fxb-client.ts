@@ -79,6 +79,10 @@ export type WizardMatchResponse = SuccessBody<'/wizards/match', 'get'>;
 export type WizardApplyMetaResponse = SuccessBody<'/wizards/apply-meta', 'post'>;
 export type WizardCreateVfxinfoResponse = SuccessBody<'/wizards/create-vfxinfo', 'post'>;
 export type WizardInstallPluginResponse = SuccessBody<'/wizards/install', 'post'>;
+export type AssociationAuditSnapshotResponse = SuccessBody<
+  '/library/association-audit/list',
+  'post'
+>;
 
 /** Adaptador de `fetch`; permite inyectar uno instrumentado en tests o en la UI. */
 export type FxbFetch = typeof globalThis.fetch;
@@ -233,6 +237,16 @@ export interface FxbClient {
     write(
       body: RequestBody<'/fxb-config', 'put'>,
     ): Promise<SuccessBody<'/fxb-config', 'put'>>;
+  };
+  readonly associationAudit: {
+    /**
+     * `fxbLoader.audit.jsonl`: snapshot de solo lectura de la auditoría
+     * durable de asociaciones. Sin almacén responde `exists: false` con la
+     * lista vacía; solo los servicios internos escriben en él.
+     */
+    list(
+      body: RequestBody<'/library/association-audit/list', 'post'>,
+    ): Promise<AssociationAuditSnapshotResponse>;
   };
   readonly plugins: {
     /**
@@ -592,6 +606,12 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/fxb-config/read', body) as Promise<SuccessBody<'/fxb-config/read', 'post'>>,
       write: (body) =>
         request('PUT', '/fxb-config', body) as Promise<SuccessBody<'/fxb-config', 'put'>>,
+    },
+    associationAudit: {
+      list: (body) =>
+        request('POST', '/library/association-audit/list', body) as Promise<
+          AssociationAuditSnapshotResponse
+        >,
     },
     plugins: {
       meta: {

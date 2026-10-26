@@ -1464,6 +1464,12 @@ export interface components {
              */
             fxVersion?: number;
             /**
+             * @description Orden de bytes del archivo: `little` es lo que escribe un plugin de Windows (por defecto) y `big` el estándar de Steinberg. Aplica a los dos modos.
+             * @example little
+             * @enum {string}
+             */
+            endianness?: "big" | "little";
+            /**
              * @description Modo de creación: `programNames` (por defecto) genera un banco `FxBk` con programas; `chunk` genera un banco `FBCh` con el contenido opaco del plugin. Obliga a `chunkHex` si se fija en `chunk`.
              * @example programNames
              * @enum {string}

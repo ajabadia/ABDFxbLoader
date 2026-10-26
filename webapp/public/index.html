@@ -99,9 +99,6 @@
       <symbol id="icon-chevron" viewBox="0 0 24 24">
         <path d="M9 5.5l6.5 6.5-6.5 6.5" />
       </symbol>
-      <symbol id="icon-chevron-left" viewBox="0 0 24 24">
-        <path d="M15 18.5l-6.5-6.5 6.5-6.5" />
-      </symbol>
     </svg>
 
     <header class="top">
@@ -172,6 +169,14 @@
           title="Dar de alta un plugin VST nuevo sin wizard, analizando su archivo DLL"
         >
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Plugin nuevo
+        </button>
+        <button
+          id="audit-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Auditoría durable de asociaciones de la librería activa"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg>Auditoría
         </button>
         <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
       </div>
@@ -283,170 +288,11 @@
         </div>
 
         <div class="filter-bar">
-          <input
-            id="plugin-filter"
-            type="search"
-            placeholder="Filtrar plugins por nombre…"
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Filtrar plugins"
-          />
-          <!-- Un control por eje con tres estados: positivo, negativo y «todos».
-          Así «con» y «sin» no son dos chips sueltos, y cada eje se combina con
-          los demás y con la búsqueda por nombre. -->
-          <div class="filter-chips" role="group" aria-label="Filtros de la tabla">
-            <div class="filter-menu">
-              <button
-                id="filter-install"
-                class="filter-btn"
-                type="button"
-                data-axis="install"
-                data-tone="neutral"
-                aria-haspopup="true"
-                aria-expanded="false"
-                aria-controls="filter-install-menu"
-                aria-pressed="false"
-                title="Filtro del cargador: con y sin cargador. Abrir las opciones"
-              >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg><span class="filter-btn-text">Con y sin cargador</span>
-              </button>
-              <div
-                id="filter-install-menu"
-                class="filter-menu-list"
-                role="menu"
-                aria-label="Filtro del cargador"
-                hidden
-              >
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="install" data-value="installed" data-tone="positive">Con cargador</button>
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="install" data-value="uninstalled" data-tone="negative">Sin cargador</button>
-                <button type="button" role="menuitemradio" aria-checked="true" data-axis="install" data-value="all" data-tone="neutral">Con y sin cargador</button>
-              </div>
-            </div>
-            <div class="filter-menu">
-              <button
-                id="filter-banks"
-                class="filter-btn"
-                type="button"
-                data-axis="banks"
-                data-tone="neutral"
-                aria-haspopup="true"
-                aria-expanded="false"
-                aria-controls="filter-banks-menu"
-                aria-pressed="false"
-                title="Filtro de bancos: con y sin bancos. Abrir las opciones"
-              >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-banks"></use></svg><span class="filter-btn-text">Con y sin bancos</span>
-              </button>
-              <div
-                id="filter-banks-menu"
-                class="filter-menu-list"
-                role="menu"
-                aria-label="Filtro de bancos"
-                hidden
-              >
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="banks" data-value="with-banks" data-tone="positive">Con bancos</button>
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="banks" data-value="without-banks" data-tone="negative">Sin bancos</button>
-                <button type="button" role="menuitemradio" aria-checked="true" data-axis="banks" data-value="all" data-tone="neutral">Con y sin bancos</button>
-              </div>
-            </div>
-            <div class="filter-menu">
-              <button
-                id="filter-wizard"
-                class="filter-btn"
-                type="button"
-                data-axis="wizard"
-                data-tone="neutral"
-                aria-haspopup="true"
-                aria-expanded="false"
-                aria-controls="filter-wizard-menu"
-                aria-pressed="false"
-                title="Filtro de wizard: con y sin wizard. Abrir las opciones"
-              >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg><span class="filter-btn-text">Con y sin wizard</span>
-              </button>
-              <div
-                id="filter-wizard-menu"
-                class="filter-menu-list"
-                role="menu"
-                aria-label="Filtro de wizard"
-                hidden
-              >
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="wizard" data-value="with-wizard" data-tone="positive">Con wizard</button>
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="wizard" data-value="without-wizard" data-tone="negative">Sin wizard</button>
-                <button type="button" role="menuitemradio" aria-checked="true" data-axis="wizard" data-value="all" data-tone="neutral">Con y sin wizard</button>
-              </div>
-            </div>
-            <div class="filter-menu">
-              <button
-                id="filter-compat"
-                class="filter-btn"
-                type="button"
-                data-axis="compat"
-                data-tone="neutral"
-                aria-haspopup="true"
-                aria-expanded="false"
-                aria-controls="filter-compat-menu"
-                aria-pressed="false"
-                title="Filtro de compatibilidad: compatibles e incompatibles. Abrir las opciones"
-              >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-ban"></use></svg><span class="filter-btn-text">Compatibles e incompatibles</span>
-              </button>
-              <div
-                id="filter-compat-menu"
-                class="filter-menu-list"
-                role="menu"
-                aria-label="Filtro de compatibilidad"
-                hidden
-              >
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="compat" data-value="compatible" data-tone="positive">Ningún incompatible</button>
-                <button type="button" role="menuitemradio" aria-checked="false" data-axis="compat" data-value="incompatible" data-tone="negative">Solo incompatibles</button>
-                <button type="button" role="menuitemradio" aria-checked="true" data-axis="compat" data-value="all" data-tone="neutral">Compatibles e incompatibles</button>
-              </div>
-            </div>
-          </div>
           <span id="filter-count" class="filter-count"></span>
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Plugin</th>
-                <th>Estado</th>
-                <th>Compatibilidad</th>
-                <th>pluginName</th>
-                <th>vfxinfo.txt</th>
-                <th>Wizard</th>
-                <th>Bancos</th>
-                <th>Catálogo</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="plugins"></tbody>
-          </table>
-        </div>
+        <div id="plugins-table" class="plugins-table"></div>
 
-        <div id="pagination" class="pagination" hidden>
-          <div class="pagination-size">
-            <label for="page-size" class="pagination-label">Mostrar:</label>
-            <select id="page-size" class="pagination-select" aria-label="Plugins por página">
-              <option value="5">5</option>
-              <option value="10" selected>10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
-            </select>
-            <span class="pagination-unit">por página</span>
-          </div>
-          <div class="pagination-nav">
-            <button id="page-prev" class="pagination-btn" type="button" aria-label="Página anterior">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-chevron-left"></use></svg>Anterior
-            </button>
-            <span id="page-info" class="pagination-info" aria-live="polite"></span>
-            <button id="page-next" class="pagination-btn" type="button" aria-label="Página siguiente">
-              Siguiente<svg class="icon icon-right" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>
-            </button>
-          </div>
-        </div>
       </section>
 
       <section
@@ -825,6 +671,56 @@
         <p id="log-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
+      <section
+        id="audit-drawer"
+        class="card drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-drawer-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="audit-drawer-title">Auditoría durable de asociaciones</h2>
+          <button id="audit-close" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+          </button>
+        </div>
+
+        <p class="note">
+          Cada cambio de asociación de la librería activa queda en
+          <code>fxbLoader.audit.jsonl</code>: apéndice de solo lectura que nunca
+          rota ni se trunca, a diferencia del log por plugin.
+        </p>
+
+        <p class="banks-path"><code id="audit-path"></code></p>
+        <p id="audit-summary" class="note"></p>
+
+        <div class="row">
+          <div class="field">
+            <label for="audit-plugin-filter">Plugin</label>
+            <input
+              id="audit-plugin-filter"
+              type="search"
+              placeholder="Todas las carpetas"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <button
+            id="audit-refresh"
+            type="button"
+            title="Volver a leer el almacén de auditoría"
+          >
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>Actualizar
+          </button>
+        </div>
+
+        <div id="audit-table" class="audit-table"></div>
+
+        <p id="audit-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
       <section id="wizards" class="card drawer" hidden aria-labelledby="wizards-title">
         <div class="summary">
           <h2 id="wizards-title">Repositorio de Wizards</h2>
@@ -1145,51 +1041,6 @@
 
       <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
     </main>
-
-    <template id="row-template">
-      <tr>
-        <td data-field="name"></td>
-        <td><span class="badge" data-field="status"></span></td>
-        <td><span class="badge" data-field="compatibility"></span></td>
-        <td data-field="pluginName"></td>
-        <td><span class="badge" data-field="vfxinfo"></span></td>
-        <td>
-          <button type="button" class="badge badge-action" data-field="wizard"></button>
-        </td>
-        <td>
-          <button type="button" class="badge badge-action" data-field="banks"></button>
-        </td>
-        <td>
-          <button type="button" class="badge badge-action" data-field="meta"></button>
-        </td>
-        <td class="actions">
-          <div class="row-menu">
-            <button
-              type="button"
-              class="row-menu-btn"
-              data-action="menu"
-              title="Acciones del plugin"
-              aria-label="Acciones del plugin"
-            >···</button>
-            <div class="row-menu-dropdown" hidden>
-              <button type="button" data-action="toggle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span class="label"></span></button>
-              <button type="button" data-action="banks">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Bancos
-              </button>
-              <button type="button" data-action="meta">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Catálogo
-              </button>
-              <button type="button" data-action="wizard">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg>Wizard
-              </button>
-              <button type="button" data-action="log">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg>Historial
-              </button>
-            </div>
-          </div>
-        </td>
-      </tr>
-    </template>
 
     <noscript>
       <p class="status error">Esta página necesita JavaScript.</p>

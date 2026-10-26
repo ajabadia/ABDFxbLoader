@@ -1,5 +1,6 @@
 export { createFxbClient, FxbApiError, isFxbApiError } from './fxb-client';
 export type {
+  AssociationAuditSnapshotResponse,
   ErrorBody,
   FxbClient,
   FxbClientOptions,

@@ -8,6 +8,7 @@
  * progreso que le llega (`start`, `plugin`, `step`, `end`) y el resultado final.
  */
 import type {
+  AssociationAuditSnapshotResponse,
   LibraryBanksImportResponse,
   LibraryBanksListResponse,
   LibraryCreateCustomPluginResponse,
@@ -62,7 +63,7 @@ import type {
 import type { BatchStreamEvent, BatchStreamResult } from '../../client/batch-stream.js';
 import { client, describeError, isFxbApiError } from './api.js';
 import { byId, cell, cloneRow, query } from './dom.js';
-import { mountTable, type TableController, type TableView } from '../table.js';
+import { mountTable, closeAllRowMenus, type TableController, type TableView } from '../table.js';
 
 const STORAGE_ROOT = 'fxbLoader.libraryRoot';
 const STORAGE_DLL = 'fxbLoader.dllSource';
@@ -105,23 +106,8 @@ const els = {
   summary: byId<HTMLSpanElement>('summary-text'),
   plugsPath: byId<HTMLElement>('plugs-path'),
   loaderStatus: byId<HTMLParagraphElement>('loader-status'),
-  tbody: byId<HTMLTableSectionElement>('plugins'),
-  template: byId<HTMLTemplateElement>('row-template'),
-  pluginFilter: byId<HTMLInputElement>('plugin-filter'),
-  filterTriggers: [
-    byId<HTMLButtonElement>('filter-install'),
-    byId<HTMLButtonElement>('filter-banks'),
-    byId<HTMLButtonElement>('filter-wizard'),
-    byId<HTMLButtonElement>('filter-compat'),
-  ],
-  filterMenus: [...document.querySelectorAll<HTMLElement>('.filter-menu-list')],
-  filterItems: [...document.querySelectorAll<HTMLButtonElement>('.filter-menu-list button')],
+  pluginsTable: byId<HTMLElement>('plugins-table'),
   filterCount: byId<HTMLElement>('filter-count'),
-  pagination: byId<HTMLElement>('pagination'),
-  pageSize: byId<HTMLSelectElement>('page-size'),
-  pagePrev: byId<HTMLButtonElement>('page-prev'),
-  pageInfo: byId<HTMLElement>('page-info'),
-  pageNext: byId<HTMLButtonElement>('page-next'),
   installAll: byId<HTMLButtonElement>('install-all'),
   uninstallAll: byId<HTMLButtonElement>('uninstall-all'),
   batchCancel: byId<HTMLButtonElement>('batch-cancel'),
@@ -256,6 +242,15 @@ const els = {
   importPackageRepair: byId<HTMLInputElement>('import-package-repair'),
   importPackageExecuteBtn: byId<HTMLButtonElement>('import-package-execute-btn'),
   importPackageStatus: byId<HTMLParagraphElement>('import-package-status'),
+  auditNavBtn: byId<HTMLButtonElement>('audit-nav-btn'),
+  auditDrawer: byId<HTMLElement>('audit-drawer'),
+  auditClose: byId<HTMLButtonElement>('audit-close'),
+  auditRefresh: byId<HTMLButtonElement>('audit-refresh'),
+  auditPluginFilter: byId<HTMLInputElement>('audit-plugin-filter'),
+  auditPath: byId<HTMLElement>('audit-path'),
+  auditSummary: byId<HTMLElement>('audit-summary'),
+  auditTable: byId<HTMLElement>('audit-table'),
+  auditStatus: byId<HTMLParagraphElement>('audit-status'),
   customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
   customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
   customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
@@ -618,8 +613,12 @@ function setBusy(value: boolean): void {
   els.rootBrowse.disabled = value;
   els.dllBrowse.disabled = value;
   els.form.setAttribute('aria-busy', String(value));
-  for (const button of els.tbody.querySelectorAll<HTMLButtonElement>('button')) {
-    button.disabled = value || button.dataset['blocked'] === 'true';
+  for (const row of catalogRows()) {
+    const plugin = scanData?.plugins.find((entry) => entry.name === row.dataset['rowId']);
+    const blocked = plugin !== undefined && !plugin.hasLoader && plugin.compatible === false;
+    for (const button of row.querySelectorAll<HTMLButtonElement>('button')) {
+      button.disabled = value || (button.dataset['action'] === 'toggle' && blocked);
+    }
   }
   updateBatchControls();
 }
@@ -773,8 +772,8 @@ function setButtonLabel(button: HTMLButtonElement, text: string): void {
 
 /** Fila de la tabla para ese plugin, si sigue visible. */
 function rowForPlugin(name: string): HTMLTableRowElement | null {
-  for (const row of els.tbody.querySelectorAll<HTMLTableRowElement>('tr')) {
-    if (query<HTMLElement>(row, '[data-field="name"]').textContent === name) return row;
+  for (const row of catalogRows()) {
+    if (fieldCell(row, 'name')?.textContent === name) return row;
   }
   return null;
 }
@@ -793,7 +792,7 @@ function markBatchRow(name: string, state: 'running' | 'done' | 'failed'): void 
 }
 
 function clearBatchMarks(): void {
-  for (const row of els.tbody.querySelectorAll<HTMLTableRowElement>('tr')) {
+  for (const row of catalogRows()) {
     row.classList.remove('batch-running', 'batch-done', 'batch-failed');
     row.removeAttribute('aria-busy');
   }
@@ -876,177 +875,6 @@ function renderLoader(loader: LibraryScanResponse['loader'] | null): void {
   els.loaderStatus.title = loader.path;
 }
 
-/** Un eje del filtro; cada uno tiene tres estados y se combina con los demás. */
-type FilterAxis = 'install' | 'banks' | 'wizard' | 'compat';
-/** Tono del chip: verde para el positivo, cálido para el negativo y gris «todos». */
-type FilterTone = 'positive' | 'negative' | 'neutral';
-
-interface FilterOption {
-  value: string;
-  label: string;
-  tone: FilterTone;
-}
-
-/**
- * Los ejes y sus tres estados, siempre en el orden positivo → negativo →
- * todos. Un solo control por eje sustituye a los chips duplicados de «con» y
- * «sin»: elegir «todos» es la forma de quitar ese eje del filtro.
- */
-const FILTER_AXES: Record<FilterAxis, { title: string; options: FilterOption[] }> = {
-  install: {
-    title: 'Filtro del cargador',
-    options: [
-      { value: 'installed', label: 'Con cargador', tone: 'positive' },
-      { value: 'uninstalled', label: 'Sin cargador', tone: 'negative' },
-      { value: 'all', label: 'Con y sin cargador', tone: 'neutral' },
-    ],
-  },
-  banks: {
-    title: 'Filtro de bancos',
-    options: [
-      { value: 'with-banks', label: 'Con bancos', tone: 'positive' },
-      { value: 'without-banks', label: 'Sin bancos', tone: 'negative' },
-      { value: 'all', label: 'Con y sin bancos', tone: 'neutral' },
-    ],
-  },
-  wizard: {
-    title: 'Filtro de wizard',
-    options: [
-      { value: 'with-wizard', label: 'Con wizard', tone: 'positive' },
-      { value: 'without-wizard', label: 'Sin wizard', tone: 'negative' },
-      { value: 'all', label: 'Con y sin wizard', tone: 'neutral' },
-    ],
-  },
-  compat: {
-    title: 'Filtro de compatibilidad',
-    options: [
-      { value: 'compatible', label: 'Ningún incompatible', tone: 'positive' },
-      { value: 'incompatible', label: 'Solo incompatibles', tone: 'negative' },
-      { value: 'all', label: 'Compatibles e incompatibles', tone: 'neutral' },
-    ],
-  },
-};
-
-/** Valor elegido en cada eje; `all` es el estado que no filtra. */
-const filterState: Record<FilterAxis, string> = {
-  install: 'all',
-  banks: 'all',
-  wizard: 'all',
-  compat: 'all',
-};
-
-/** El eje que nombra un chip o una opción, o `null` si el marcado no lo dice. */
-function filterAxisOf(element: HTMLElement): FilterAxis | null {
-  const axis = element.dataset['axis'];
-  return axis === 'install' || axis === 'banks' || axis === 'wizard' || axis === 'compat'
-    ? axis
-    : null;
-}
-
-const STORAGE_PAGE_SIZE = 'fxbLoader.pageSize';
-const VALID_PAGE_SIZES = [5, 10, 20, 50];
-
-function readPageSize(): number {
-  const parsed = Number.parseInt(readStorage(STORAGE_PAGE_SIZE), 10);
-  return VALID_PAGE_SIZES.includes(parsed) ? parsed : 10;
-}
-
-let pageSize = readPageSize();
-let currentPage = 1;
-let filterQuery = '';
-
-/**
- * Pinta un eje completo: el chip con su etiqueta, su tono y si filtra, y las
- * tres opciones del menú con `aria-checked`. El tono y la etiqueta salen del
- * estado elegido, así que el marcado estático solo describe el estado «todos».
- */
-function paintFilterAxis(axis: FilterAxis): void {
-  const config = FILTER_AXES[axis];
-  const selected = filterState[axis];
-  const option =
-    config.options.find((entry) => entry.value === selected) ?? config.options[0]!;
-  const filtering = option.value !== 'all';
-
-  for (const trigger of els.filterTriggers) {
-    if (filterAxisOf(trigger) !== axis) continue;
-    trigger.dataset['tone'] = option.tone;
-    trigger.classList.toggle('active', filtering);
-    // `aria-pressed` dice si el eje filtra; `aria-expanded`, si el menú está abierto.
-    trigger.setAttribute('aria-pressed', String(filtering));
-    const text = trigger.querySelector<HTMLElement>('.filter-btn-text');
-    if (text !== null) text.textContent = option.label;
-    trigger.title = `${config.title}: ${option.label.toLowerCase()}. Abrir las opciones`;
-  }
-
-  for (const item of els.filterItems) {
-    if (filterAxisOf(item) !== axis) continue;
-    const checked = item.dataset['value'] === selected;
-    item.classList.toggle('selected', checked);
-    item.setAttribute('aria-checked', String(checked));
-  }
-}
-
-function paintFilters(): void {
-  for (const axis of Object.keys(FILTER_AXES) as FilterAxis[]) paintFilterAxis(axis);
-}
-
-function setFilterAxis(axis: FilterAxis, value: string): void {
-  filterState[axis] = value;
-  currentPage = 1;
-  paintFilterAxis(axis);
-  if (scanData !== null) render(scanData);
-}
-
-/** El menú abierto, para devolver el foco al chip al cerrarlo con Escape. */
-let openFilter: { trigger: HTMLButtonElement; menu: HTMLElement } | null = null;
-
-function closeFilterMenu(focusTrigger = false): void {
-  const open = openFilter;
-  openFilter = null;
-  if (open === null) return;
-  open.menu.hidden = true;
-  open.trigger.classList.remove('open');
-  open.trigger.setAttribute('aria-expanded', 'false');
-  if (focusTrigger) open.trigger.focus({ preventScroll: true });
-}
-
-function openFilterMenu(trigger: HTMLButtonElement, menu: HTMLElement): void {
-  closeFilterMenu();
-  closeAllRowMenus();
-  openFilter = { trigger, menu };
-  menu.hidden = false;
-  trigger.classList.add('open');
-  trigger.setAttribute('aria-expanded', 'true');
-  // El foco entra en la opción vigente: Espacio o Intro la dejan tal cual y las
-  // flechas recorren las otras dos.
-  const checked = menu.querySelector<HTMLButtonElement>('button[aria-checked="true"]');
-  (checked ?? menu.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
-}
-
-function toggleFilterMenu(trigger: HTMLButtonElement): void {
-  const menu = els.filterMenus.find(
-    (entry) => entry.id === trigger.getAttribute('aria-controls'),
-  );
-  if (menu === undefined) return;
-  if (openFilter?.menu === menu) {
-    closeFilterMenu(true);
-    return;
-  }
-  openFilterMenu(trigger, menu);
-}
-
-/** Flechas y Home/End dentro del menú; el foco no sale de las tres opciones. */
-function moveFilterFocus(menu: HTMLElement, step: number | 'first' | 'last'): void {
-  const items = [...menu.querySelectorAll<HTMLButtonElement>('button')];
-  if (items.length === 0) return;
-  if (step === 'first' || step === 'last') {
-    (step === 'first' ? items[0] : items[items.length - 1])?.focus();
-    return;
-  }
-  const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  items[(current + step + items.length) % items.length]?.focus();
-}
-
 /** Nombres que se listan en el tooltip de la pastilla de bancos. */
 const MAX_BANK_NAMES_IN_TITLE = 12;
 
@@ -1095,16 +923,304 @@ function syncBanksBadge(pluginName: string, names: string[]): void {
 
   const row = rowForPlugin(pluginName);
   if (row !== null) {
-    paintBanksBadge(query<HTMLButtonElement>(row, '[data-field="banks"]'), pluginName, {
+    const banksCell = fieldCell(row, 'banks') as HTMLButtonElement | undefined;
+    if (banksCell !== undefined) paintBanksBadge(banksCell, pluginName, {
       count: names.length,
       names,
     });
   }
 
-  if (scanData !== null && filterState.banks !== 'all') render(scanData);
+  if (scanData !== null && catalogFilters['banks'] !== 'all') render(scanData);
 }
 
-function render(data: LibraryScanResponse): void {
+/**
+ * El Catálogo General monta sobre `mountTable`: sus columnas con badges, los
+ * cuatro ejes de tres estados como chips del sistema de tablas, la búsqueda por
+ * nombre/`pluginName`/ruta y la paginación común. El orden, los filtros y la
+ * página viven dentro de la tabla; aquí solo se pinta el snapshot del escaneo
+ * y se actualiza el recuento de `#filter-count`.
+ */
+let catalogTable: TableController<ScanPlugin> | null = null;
+/** Filtros vigentes de la tabla, para que el resto del código sepa qué mira. */
+let catalogFilters: Record<string, string> = {};
+
+const catalogTableView: TableView<ScanPlugin> = {
+  columns: [
+    {
+      id: 'name',
+      label: 'Plugin',
+      sortType: 'text',
+      getValue: (plugin) => plugin.name,
+      cellDataset: () => ({ field: 'name' }),
+      cellTitle: (plugin) => (plugin.warnings.length > 0 ? plugin.warnings.join('\n') : undefined),
+    },
+    {
+      id: 'status',
+      label: 'Estado',
+      sortType: 'text',
+      getValue: (plugin) => (plugin.hasLoader ? 'con cargador' : 'sin cargador'),
+      renderNode: (plugin) => {
+        const badge = document.createElement('span');
+        badge.className = plugin.hasLoader ? 'badge on' : 'badge';
+        badge.dataset['field'] = 'status';
+        badge.textContent = plugin.hasLoader ? 'con cargador' : 'sin cargador';
+        return badge;
+      },
+    },
+    {
+      id: 'compatibility',
+      label: 'Compatibilidad',
+      sortType: 'text',
+      getValue: (plugin) =>
+        plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : 'sin verificar',
+      renderNode: (plugin) => {
+        const badge = document.createElement('span');
+        badge.className = plugin.compatible === true ? 'badge on' : plugin.compatible === false ? 'badge bad' : 'badge';
+        badge.dataset['field'] = 'compatibility';
+        badge.textContent =
+          plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : 'sin verificar';
+        badge.title = plugin.compatibilityIssues.join('\n');
+        return badge;
+      },
+    },
+    {
+      id: 'pluginName',
+      label: 'pluginName',
+      sortType: 'text',
+      sortable: false,
+      getValue: (plugin) => plugin.pluginName ?? '',
+      cellDataset: () => ({ field: 'pluginName' }),
+      renderCell: (plugin) => plugin.pluginName || '—',
+    },
+    {
+      id: 'vfxinfo',
+      label: 'vfxinfo.txt',
+      sortType: 'text',
+      sortable: false,
+      getValue: (plugin) => (plugin.hasVfxinfo ? 'presente' : 'falta'),
+      renderNode: (plugin) => {
+        const badge = document.createElement('span');
+        badge.className = plugin.hasVfxinfo ? 'badge on' : 'badge';
+        badge.dataset['field'] = 'vfxinfo';
+        badge.textContent = plugin.hasVfxinfo ? 'presente' : 'falta';
+        return badge;
+      },
+    },
+    {
+      id: 'wizard',
+      label: 'Wizard',
+      sortType: 'text',
+      sortable: false,
+      getValue: (plugin) => (plugin.hasWizard ? 'disponible' : '—'),
+      renderNode: (plugin) => {
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.className = plugin.hasWizard ? 'badge badge-action on' : 'badge badge-action';
+        badge.dataset['field'] = 'wizard';
+        badge.textContent = plugin.hasWizard ? 'disponible' : '—';
+        badge.title = plugin.hasWizard
+          ? `Wizard oficial disponible (${plugin.wizardId}). Abrir panel del wizard`
+          : `Sin wizard oficial para ${plugin.name}. Abrir panel del wizard`;
+        badge.setAttribute(
+          'aria-label',
+          `Wizard de ${plugin.name}: ${plugin.hasWizard ? 'disponible' : 'no disponible'}. Abrir el panel`,
+        );
+        badge.addEventListener('click', () => {
+          closeAllRowMenus();
+          void openPluginWizard(plugin, badge);
+        });
+        return badge;
+      },
+    },
+    {
+      // La pastilla cuenta los bancos del último escaneo y abre el cajón con
+      // el listado completo, validado, que se refresca al importar o borrar.
+      id: 'banks',
+      label: 'Bancos',
+      sortType: 'text',
+      sortable: false,
+      getValue: (plugin) => bankCountLabel(plugin.banks?.count ?? 0),
+      renderNode: (plugin) => {
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.className = 'badge badge-action';
+        badge.dataset['field'] = 'banks';
+        paintBanksBadge(badge, plugin.name, plugin.banks);
+        badge.addEventListener('click', () => {
+          closeAllRowMenus();
+          void openBanks(plugin, badge);
+        });
+        return badge;
+      },
+    },
+    {
+      id: 'meta',
+      label: 'Catálogo',
+      sortType: 'text',
+      sortable: false,
+      getValue: (plugin) => (plugin.hasMeta ? 'presente' : 'falta'),
+      renderNode: (plugin) => {
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.className = plugin.hasMeta ? 'badge badge-action on' : 'badge badge-action';
+        badge.dataset['field'] = 'meta';
+        badge.textContent = plugin.hasMeta ? 'presente' : 'falta';
+        badge.title = plugin.hasMeta
+          ? `Abrir el catálogo de ${plugin.name}`
+          : `Crear el catálogo de ${plugin.name}`;
+        badge.setAttribute(
+          'aria-label',
+          `Catálogo de ${plugin.name}: ${plugin.hasMeta ? 'presente' : 'falta'}. Abrir el panel`,
+        );
+        badge.addEventListener('click', () => {
+          closeAllRowMenus();
+          void openMeta(plugin, badge);
+        });
+        return badge;
+      },
+    },
+  ],
+  getRowId: (plugin) => plugin.name,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  pageSize: 25,
+  searchId: 'plugin-filter',
+  // El texto de fila cubre lo que buscaba antes el filtro a mano: nombre,
+  // `pluginName` y la ruta de la carpeta.
+  searchText: (plugin) => [plugin.name, plugin.pluginName ?? '', plugin.path].join('\n'),
+  emptyText: 'Ningún plugin coincide con el filtro.',
+  filters: [
+    {
+      id: 'install',
+      label: 'Filtro del cargador',
+      columnId: 'status',
+      type: 'chip',
+      icon: 'check',
+      options: [
+        { value: 'installed', label: 'Con cargador', tone: 'positive', predicate: (plugin) => plugin.hasLoader },
+        { value: 'uninstalled', label: 'Sin cargador', tone: 'negative', predicate: (plugin) => !plugin.hasLoader },
+        { value: 'all', label: 'Con y sin cargador', tone: 'neutral' },
+      ],
+    },
+    {
+      id: 'banks',
+      label: 'Filtro de bancos',
+      columnId: 'banks',
+      type: 'chip',
+      icon: 'banks',
+      options: [
+        {
+          value: 'with-banks',
+          label: 'Con bancos',
+          tone: 'positive',
+          predicate: (plugin) => (plugin.banks?.count ?? 0) > 0,
+        },
+        {
+          value: 'without-banks',
+          label: 'Sin bancos',
+          tone: 'negative',
+          predicate: (plugin) => (plugin.banks?.count ?? 0) === 0,
+        },
+        { value: 'all', label: 'Con y sin bancos', tone: 'neutral' },
+      ],
+    },
+    {
+      id: 'wizard',
+      label: 'Filtro de wizard',
+      columnId: 'wizard',
+      type: 'chip',
+      icon: 'tag',
+      options: [
+        { value: 'with-wizard', label: 'Con wizard', tone: 'positive', predicate: (plugin) => plugin.hasWizard },
+        { value: 'without-wizard', label: 'Sin wizard', tone: 'negative', predicate: (plugin) => !plugin.hasWizard },
+        { value: 'all', label: 'Con y sin wizard', tone: 'neutral' },
+      ],
+    },
+    {
+      id: 'compat',
+      label: 'Filtro de compatibilidad',
+      columnId: 'compatibility',
+      type: 'chip',
+      icon: 'ban',
+      options: [
+        {
+          value: 'compatible',
+          label: 'Ningún incompatible',
+          tone: 'positive',
+          predicate: (plugin) => plugin.compatible !== false,
+        },
+        {
+          value: 'incompatible',
+          label: 'Solo incompatibles',
+          tone: 'negative',
+          predicate: (plugin) => plugin.compatible === false,
+        },
+        { value: 'all', label: 'Compatibles e incompatibles', tone: 'neutral' },
+      ],
+    },
+  ],
+  rowActions: {
+    actions: (plugin) => [
+      {
+        id: 'toggle',
+        label: plugin.hasLoader ? 'Quitar cargador' : 'Poner cargador',
+        icon: plugin.hasLoader ? 'trash' : 'download',
+        tone: plugin.hasLoader ? 'danger' : 'primary',
+        disabled: () => !plugin.hasLoader && plugin.compatible === false,
+        onSelect: () => void runAction(plugin, plugin.hasLoader),
+      },
+      {
+        id: 'banks',
+        label: 'Bancos',
+        icon: 'folder',
+        onSelect: (_plugin, trigger) => void openBanks(plugin, trigger),
+      },
+      {
+        id: 'meta',
+        label: 'Catálogo',
+        icon: 'tag',
+        onSelect: (_plugin, trigger) => void openMeta(plugin, trigger),
+      },
+      {
+        id: 'wizard',
+        label: 'Wizard',
+        icon: 'file',
+        onSelect: (_plugin, trigger) => void openPluginWizard(plugin, trigger),
+      },
+      {
+        id: 'log',
+        label: 'Historial',
+        icon: 'list',
+        onSelect: (_plugin, trigger) => void openLogDrawer(plugin, trigger),
+      },
+    ],
+  },
+  onProcessed: (info) => {
+    catalogFilters = info.filters as Record<string, string>;
+    // El recuento solo aparece cuando algo filtra, como hasta ahora.
+    const filtering =
+      info.query.trim() !== '' || Object.values(info.filters).some((value) => value !== 'all');
+    els.filterCount.textContent = filtering
+      ? `${info.total} de ${scanData?.plugins.length ?? info.total} plugin(s)`
+      : '';
+  },
+};
+
+/** Filas pintadas ahora mismo en el catálogo (las de la página vigente). */
+function catalogRows(): HTMLTableRowElement[] {
+  return catalogTable === null ? [] : [...catalogTable.tbody.rows];
+}
+
+/** Celda con ese `data-field` dentro de una fila, o `undefined`. */
+function fieldCell(row: HTMLTableRowElement, field: string): HTMLElement | undefined {
+  for (const cellElement of row.cells) {
+    for (const child of [cellElement, ...cellElement.children] as HTMLElement[]) {
+      if (child.dataset['field'] === field) return child;
+    }
+  }
+  return undefined;
+}
+
+function render(data: LibraryScanResponse, options?: { resetPage?: boolean }): void {
   scanData = data;
   for (const plugin of data.plugins) {
     if (!plugin.banks) {
@@ -1112,7 +1228,6 @@ function render(data: LibraryScanResponse): void {
     }
   }
   updateBatchControls();
-  els.tbody.replaceChildren();
   els.results.hidden = false;
 
   const installed = data.plugins.filter((plugin) => plugin.hasLoader).length;
@@ -1126,227 +1241,18 @@ function render(data: LibraryScanResponse): void {
   els.plugsPath.textContent = data.plugsPath;
   renderLoader(data.loader);
 
-  if (data.plugins.length === 0) {
-    els.pagination.hidden = true;
-    els.filterCount.textContent = '';
-    const row = document.createElement('tr');
-    row.append(cell(7, 'La carpeta plugs\\ no contiene subdirectorios.'));
-    els.tbody.append(row);
-    return;
-  }
+  // El aviso vacío distingue «no hay plugins» de «no pasa el filtro».
+  catalogTableView.emptyText =
+    data.plugins.length === 0
+      ? 'La carpeta plugs\\ no contiene subdirectorios.'
+      : 'Ningún plugin coincide con el filtro.';
 
-  const queryText = filterQuery.toLowerCase();
-  const visiblePlugins = data.plugins.filter((plugin) => {
-    const bankCount = plugin.banks?.count ?? 0;
-    if (filterState.install === 'installed' && !plugin.hasLoader) return false;
-    if (filterState.install === 'uninstalled' && plugin.hasLoader) return false;
-    if (filterState.banks === 'with-banks' && bankCount === 0) return false;
-    if (filterState.banks === 'without-banks' && bankCount > 0) return false;
-    if (filterState.wizard === 'with-wizard' && !plugin.hasWizard) return false;
-    if (filterState.wizard === 'without-wizard' && plugin.hasWizard) return false;
-    if (filterState.compat === 'compatible' && plugin.compatible === false) return false;
-    if (filterState.compat === 'incompatible' && plugin.compatible !== false) return false;
-    if (queryText !== '') {
-      const matchName = plugin.name.toLowerCase().includes(queryText);
-      const matchPluginName = plugin.pluginName?.toLowerCase().includes(queryText) ?? false;
-      const matchPath = plugin.path.toLowerCase().includes(queryText);
-      if (!matchName && !matchPluginName && !matchPath) return false;
-    }
-    return true;
-  });
-
-  if (
-    filterQuery !== '' ||
-    Object.values(filterState).some((value) => value !== 'all')
-  ) {
-    els.filterCount.textContent = `${visiblePlugins.length} de ${data.plugins.length} plugin(s)`;
+  if (catalogTable === null) {
+    catalogTable = mountTable(els.pluginsTable, catalogTableView, data.plugins);
   } else {
-    els.filterCount.textContent = '';
-  }
-
-  if (visiblePlugins.length === 0) {
-    els.pagination.hidden = true;
-    const row = document.createElement('tr');
-    row.append(cell(7, 'Ningún plugin coincide con el filtro.'));
-    els.tbody.append(row);
-    return;
-  }
-
-  const totalItems = visiblePlugins.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  if (currentPage > totalPages) {
-    currentPage = totalPages;
-  }
-  if (currentPage < 1) {
-    currentPage = 1;
-  }
-
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pagePlugins = visiblePlugins.slice(startIndex, endIndex);
-
-  els.pagination.hidden = false;
-  els.pageSize.value = String(pageSize);
-  els.pageInfo.textContent = `${startIndex + 1}–${endIndex} de ${totalItems}`;
-  els.pagePrev.disabled = currentPage <= 1;
-  els.pageNext.disabled = currentPage >= totalPages;
-
-  for (const plugin of pagePlugins) {
-    const row = cloneRow(els.template);
-    const name = query<HTMLElement>(row, '[data-field="name"]');
-    name.textContent = plugin.name;
-    if (plugin.warnings.length > 0) name.title = plugin.warnings.join('\n');
-
-    const badge = query<HTMLElement>(row, '[data-field="status"]');
-    badge.textContent = plugin.hasLoader ? 'con cargador' : 'sin cargador';
-    badge.classList.toggle('on', plugin.hasLoader);
-
-    const compatibility = query<HTMLElement>(row, '[data-field="compatibility"]');
-    compatibility.textContent =
-      plugin.compatible === true
-        ? 'compatible'
-        : plugin.compatible === false
-          ? 'incompatible'
-          : 'sin verificar';
-    compatibility.classList.toggle('on', plugin.compatible === true);
-    compatibility.classList.toggle('bad', plugin.compatible === false);
-    compatibility.title = plugin.compatibilityIssues.join('\n');
-
-    query<HTMLElement>(row, '[data-field="pluginName"]').textContent = plugin.pluginName ?? '—';
-
-    const vfxinfoBadge = query<HTMLElement>(row, '[data-field="vfxinfo"]');
-    vfxinfoBadge.textContent = plugin.hasVfxinfo ? 'presente' : 'falta';
-    vfxinfoBadge.classList.toggle('on', plugin.hasVfxinfo);
-
-    const wizardBadge = query<HTMLButtonElement>(row, '[data-field="wizard"]');
-    wizardBadge.textContent = plugin.hasWizard ? 'disponible' : '—';
-    wizardBadge.classList.toggle('on', plugin.hasWizard);
-    wizardBadge.title = plugin.hasWizard
-      ? `Wizard oficial disponible (${plugin.wizardId}). Abrir panel del wizard`
-      : `Sin wizard oficial para ${plugin.name}. Abrir panel del wizard`;
-    wizardBadge.setAttribute(
-      'aria-label',
-      `Wizard de ${plugin.name}: ${plugin.hasWizard ? 'disponible' : 'no disponible'}. Abrir el panel`,
-    );
-    wizardBadge.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openPluginWizard(plugin, wizardBadge);
-    });
-
-    // La pastilla cuenta los bancos del último escaneo y abre el cajón con el
-    // listado completo, validado, que se refresca al importar o borrar.
-    const banksBadge = query<HTMLButtonElement>(row, '[data-field="banks"]');
-    paintBanksBadge(banksBadge, plugin.name, plugin.banks);
-    banksBadge.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openBanks(plugin, banksBadge);
-    });
-
-    const metaBadge = query<HTMLButtonElement>(row, '[data-field="meta"]');
-    metaBadge.textContent = plugin.hasMeta ? 'presente' : 'falta';
-    metaBadge.classList.toggle('on', plugin.hasMeta);
-    // La pastilla es el atajo de la columna: abre el mismo cajón que «···» sin
-    // desplegar el menú de la fila.
-    metaBadge.title = plugin.hasMeta
-      ? `Abrir el catálogo de ${plugin.name}`
-      : `Crear el catálogo de ${plugin.name}`;
-    metaBadge.setAttribute(
-      'aria-label',
-      `Catálogo de ${plugin.name}: ${plugin.hasMeta ? 'presente' : 'falta'}. Abrir el panel`,
-    );
-    metaBadge.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openMeta(plugin, metaBadge);
-    });
-
-    const menuButton = query<HTMLButtonElement>(row, '[data-action="menu"]');
-    const menuDropdown = query<HTMLElement>(row, '.row-menu-dropdown');
-
-    menuButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const willOpen = menuDropdown.hidden;
-      closeAllRowMenus();
-      if (willOpen) {
-        const rect = menuButton.getBoundingClientRect();
-        const table = menuButton.closest('table');
-        const tableRect = table?.getBoundingClientRect();
-        const spaceBelowInTable = tableRect ? tableRect.bottom - rect.bottom : 0;
-        const spaceAboveInTable = tableRect ? rect.top - tableRect.top : 0;
-        const spaceBelowInViewport = window.innerHeight - rect.bottom;
-        const menuHeight = 185;
-
-        const openUp =
-          (spaceBelowInTable < menuHeight || spaceBelowInViewport < menuHeight) &&
-          spaceAboveInTable >= menuHeight;
-
-        menuDropdown.classList.toggle('drop-up', openUp);
-        menuDropdown.hidden = false;
-        menuButton.setAttribute('aria-expanded', 'true');
-      }
-    });
-
-    const banksButton = query<HTMLButtonElement>(row, '[data-action="banks"]');
-    banksButton.title = `Ver los bancos de ${plugin.name}`;
-    banksButton.addEventListener('click', () => {
-      closeAllRowMenus();
-      // El menú se cierra al abrir el cajón: el foco vuelve a «···», que sigue visible.
-      void openBanks(plugin, menuButton);
-    });
-
-    const metaButton = query<HTMLButtonElement>(row, '[data-action="meta"]');
-    metaButton.title = `Ver el catálogo de ${plugin.name}`;
-    metaButton.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openMeta(plugin, menuButton);
-    });
-
-    const wizardButton = query<HTMLButtonElement>(row, '[data-action="wizard"]');
-    wizardButton.title = `Ver wizard de ${plugin.name}`;
-    wizardButton.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openPluginWizard(plugin, menuButton);
-    });
-
-    const logButton = query<HTMLButtonElement>(row, '[data-action="log"]');
-    logButton.title = `Ver historial de operaciones de ${plugin.name}`;
-    logButton.addEventListener('click', () => {
-      closeAllRowMenus();
-      void openLogDrawer(plugin, menuButton);
-    });
-
-    const action = query<HTMLButtonElement>(row, '[data-action="toggle"]');
-    const blocked = !plugin.hasLoader && plugin.compatible === false;
-    setButtonLabel(action, plugin.hasLoader ? 'Quitar cargador' : 'Poner cargador');
-    // El icono acompaña a la acción: bajar el cargador o mandarlo a la papelera.
-    action
-      .querySelector('use')
-      ?.setAttribute('href', plugin.hasLoader ? '#icon-trash' : '#icon-download');
-    action.classList.add(plugin.hasLoader ? 'danger' : 'primary');
-    action.disabled = blocked;
-    action.dataset['blocked'] = String(blocked);
-    if (blocked) {
-      action.title = plugin.compatibilityIssues.join('\n');
-    } else {
-      action.title = plugin.hasLoader
-        ? `Quitar el cargador de ${plugin.name}`
-        : `Poner el cargador en ${plugin.name}`;
-    }
-    action.addEventListener('click', () => {
-      closeAllRowMenus();
-      void runAction(plugin, plugin.hasLoader);
-    });
-
-    els.tbody.append(row);
-  }
-}
-
-function closeAllRowMenus(): void {
-  for (const dropdown of document.querySelectorAll<HTMLElement>('.row-menu-dropdown')) {
-    dropdown.hidden = true;
-    dropdown.classList.remove('drop-up');
-  }
-  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-action="menu"]')) {
-    btn.setAttribute('aria-expanded', 'false');
+    // Un escaneo nuevo vuelve a la primera página; los refrescos de badges y
+    // bancos no mueven la página que estuviera mirando la persona.
+    catalogTable.setRows(data.plugins, { keepPage: options?.resetPage !== true });
   }
 }
 
@@ -1374,7 +1280,6 @@ async function scan(): Promise<void> {
     return;
   }
 
-  currentPage = 1;
   setBusy(true);
   setStatus('Escaneando…', 'busy');
   closeBanks();
@@ -1384,7 +1289,7 @@ async function scan(): Promise<void> {
   updateBatchControls();
   try {
     const data = await fetchPlugins();
-    render(data);
+    render(data, { resetPage: true });
     setRootWarning(false);
     const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
     setStatus(
@@ -1999,6 +1904,7 @@ function hidePanel(panel: HTMLElement): void {
     els.pluginWizard.hidden &&
     els.logDrawer.hidden &&
     els.importPackageDrawer.hidden &&
+    els.auditDrawer.hidden &&
     els.customPluginDrawer.hidden
   ) {
     els.drawerBackdrop.hidden = true;
@@ -2052,12 +1958,35 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
       label: 'Tipo',
       sortType: 'text',
       getValue: (entry) => (entry.bank.kind === 'FBCh' ? 'FBCh (opaco)' : 'FxBk'),
+      cellTitle: (entry) =>
+        entry.bank.kind === 'FBCh'
+          ? [
+            `Banco CcnK/FBCh con chunk opaco`,
+            `versión del formato ${entry.bank.version}`,
+            `chunk de ${entry.bank.chunkSize ?? 0} bytes`,
+            entry.bank.version >= 2 && entry.bank.currentProgram !== null
+              ? `programa activo ${entry.bank.currentProgram}`
+              : undefined,
+            `numPrograms informativo: ${entry.bank.numPrograms}`,
+          ]
+            .filter((part) => part !== undefined)
+            .join('\n')
+          : undefined,
     },
     {
       id: 'programs',
       label: 'Programas',
       sortType: 'number',
       getValue: (entry) => entry.bank.numPrograms,
+      renderCell: (entry) =>
+        entry.bank.kind === 'FBCh' ? `${entry.bank.numPrograms} (informativo)` : String(entry.bank.numPrograms),
+    },
+    {
+      id: 'chunk',
+      label: 'Chunk',
+      sortType: 'number',
+      getValue: (entry) => entry.bank.chunkSize ?? 0,
+      renderCell: (entry) => (entry.bank.chunkSize !== null ? formatBytes(entry.bank.chunkSize) : '—'),
     },
     {
       id: 'uniqueId',
@@ -2239,6 +2168,7 @@ async function openBanks(plugin: ScanPlugin, opener?: HTMLElement): Promise<void
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   showPanel(els.banks, opener);
   clearBanksView(plugin.name);
   setBanksBusy(true);
@@ -3017,6 +2947,7 @@ async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<
   closePluginWizard();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   showPanel(els.logDrawer, opener);
 
   els.logPlugin.textContent = plugin.name;
@@ -3070,6 +3001,7 @@ async function openMeta(plugin: ScanPlugin, opener?: HTMLElement): Promise<void>
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   showPanel(els.meta, opener);
   metaState = null;
   clearMetaView(plugin.name);
@@ -3244,6 +3176,7 @@ async function openWizards(): Promise<void> {
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   els.wizards.hidden = false;
   els.wizards.scrollTop = 0;
   els.drawerBackdrop.hidden = false;
@@ -3492,6 +3425,7 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   showPanel(els.pluginWizard, opener);
 
   els.pluginWizardPlugin.textContent = plugin.name;
@@ -3821,76 +3755,7 @@ els.exportButton.addEventListener('click', () => {
   void exportBank();
 });
 
-els.pluginFilter.addEventListener('input', () => {
-  filterQuery = els.pluginFilter.value.trim();
-  currentPage = 1;
-  if (scanData !== null) render(scanData);
-});
 
-els.pageSize.addEventListener('change', () => {
-  const next = Number.parseInt(els.pageSize.value, 10);
-  if (VALID_PAGE_SIZES.includes(next)) {
-    pageSize = next;
-    writeStorage(STORAGE_PAGE_SIZE, String(pageSize));
-    currentPage = 1;
-    if (scanData !== null) render(scanData);
-  }
-});
-
-els.pagePrev.addEventListener('click', () => {
-  if (currentPage > 1) {
-    currentPage -= 1;
-    if (scanData !== null) render(scanData);
-  }
-});
-
-els.pageNext.addEventListener('click', () => {
-  currentPage += 1;
-  if (scanData !== null) render(scanData);
-});
-
-// Un chip por eje: el clic abre sus tres opciones, y la opción elegida deja el
-// eje aplicado (o lo quita si es «todos»).
-for (const trigger of els.filterTriggers) {
-  trigger.addEventListener('click', () => toggleFilterMenu(trigger));
-}
-
-for (const item of els.filterItems) {
-  item.addEventListener('click', () => {
-    const axis = filterAxisOf(item);
-    const value = item.dataset['value'];
-    if (axis === null || value === undefined) return;
-    setFilterAxis(axis, value);
-    closeFilterMenu(true);
-  });
-}
-
-for (const menu of els.filterMenus) {
-  menu.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      moveFilterFocus(menu, 1);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      moveFilterFocus(menu, -1);
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      moveFilterFocus(menu, 'first');
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      moveFilterFocus(menu, 'last');
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      closeFilterMenu(true);
-    } else if (event.key === 'Tab') {
-      // Tab sale del menú y lo cierra: el chip recupera su estado cerrado.
-      closeFilterMenu();
-    }
-  });
-}
-
-paintFilters();
 
 const STORAGE_THEME = 'fxbLoader.theme';
 type ThemeMode = 'auto' | 'dark' | 'light';
@@ -3969,6 +3834,7 @@ function openImportPackageDrawer(opener?: HTMLElement): void {
   closePluginWizard();
   closeLogDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
   showPanel(els.importPackageDrawer, opener);
   if (!els.importPackagePath.value.trim() && libraryRoot) {
     const parent = parentDir(libraryRoot);
@@ -4030,6 +3896,7 @@ function openCustomPluginDrawer(opener?: HTMLElement): void {
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
+  closeAuditDrawer();
   showPanel(els.customPluginDrawer, opener);
   if (!els.customPluginRoot.value.trim() && libraryRoot) {
     els.customPluginRoot.value = libraryRoot;
@@ -4679,6 +4546,257 @@ async function executeImportPackage(): Promise<void> {
   }
 }
 
+/** Entrada de la auditoría durable: los cuatro `kind` que registra el servidor. */
+type AssociationAuditEntry = AssociationAuditSnapshotResponse['entries'][number];
+
+/** Etiqueta legible de cada tipo de evento; el valor crudo es el que filtra. */
+const AUDIT_KIND_LABELS: Record<string, string> = {
+  'association-change': 'Cambio de asociación',
+  import: 'Importación',
+  reimport: 'Reimportación',
+  collision: 'Colisión',
+};
+
+/**
+ * Visor de la auditoría durable de asociaciones: monta el snapshot de solo
+ * lectura de `POST /library/association-audit/list` sobre `mountTable`, con el
+ * rango de fechas por `ts` y el multiselección por `kind` que trae el sistema
+ * de tablas. El orden, la búsqueda y la paginación se resuelven en cliente
+ * sobre los hasta 200 eventos del snapshot.
+ */
+const associationAuditTableView: TableView<AssociationAuditEntry> = {
+  columns: [
+    {
+      id: 'ts',
+      label: 'Fecha',
+      sortType: 'date',
+      cellClass: 'table-date',
+      getValue: (entry) => entry.ts,
+      cellTitle: (entry) => entry.ts,
+      renderCell: (entry) => logTimestamp(entry.ts) || '—',
+    },
+    {
+      id: 'kind',
+      label: 'Tipo',
+      sortType: 'text',
+      getValue: (entry) => entry.kind,
+      cellTitle: (entry) => AUDIT_KIND_LABELS[entry.kind] ?? entry.kind,
+      renderNode: (entry) => {
+        const badge = document.createElement('span');
+        badge.className =
+          entry.kind === 'import'
+            ? 'badge on'
+            : entry.kind === 'collision'
+              ? 'badge off'
+              : 'badge';
+        badge.textContent = AUDIT_KIND_LABELS[entry.kind] ?? entry.kind;
+        return badge;
+      },
+    },
+    {
+      id: 'plugin',
+      label: 'Plugin',
+      sortType: 'text',
+      getValue: (entry) => entry.plugin ?? '',
+      cellTitle: (entry) => entry.plugin,
+      renderCell: (entry) => entry.plugin || '—',
+    },
+    {
+      id: 'change',
+      label: 'Cambio',
+      sortType: 'text',
+      cellTitle: (entry) =>
+        entry.field
+          ? `${entry.field}: ${entry.previousValue ?? '—'} → ${entry.newValue ?? '—'}`
+          : undefined,
+      getValue: (entry) =>
+        [entry.field, entry.previousValue, entry.newValue].filter(Boolean).join(' '),
+      renderNode: (entry) => {
+        if (!entry.field) return null;
+        const wrap = document.createElement('div');
+        const field = document.createElement('div');
+        field.className = 'note';
+        field.textContent = entry.field;
+        const line = document.createElement('div');
+        const from = document.createElement('code');
+        from.textContent = entry.previousValue ?? '(vacío)';
+        const to = document.createElement('code');
+        to.textContent = entry.newValue ?? '(vacío)';
+        line.append(from, document.createTextNode(' → '), to);
+        wrap.append(field, line);
+        return wrap;
+      },
+    },
+    {
+      id: 'source',
+      label: 'Origen',
+      sortType: 'text',
+      getValue: (entry) => entry.packageSource ?? '',
+      cellTitle: (entry) => entry.packageSource,
+      renderCell: (entry) => entry.packageSource || '—',
+    },
+    {
+      id: 'detail',
+      label: 'Detalle',
+      sortable: false,
+      getValue: (entry) =>
+        [
+          entry.collisionPolicy ? `Política ${entry.collisionPolicy}` : '',
+          ...(entry.collisionNames ?? []),
+          ...(entry.repairedBanks ?? []),
+        ]
+          .filter(Boolean)
+          .join(' '),
+      renderNode: (entry) => {
+        const parts: string[] = [];
+        if (entry.collisionPolicy) {
+          parts.push(`Política: ${entry.collisionPolicy === 'skip' ? 'omitir' : 'sobrescribir'}`);
+        }
+        if (entry.collisionNames && entry.collisionNames.length > 0) {
+          parts.push(`Omitidos: ${entry.collisionNames.join(', ')}`);
+        }
+        if (entry.repairedBanks && entry.repairedBanks.length > 0) {
+          parts.push(`Bancos reparados: ${entry.repairedBanks.join(', ')}`);
+        }
+        if (parts.length === 0) return null;
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.textContent = parts.join(' · ');
+        return note;
+      },
+    },
+  ],
+  getRowId: (entry) =>
+    `${entry.ts}|${entry.kind}|${entry.plugin ?? ''}|${entry.packageSource ?? ''}`,
+  initialSort: { columnId: 'ts', direction: 'desc' },
+  pageSize: 25,
+  emptyText: 'Sin eventos de auditoría que cumplan los filtros.',
+  filters: [
+    {
+      id: 'kindFilter',
+      label: 'Tipo',
+      columnId: 'kind',
+      type: 'multi-select',
+      getOptions: () =>
+        (['association-change', 'import', 'reimport', 'collision'] as const).map((value) => ({
+          value,
+          label: AUDIT_KIND_LABELS[value] ?? value,
+        })),
+    },
+    { id: 'tsFilter', label: 'Fecha', columnId: 'ts', type: 'date-range' },
+  ],
+};
+
+let auditTableController: TableController<AssociationAuditEntry> | null = null;
+let auditBusy = false;
+
+function destroyAssociationAuditTable(): void {
+  auditTableController?.destroy();
+  auditTableController = null;
+  els.auditTable.replaceChildren();
+}
+
+function setAuditStatus(message: string, kind = ''): void {
+  els.auditStatus.textContent = message;
+  els.auditStatus.className = kind ? `status ${kind}` : 'status';
+}
+
+async function loadAssociationAudit(): Promise<void> {
+  if (auditBusy) return;
+  if (!libraryRoot) {
+    destroyAssociationAuditTable();
+    els.auditPath.textContent = '';
+    els.auditSummary.textContent = '';
+    setAuditStatus('Elige la carpeta de la librería activa para leer su auditoría.', 'error');
+    return;
+  }
+
+  auditBusy = true;
+  els.auditRefresh.disabled = true;
+  setAuditStatus('Leyendo el almacén de auditoría…', 'busy');
+  try {
+    // El filtro por plugin se manda al servidor: el snapshot trae los últimos
+    // 200 eventos del fichero completo, así que estrecharlo en el navegador
+    // solo vería esa cola y no el histórico.
+    const plugin = els.auditPluginFilter.value.trim();
+    const snapshot = await client.associationAudit.list({
+      libraryRoot,
+      limit: 200,
+      ...(plugin === '' ? {} : { plugin }),
+    });
+    els.auditPath.textContent = snapshot.auditPath;
+    els.auditSummary.textContent = snapshot.exists
+      ? `${snapshot.total} evento(s) · ${formatBytes(snapshot.size)} en el almacén${
+          plugin === '' ? '' : ` · filtrado por «${plugin}»`
+        }`
+      : 'Todavía no existe el almacén: lo creará la primera operación que audite.';
+    if (auditTableController === null) {
+      auditTableController = mountTable(els.auditTable, associationAuditTableView, snapshot.entries);
+    } else {
+      auditTableController.setRows(snapshot.entries);
+    }
+    setAuditStatus('');
+  } catch (error) {
+    destroyAssociationAuditTable();
+    els.auditPath.textContent = '';
+    els.auditSummary.textContent = '';
+    setAuditStatus(`No se pudo leer la auditoría: ${describeError(error)}`, 'error');
+  } finally {
+    auditBusy = false;
+    els.auditRefresh.disabled = false;
+  }
+}
+
+function openAuditDrawer(opener?: HTMLElement): void {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
+  showPanel(els.auditDrawer, opener);
+  els.auditPath.textContent = '';
+  els.auditSummary.textContent = '';
+  els.auditPluginFilter.value = '';
+  destroyAssociationAuditTable();
+  setAuditStatus('');
+  void loadAssociationAudit();
+}
+
+function closeAuditDrawer(): void {
+  if (els.auditDrawer.hidden) return;
+  hidePanel(els.auditDrawer);
+  destroyAssociationAuditTable();
+  els.auditPath.textContent = '';
+  els.auditSummary.textContent = '';
+  els.auditPluginFilter.value = '';
+  setAuditStatus('');
+}
+
+els.auditNavBtn.addEventListener('click', () => {
+  openAuditDrawer(els.auditNavBtn);
+});
+
+els.auditClose.addEventListener('click', () => {
+  closeAuditDrawer();
+});
+
+els.auditRefresh.addEventListener('click', () => {
+  void loadAssociationAudit();
+});
+
+// El filtro por plugin estrecha el snapshot en el servidor, tecleando: el
+// mismo rebote que el filtro de wizards, y solo cuando el cajón está abierto.
+let auditFilterTimeout: ReturnType<typeof setTimeout> | null = null;
+els.auditPluginFilter.addEventListener('input', () => {
+  if (auditFilterTimeout) clearTimeout(auditFilterTimeout);
+  auditFilterTimeout = setTimeout(() => {
+    auditFilterTimeout = null;
+    if (!els.auditDrawer.hidden) void loadAssociationAudit();
+  }, 300);
+});
+
 els.importPkgNavBtn.addEventListener('click', () => {
   requestOpenImportPackageDrawer(els.importPkgNavBtn);
 });
@@ -4742,6 +4860,7 @@ els.drawerBackdrop.addEventListener('click', () => {
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closeAuditDrawer();
 });
 
 window.addEventListener('keydown', (event) => {
@@ -4753,8 +4872,8 @@ window.addEventListener('keydown', (event) => {
     closeLogDrawer();
     closeImportPackageDrawer();
     closeCustomPluginDrawer();
+    closeAuditDrawer();
     closeAllRowMenus();
-    closeFilterMenu(true);
   }
 });
 
@@ -4788,14 +4907,8 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-document.addEventListener('click', (event) => {
-  if (!(event.target as HTMLElement | null)?.closest('.row-menu')) {
-    closeAllRowMenus();
-  }
-  if (!(event.target as HTMLElement | null)?.closest('.filter-menu')) {
-    closeFilterMenu();
-  }
-});
+// El clic fuera de una tabla cierra sus menús «···» y los chips: lo lleva
+// `mountTable`, que es quien los crea.
 
 void pruneRecents();
 

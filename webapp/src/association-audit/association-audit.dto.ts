@@ -7,8 +7,8 @@ import {
 export const ASSOCIATION_AUDIT_LIST_EXAMPLE = {
   auditPath: 'C:\\vfx\\mylib\\fxbLoader.audit.jsonl',
   exists: true,
-  size: 648,
-  total: 2,
+  size: 1024,
+  total: 3,
   entries: [
     {
       ts: '2026-10-25T09:32:11.482Z',
@@ -24,9 +24,16 @@ export const ASSOCIATION_AUDIT_LIST_EXAMPLE = {
       kind: 'import',
       libraryRoot: 'C:/vfx/mylib',
       packageSource: 'C:/downloads/pack.vfxlibrary',
+      repairedBanks: [],
+    },
+    {
+      ts: '2026-10-25T09:35:02.115Z',
+      kind: 'collision',
+      plugin: 'OtroPlugin',
+      libraryRoot: 'C:/vfx/mylib',
+      packageSource: 'C:/downloads/pack.vfxlibrary',
       collisionPolicy: 'skip',
       collisionNames: ['OtroPlugin'],
-      repairedBanks: [],
     },
   ],
 };

@@ -518,7 +518,10 @@ de validar en los DTO anidados (`current`, su `config`, `plugin`, `results`, el
 [test/library.docs.test.ts](test/library.docs.test.ts) ejecuta los endpoints
 reales y comprueba que los ejemplos tienen exactamente los campos que devuelve la
 API, [test/plugin-log.docs.test.ts](test/plugin-log.docs.test.ts) hace lo mismo
-con el log por plugin (incluido el 400 exacto),
+con el log por plugin (incluido el 400 exacto) y
+[test/association-audit.docs.test.ts](test/association-audit.docs.test.ts) con la
+auditoría: vacío, eventos reales de instalación, una importación con su colisión
+enlazadas por `packageSource` y el 400 exacto,
 [test/error-bodies.test.ts](test/error-bodies.test.ts) recorre los códigos de
 error documentados —400, 404, 409, 422 y 501— y exige que ninguno lleve
 `statusCode` ni `error`, y [test/client.test.ts](test/client.test.ts) exige que
@@ -1474,15 +1477,24 @@ Cada línea es un evento:
 - `plugin`: carpeta del plugin tal cual; los eventos globales de importación
   pueden omitirla.
 - `libraryRoot`: raíz canónica de la librería donde ocurrió el evento.
-- `field`, `previousValue` y `newValue`: el campo asociado (`dll_name` hoy) y sus
-  valores anterior y nuevo (`null` cuando no había valor o queda vacío).
-- `packageSource`, `collisionPolicy` (`skip` u `overwrite`), `collisionNames` y
-  `repairedBanks`: enlazan los eventos `import`, `reimport` y `collision` que
-  causó una misma importación.
+- `field`, `previousValue` y `newValue`: solo en `association-change`, con el
+  campo asociado (`dll_name` hoy) y sus valores anterior y nuevo (`null` cuando
+  no había valor o queda vacío).
+- `packageSource`: paquete que causó el evento; lo llevan `import`, `reimport` y
+  `collision`, y también el `association-change` que esa misma importación
+  parcheó, de modo que los tres tipos quedan enlazados por el mismo origen.
+- `collisionPolicy` (`skip` u `overwrite`) y `collisionNames`: solo en
+  `collision`, con la política aplicada y los nombres que chocaron.
+- `repairedBanks`: solo en `import` y `reimport`, con los bancos reparados.
 
 Escriben solo los servicios, con `fsync` por línea y antes del log rotado: si la
 auditoría falla, degrada a `false` con un aviso en el log del servidor y la
 operación del usuario continúa. El navegador nunca escribe.
+
+Los ejemplos de Swagger recogen los tres tipos: `conEventos` muestra un
+`association-change` de preferencia, un `import` con su `packageSource` y un
+`collision` con su política y sus nombres, con el mismo origen en los tres;
+`sinAlmacen` enseña el snapshot vacío y el 400, el cuerpo exacto del error.
 
 ### `POST /library/association-audit/list`
 
@@ -1724,7 +1736,7 @@ test/
   library-import.service.test.ts inspección recursiva e importación selectiva de paquetes
   plugin-dll-preference.test.ts preferencia local de DLL por plugin y respaldo vfxinfo.tx_
   association-audit.service.test.ts  auditoría por librería: apéndice, fsync, filtros y snapshot vacío
-  association-audit.docs.test.ts  ejemplos de auditoría (vacía y con eventos) contra la API real
+  association-audit.docs.test.ts  ejemplos de auditoría: vacío, eventos reales y colisión enlazada
   wizard.service.test.ts       catálogo oficial de wizards, emparejamiento e instalación directa
   vfx-bank-validator.test.ts   diagnóstico y reparación de cabeceras de chunks y preset.vfx
   fxb-bank.test.ts             parser .fxb y compatibilidad

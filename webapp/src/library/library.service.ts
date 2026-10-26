@@ -929,6 +929,14 @@ export class LibraryService {
       throw new LibraryPathError('fxVersion debe ser un entero entre 0 y 0xFFFFFFFF');
     }
 
+    // Orden de bytes del archivo, como en la exportación: little es lo que
+    // escribe un plugin de Windows y por eso es el valor por defecto; `big`
+    // es el estándar de Steinberg que otros hosts esperan encontrar.
+    const endianness = input.endianness ?? 'little';
+    if (endianness !== 'big' && endianness !== 'little') {
+      throw new LibraryPathError('endianness debe ser "big" o "little"');
+    }
+
     // Modo chunk: contenido opaco en hexadecimal, versión del banco 1/2,
     // e informativos `currentProgram` (solo versión 2) y `numPrograms`.
     let chunkBytes: Buffer | null = null;
@@ -996,6 +1004,7 @@ export class LibraryService {
           fxVersion,
           chunk: chunkBytes!,
           version: chunkVersion,
+          endianness,
           ...(chunkVersion === 2 ? { currentProgram: input.currentProgram ?? 0 } : {}),
           ...(input.chunkNumPrograms !== undefined ? { numPrograms: input.chunkNumPrograms } : {}),
         })
@@ -1004,6 +1013,7 @@ export class LibraryService {
           fxVersion,
           programNames: names,
           numParams,
+          endianness,
         });
     const parsed = parseFxbBank(data);
     if (parsed.bank === null || parsed.issues.length > 0) {
@@ -1020,12 +1030,26 @@ export class LibraryService {
       throw new LibraryOperationError(`no se pudo escribir el banco: ${(error as Error).message}`);
     }
 
+    // Detalle del chunk opaco, para que la ficha del log muestre el formato:
+    // versión del banco, programa activo (solo v2) y programas informativos.
+    const chunkDetail = chunkMode
+      ? [
+        `formato FBCh versión ${chunkVersion}`,
+        chunkVersion === 2 ? `programa activo ${input.currentProgram ?? 0}` : 'sin programa activo',
+        `chunk de ${chunkBytes?.length ?? 0} bytes`,
+        input.chunkNumPrograms !== undefined
+          ? `${input.chunkNumPrograms} programa(s) informativo(s)`
+          : 'sin programas informativos',
+      ].join(' · ')
+      : undefined;
+
     await this.logService?.append(
       pluginDir,
       'create-bank',
       chunkMode
         ? `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (FBCh, chunk de ${chunkBytes?.length ?? 0} bytes)`
         : `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (${names.length} programa(s))`,
+      chunkDetail,
     );
 
     return {

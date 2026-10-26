@@ -32,6 +32,25 @@ export interface TableFilter<T> {
   options?: readonly TableFilterOption<T>[];
 }
 
+/**
+ * Chip de tres estados (positivo → negativo → «todos») con su menú
+ * `role="menuitemradio"`: el sistema de tablas lo pinta, lo abre y lo cierra
+ * con la misma ARIA que tenía el marcado estático del catálogo
+ * (`#filter-<id>`, `#filter-<id>-menu`, `data-tone`, `aria-pressed`). La
+ * opción con `tone: 'neutral'` es la que arranca elegida y la que no filtra.
+ */
+export interface TableChipFilter<T> {
+  /** Eje del filtro: compone el id del chip y de su menú. */
+  id: string;
+  /** Nombre accesible del menú y prefijo del tooltip del chip. */
+  label: string;
+  columnId: string;
+  type: 'chip';
+  /** Icono del sprite (`icon-*`) a la izquierda de la etiqueta. */
+  icon?: string;
+  options: readonly TableFilterOption<T>[];
+}
+
 export interface TableMultiSelectFilter<T> {
   id: string;
   label: string;
@@ -47,7 +66,7 @@ export interface TableDateRangeFilter {
   type: 'date-range';
 }
 
-export type TableFilterDefinition<T> = TableFilter<T> | TableMultiSelectFilter<T> | TableDateRangeFilter;
+export type TableFilterDefinition<T> = TableFilter<T> | TableMultiSelectFilter<T> | TableDateRangeFilter | TableChipFilter<T>;
 export type TableFilterValue = string | string[] | { from: string; to: string };
 
 export interface TableView<T> {
@@ -57,12 +76,29 @@ export interface TableView<T> {
   initialSort: { columnId: string; direction: TableDirection };
   pageSize?: number;
   searchColumns?: readonly string[];
+  /** Búsqueda propia: texto por fila que sustituye a la de las columnas (p. ej. campos que no son columna). */
+  searchText?: (row: T) => string;
+  /** Id del input de búsqueda, si la vista lo necesita con nombre propio. */
+  searchId?: string;
   filters?: readonly TableFilterDefinition<T>[];
   rowActions?: TableRowActions<T>;
   rowClass?: (row: T) => string | undefined;
   tbodyId?: string;
   /** Aviso de que el usuario quiere cambiar el orden (para tablas que resuelven el orden en el servidor y recargan). */
   onSortChange?: (sort: { columnId: string; direction: TableDirection }) => void;
+  /** Se llama tras cada render con el resultado procesado (recuentos de la vista). */
+  onProcessed?: (info: TableProcessInfo<T>) => void;
+}
+
+/** Resultado de procesar las filas: lo que la vista puede necesitar pintar fuera de la tabla. */
+export interface TableProcessInfo<T> {
+  rows: readonly T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  query: string;
+  filters: Record<string, TableFilterValue>;
 }
 
 export interface TableState {
@@ -103,6 +139,11 @@ export function createTableState<T>(view: TableView<T>, rows: readonly T[] = [])
   return {
     sort: { ...view.initialSort }, query: '',
     filters: Object.fromEntries((view.filters ?? []).map(filter => {
+      if (filter.type === 'chip') {
+        // El estado «todos» (el neutro) es el que arranca elegido.
+        const neutral = filter.options.find(option => option.tone === 'neutral') ?? filter.options[0];
+        return [filter.id, neutral?.value ?? ''];
+      }
       if (filter.type === 'multi-select') {
         const options: readonly { value: string; label: string }[] = filter.getOptions?.(rows) ?? [...new Set(rows.map(row => String(view.columns.find(column => column.id === filter.columnId)?.getValue(row) ?? '')))].filter(Boolean).sort((a, b) => a.localeCompare(b)).map(value => ({ value, label: value }));
         return [filter.id, options.map(option => option.value)];
@@ -134,6 +175,7 @@ export function processTableRows<T>(rows: readonly T[], view: TableView<T>, stat
       }
     }
     if (!query) return true;
+    if (view.searchText) return view.searchText(row).toLocaleLowerCase().includes(query);
     return searchable.some(id => {
       const value = view.columns.find(item => item.id === id)?.getValue(row);
       return value !== null && value !== undefined && String(value).toLocaleLowerCase().includes(query);
@@ -172,11 +214,34 @@ export interface TableRowActions<T> {
   actions: readonly TableRowAction<T>[] | ((row: T) => readonly TableRowAction<T>[]);
 }
 
-export interface TableController<T> { setRows(rows: readonly T[]): void; destroy(): void }
+export interface TableController<T> {
+  /** Reemplaza las filas; `keepPage` conserva la página vigente (recortando si hace falta). */
+  setRows(rows: readonly T[], options?: { keepPage?: boolean }): void;
+  destroy(): void;
+  /** El `<tbody>` que pinta la tabla: permite parchear una fila sin re-render. */
+  readonly tbody: HTMLTableSectionElement;
+}
+
+/** Tablas montadas, para cerrar sus menús de fila desde cualquier sitio. */
+const mountedTables = new Set<{ closeRowMenus(): void }>();
+
+/** Cierra los menús «···» abiertos en cualquier tabla montada. */
+export function closeAllRowMenus(): void {
+  for (const table of mountedTables) table.closeRowMenus();
+}
 
 export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows: readonly T[]): TableController<T> {
   let rows = [...initialRows]; const state = createTableState(view, rows);
   const listeners: Array<() => void> = [];
+  /** Menús «···» vivos de la página actual; se repueblan en cada render. */
+  let rowMenus: Array<{ dropdown: HTMLElement; button: HTMLButtonElement }> = [];
+  const closeRowMenus = (): void => {
+    for (const entry of rowMenus) {
+      entry.dropdown.hidden = true;
+      entry.dropdown.classList.remove('drop-up');
+      entry.button.setAttribute('aria-expanded', 'false');
+    }
+  };
   const listen = (element: Element, type: string, listener: EventListener): void => {
     element.addEventListener(type, listener); listeners.push(() => element.removeEventListener(type, listener));
   };
@@ -184,11 +249,19 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   shell.setAttribute('data-table-empty-text', view.emptyText ?? 'No hay registros.');
   const toolbar = document.createElement('div'); toolbar.className = 'table-toolbar';
   let search: HTMLInputElement | null = null;
-  if ((view.searchColumns ?? view.columns.filter(column => column.searchable !== false).map(column => column.id)).length) {
+  if (
+    view.searchText !== undefined ||
+    (view.searchColumns ?? view.columns.filter(column => column.searchable !== false).map(column => column.id)).length
+  ) {
     search = document.createElement('input'); search.type = 'search'; search.className = 'table-search';
+    if (view.searchId) search.id = view.searchId;
     search.setAttribute('aria-label', 'Buscar en la tabla'); search.placeholder = 'Buscar…';
     listen(search, 'input', () => { state.query = search!.value; state.page = 1; render(); }); toolbar.append(search);
   }
+  /** Chips de tres estados: se agrupan en su barra y se repintan en cada render. */
+  const chipPaints: Array<() => void> = [];
+  const openChips: Array<{ close: (focusTrigger: boolean) => void }> = [];
+  let chipGroup: HTMLElement | null = null;
   for (const filter of view.filters ?? []) {
     if (filter.type === 'date-range') {
       const group = document.createElement('div'); group.className = 'table-filter table-date-range';
@@ -218,6 +291,15 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
         label.append(input, document.createTextNode(option.label)); menu.append(label);
       }
       updateTrigger(); toggle.append(summary, menu); group.append(toggle); toolbar.append(group);
+    } else if (filter.type === 'chip') {
+      if (chipGroup === null) {
+        chipGroup = document.createElement('div');
+        chipGroup.className = 'filter-chips';
+        chipGroup.setAttribute('role', 'group');
+        chipGroup.setAttribute('aria-label', 'Filtros de la tabla');
+        toolbar.append(chipGroup);
+      }
+      chipGroup.append(buildChip(filter));
     } else {
       const label = document.createElement('label'); label.className = 'table-filter'; label.append(document.createTextNode(`${filter.label}: `));
       const select = document.createElement('select'); select.setAttribute('aria-label', filter.label);
@@ -226,6 +308,28 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     }
   }
   if (toolbar.childElementCount) shell.append(toolbar);
+  // Un clic fuera de la tabla cierra los chips abiertos y los menús «···»,
+  // como hacía el marcado estático del catálogo: no se quedan huérfanos.
+  const onDocumentClick = (event: Event): void => {
+    const target = event.target as Node | null;
+    const inside = target !== null && shell.contains(target);
+    if (!inside) for (const chip of openChips) chip.close(false);
+    if (!inside || !insideRowMenu(target)) closeRowMenus();
+  };
+  // El stub de `document` de los tests unitarios no tiene listeners; sin
+  // guardia la tabla ni siquiera se monta fuera del navegador.
+  const canListen = typeof document.addEventListener === 'function';
+  if (canListen) document.addEventListener('click', onDocumentClick);
+
+  /** Sube por los ancestros viendo si el clic cayó dentro del menú de una fila. */
+  function insideRowMenu(target: Node | null): boolean {
+    let node = target as HTMLElement | null;
+    while (node !== null && node !== shell) {
+      if (node.classList?.contains('row-menu') === true) return true;
+      node = node.parentElement;
+    }
+    return false;
+  }
   const wrap = document.createElement('div'); wrap.className = 'table-wrap';
   const table = document.createElement('table'); const thead = document.createElement('thead'); const header = document.createElement('tr');
   for (const column of view.columns) {
@@ -254,8 +358,109 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   listen(sizeSelect, 'change', () => { state.pageSize = Number(sizeSelect.value); state.page = 1; render(); });
   listen(prev, 'click', () => { state.page -= 1; render(); }); listen(next, 'click', () => { state.page += 1; render(); });
   pager.append(sizeLabel, prev, info, next); shell.append(pager); root.replaceChildren(shell);
+  /**
+   * Chip de tres estados: abre un menú `role="menu"` con `menuitemradio`,
+   * anuncia si filtra (`aria-pressed`) y si está abierto (`aria-expanded`), y
+   * devuelve el foco al chip al elegir o con Escape.
+   */
+  function buildChip(filter: TableChipFilter<T>): HTMLElement {
+    const group = document.createElement('div'); group.className = 'filter-menu';
+    const trigger = document.createElement('button');
+    trigger.type = 'button'; trigger.className = 'filter-btn';
+    trigger.id = `filter-${filter.id}`;
+    trigger.dataset['axis'] = filter.id;
+    trigger.setAttribute('aria-haspopup', 'true');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-controls', `filter-${filter.id}-menu`);
+    trigger.setAttribute('aria-pressed', 'false');
+    if (filter.icon) {
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false');
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#icon-${filter.icon}`);
+      icon.append(use); trigger.append(icon);
+    }
+    const text = document.createElement('span'); text.className = 'filter-btn-text'; trigger.append(text);
+    const menu = document.createElement('div');
+    menu.className = 'filter-menu-list'; menu.id = `filter-${filter.id}-menu`; menu.hidden = true;
+    menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', filter.label);
+
+    const items: HTMLButtonElement[] = [];
+    for (const option of filter.options) {
+      const item = document.createElement('button');
+      item.type = 'button'; item.setAttribute('role', 'menuitemradio');
+      item.dataset['axis'] = filter.id; item.dataset['value'] = option.value; item.dataset['tone'] = option.tone;
+      item.textContent = option.label;
+      listen(item, 'click', () => {
+        state.filters[filter.id] = option.value;
+        state.page = 1;
+        closeChip(true);
+        render();
+      });
+      menu.append(item); items.push(item);
+    }
+
+    const neutral = filter.options.find(option => option.tone === 'neutral')?.value ?? filter.options[0]?.value ?? '';
+
+    function paintChip(): void {
+      const value = String(state.filters[filter.id] ?? neutral);
+      const option = filter.options.find(entry => entry.value === value) ?? filter.options[0];
+      if (option === undefined) return;
+      const filtering = option.value !== neutral;
+      trigger.dataset['tone'] = option.tone;
+      trigger.classList.toggle('active', filtering);
+      trigger.setAttribute('aria-pressed', String(filtering));
+      trigger.title = `${filter.label}: ${option.label.toLowerCase()}. Abrir las opciones`;
+      text.textContent = option.label;
+      for (const item of items) {
+        const checked = item.dataset['value'] === option.value;
+        item.classList.toggle('selected', checked);
+        item.setAttribute('aria-checked', String(checked));
+      }
+    }
+
+    function closeChip(focusTrigger: boolean): void {
+      menu.hidden = true;
+      trigger.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      if (focusTrigger) trigger.focus({ preventScroll: true });
+    }
+
+    function openChip(): void {
+      for (const other of openChips) other.close(false);
+      menu.hidden = false;
+      trigger.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+      // El foco entra en la opción vigente: Intro la deja tal cual y las
+      // flechas recorren las otras dos.
+      (items.find(item => item.getAttribute('aria-checked') === 'true') ?? items[0])?.focus({ preventScroll: true });
+    }
+
+    function moveFocus(step: number): void {
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      items[(current + step + items.length) % items.length]?.focus();
+    }
+
+    listen(trigger, 'click', () => { if (menu.hidden) openChip(); else closeChip(true); });
+    listen(menu, 'keydown', (event) => {
+      const key = (event as KeyboardEvent).key;
+      if (key === 'ArrowDown') { event.preventDefault(); moveFocus(1); }
+      else if (key === 'ArrowUp') { event.preventDefault(); moveFocus(-1); }
+      else if (key === 'Home') { event.preventDefault(); items[0]?.focus(); }
+      else if (key === 'End') { event.preventDefault(); items[items.length - 1]?.focus(); }
+      else if (key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeChip(true); }
+      // Tab sale del menú y lo cierra: el chip recupera su estado cerrado.
+      else if (key === 'Tab') { closeChip(false); }
+    });
+
+    chipPaints.push(paintChip);
+    openChips.push({ close: closeChip });
+    paintChip();
+    group.append(trigger, menu);
+    return group;
+  }
+
   function render(): void {
-    const result = processTableRows(rows, view, state); state.page = result.page; tbody.replaceChildren();
+    const result = processTableRows(rows, view, state); state.page = result.page; tbody.replaceChildren(); rowMenus = [];
     if (result.rows.length === 0) {
       const emptyTr = document.createElement('tr'); emptyTr.className = 'table-empty-row';
       const emptyTd = document.createElement('td');
@@ -291,6 +496,8 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
           const td = document.createElement('td'); td.className = 'actions table-actions';
           const menu = document.createElement('div'); menu.className = 'row-menu';
           const button = document.createElement('button'); button.type = 'button'; button.className = 'row-menu-btn'; button.textContent = '···';
+          button.dataset['action'] = 'menu';
+          button.title = 'Acciones del registro';
           button.setAttribute('aria-label', 'Acciones del registro'); button.setAttribute('aria-expanded', 'false');
           const dropdown = document.createElement('div'); dropdown.className = 'row-menu-dropdown'; dropdown.hidden = true;
           const actions = typeof view.rowActions.actions === 'function' ? view.rowActions.actions(row) : view.rowActions.actions;
@@ -301,7 +508,8 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
             item.append(document.createTextNode(action.label));
             listen(item, 'click', () => { dropdown.hidden = true; button.setAttribute('aria-expanded', 'false'); action.onSelect(row, button); }); dropdown.append(item);
           }
-          listen(button, 'click', event => { event.stopPropagation(); const opening = dropdown.hidden; for (const other of root.querySelectorAll<HTMLElement>('.row-menu-dropdown')) other.hidden = true; for (const other of root.querySelectorAll<HTMLButtonElement>('.row-menu-btn')) other.setAttribute('aria-expanded', 'false'); dropdown.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); });
+          listen(button, 'click', event => { event.stopPropagation(); const opening = dropdown.hidden; closeRowMenus(); dropdown.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); });
+          rowMenus.push({ dropdown, button });
           menu.append(button, dropdown); td.append(menu); tr.append(td);
         }
         tbody.append(tr);
@@ -315,7 +523,28 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     sizeSelect.value = String(result.pageSize); pager.hidden = result.total === 0; empty.hidden = result.total !== 0;
     info.textContent = result.total === 0 ? '' : `${(result.page - 1) * result.pageSize + 1}–${Math.min(result.page * result.pageSize, result.total)} de ${result.total}`;
     prev.disabled = result.page <= 1; next.disabled = result.page >= result.totalPages;
+    for (const paintChip of chipPaints) paintChip();
+    view.onProcessed?.({
+      rows: result.rows,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+      query: state.query,
+      filters: { ...state.filters },
+    });
   }
   render();
-  return { setRows(nextRows) { rows = [...nextRows]; state.page = 1; render(); }, destroy() { for (const remove of listeners) remove(); root.replaceChildren(); } };
+  const registry = { closeRowMenus };
+  mountedTables.add(registry);
+  return {
+    setRows(nextRows, options) { rows = [...nextRows]; if (options?.keepPage !== true) state.page = 1; render(); },
+    destroy() {
+      for (const remove of listeners) remove();
+      if (canListen) document.removeEventListener('click', onDocumentClick);
+      mountedTables.delete(registry);
+      root.replaceChildren();
+    },
+    tbody,
+  };
 }

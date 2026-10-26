@@ -44,7 +44,10 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /data-icon="dark"/);
   assert.doesNotMatch(response.text, /data-icon="auto"/);
   assert.doesNotMatch(response.text, /🎛|🌓|☀|🌙/);
-  assert.match(response.text, /id="plugins"/);
+  // El catálogo es la tabla reutilizable: `index.html` trae la `<section>` de
+  // resultados y el contenedor; la tabla, su búsqueda y los chips los monta
+  // `mountTable` en el navegador.
+  assert.match(response.text, /<section id="results" class="card"/);
   assert.match(response.text, /id="scan-form"/);
   assert.match(response.text, /id="library-root-recents"/);
   assert.match(response.text, /list="library-root-recents"/);
@@ -100,72 +103,19 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="batch-error-list"/);
   assert.match(response.text, /id="batch-progress"/);
   assert.match(response.text, /id="loader-status"/);
-  assert.match(response.text, /Compatibilidad/);
-  assert.match(response.text, /data-field="compatibility"/);
   // Los botones llevan iconos monocromos de un sprite: si falta una `<use>`, el
   // botón se queda sin marca y nadie más lo nota.
   assert.match(response.text, /class="icon-sprite"/);
   assert.match(response.text, /<use href="#icon-search"><\/use>/);
   assert.match(response.text, /<use href="#icon-save"><\/use>/);
-  // La tabla dice cuántos bancos tiene cada plugin, sin abrir el panel.
-  assert.match(response.text, /<th>Bancos<\/th>/);
-  assert.match(response.text, /data-field="banks"/);
-  // La tabla dice qué plugins ya tienen catálogo propio, sin abrir el panel.
-  assert.match(response.text, /<th>Catálogo<\/th>/);
-  assert.match(response.text, /data-field="meta"/);
-  assert.match(response.text, /id="plugin-filter"/);
-  assert.match(response.text, /aria-label="Filtros de la tabla"/);
-  // Cuatro ejes, cada uno con un chip que abre sus tres estados. Un solo
-  // control por eje evita los chips duplicados de «con» y «sin».
-  for (const [axis, menu] of [
-    ['install', 'filter-install-menu'],
-    ['banks', 'filter-banks-menu'],
-    ['wizard', 'filter-wizard-menu'],
-    ['compat', 'filter-compat-menu'],
-  ] as const) {
-    // El chip anuncia si filtra (`aria-pressed`), que abre un menú
-    // (`aria-haspopup`/`aria-expanded`) y cuál controla (`aria-controls`).
-    assert.match(
-      response.text,
-      new RegExp(
-        `id="filter-${axis}"[\\s\\S]{0,400}aria-expanded="false"[\\s\\S]{0,200}` +
-          `aria-controls="${menu}"[\\s\\S]{0,200}aria-pressed="false"`,
-      ),
-      `chip del eje ${axis}`,
-    );
-    assert.match(
-      response.text,
-      new RegExp(`id="${menu}"[\\s\\S]{0,200}role="menu"`),
-      `menú del eje ${axis}`,
-    );
-  }
-  assert.equal(
-    [...response.text.matchAll(/role="menuitemradio"/g)].length,
-    12,
-    'tres opciones por cada uno de los cuatro ejes',
-  );
-  assert.equal(
-    [...response.text.matchAll(/aria-checked="true"/g)].length,
-    4,
-    'cada eje arranca en su estado «todos»',
-  );
-  for (const label of [
-    'Con cargador',
-    'Sin cargador',
-    'Con y sin cargador',
-    'Con bancos',
-    'Sin bancos',
-    'Con y sin bancos',
-    'Con wizard',
-    'Sin wizard',
-    'Con y sin wizard',
-    'Ningún incompatible',
-    'Solo incompatibles',
-    'Compatibles e incompatibles',
-  ]) {
-    assert.match(response.text, new RegExp(`>${label}<`), label);
-  }
+  // El catálogo ya no vive en el HTML: su tabla, la búsqueda (`plugin-filter`)
+  // y los cuatro chips de tres estados los monta `mountTable`; el marcado
+  // conserva el contenedor de la tabla y el recuento de filtros.
   assert.match(response.text, /id="filter-count"/);
+  assert.match(response.text, /id="plugins-table"/);
+  assert.doesNotMatch(response.text, /id="plugin-filter"/);
+  assert.doesNotMatch(response.text, /filter-install-menu|filter-banks-menu|filter-wizard-menu|filter-compat-menu/);
+  assert.doesNotMatch(response.text, /role="menuitemradio"/);
   // El catálogo del plugin es un panel más, abierto desde la fila, y también
   // un diálogo modal.
   assert.match(
@@ -177,7 +127,8 @@ test('sirve la UI y carga el módulo tipado', async () => {
   // La nota que explica de dónde salen los valores al abrir el panel.
   assert.match(response.text, /id="meta-origin"/);
   assert.match(response.text, /Campos propios \(JSON\)/);
-  assert.match(response.text, /data-action="meta"/);
+  // El botón del panel es una acción de fila de la tabla reutilizable: el
+  // `data-action` lo escribe `mountTable` en el navegador, no el HTML.
   assert.match(response.text, /Catálogo/);
   // El log del plugin, con su ruta, sus entradas y los archivos rotados en su propio cajón.
   assert.match(response.text, /id="log-path"/);
@@ -190,8 +141,29 @@ test('sirve la UI y carga el módulo tipado', async () => {
   // contenedor existe y la tbody estática desaparece del HTML.
   assert.match(response.text, /id="import-package-banks-table"/);
   assert.doesNotMatch(response.text, /id="import-package-banks-rows"/);
+  // El Repositorio de Wizards también monta sobre mountTable: el cajón trae
+  // su contenedor y la tbody estática desaparece del HTML.
+  assert.match(response.text, /id="wizards-table"/);
+  assert.doesNotMatch(response.text, /id="wizards-rows"/);
+  // El visor de auditoría durable es un cajón modal más, con su contenedor
+  // para mountTable y sin ninguna fila estática en el HTML.
+  assert.match(response.text, /id="audit-nav-btn"/);
+  assert.match(
+    response.text,
+    /id="audit-drawer"[\s\S]{0,200}role="dialog"[\s\S]{0,200}aria-modal="true"[\s\S]{0,200}aria-labelledby="audit-drawer-title"[\s\S]{0,200}tabindex="-1"/,
+  );
+  assert.match(response.text, /id="audit-table"/);
+  assert.match(response.text, /id="audit-refresh"/);
+  // El filtro por plugin del visor es un campo del propio cajón: el snapshot
+  // se estrecha en el servidor, no en el navegador.
+  assert.match(response.text, /id="audit-plugin-filter"/);
+  assert.match(
+    response.text,
+    /for="audit-plugin-filter"[^>]*>[\s\S]{0,80}<input\s+id="audit-plugin-filter"/,
+  );
+  assert.doesNotMatch(response.text, /id="audit-rows"/);
   assert.match(response.text, /id="log-rotated"/);
-  assert.match(response.text, /data-action="log"/);
+  // Igual que «Catálogo»: la acción de fila «Historial» la monta la tabla.
   assert.match(response.text, /Historial/);
 
   // La UI es un módulo ESM compilado desde TypeScript; `app.js` ya no existe.
@@ -261,15 +233,24 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /retryAll/);
   assert.doesNotMatch(main.text, /runPluginBatch/);
   assert.doesNotMatch(main.text, /callWithRetry/);
-  // El escaneo bloquea los plugins incompatibles.
+  // El escaneo bloquea los plugins incompatibles: ni el «toggle» del lote ni
+  // la acción de fila de la tabla se activan sobre ellos.
   assert.match(main.text, /plugin\.compatible === false/);
-  assert.match(main.text, /dataset\[['"]blocked['"]\]/);
-  // Filtrado en tiempo real por texto y por los cuatro ejes de tres estados.
-  assert.match(main.text, /pluginFilter/);
-  assert.match(main.text, /setFilterAxis/);
-  assert.match(main.text, /FILTER_AXES/);
-  assert.match(main.text, /dataset\[['"]axis['"]\]/);
-  assert.match(main.text, /dataset\[['"]value['"]\]/);
+  assert.match(main.text, /dataset\[['"]action['"]\] === 'toggle' && blocked/);
+  // Los cuatro ejes de tres estados ya no viven en la vista: son filtros
+  // `chip` del catálogo que `mountTable` pinta y gobierna; la vista conserva
+  // el recuento de lo filtrado en su propio elemento.
+  assert.doesNotMatch(main.text, /setFilterAxis|FILTER_AXES/);
+  assert.match(main.text, /type: 'chip'/);
+  assert.match(main.text, /value: 'installed'/);
+  assert.match(main.text, /value: 'with-banks'/);
+  assert.match(main.text, /value: 'with-wizard'/);
+  assert.match(main.text, /value: 'compatible'/);
+  assert.match(main.text, /filterCount/);
+  // Los botones de fila («Catálogo», «Historial»…) son acciones de la tabla:
+  // el `data-action` lo escribe `mountTable` y la vista declara sus ids.
+  assert.match(main.text, /id: 'meta'/);
+  assert.match(main.text, /id: 'log'/);
   // El catálogo del plugin se lee y se guarda con el cliente tipado, y el
   // `mtimeMs` leído es el testigo que se manda al guardar.
   assert.match(main.text, /client\.plugins\.meta\.read/);
@@ -287,6 +268,13 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /banksTableView/);
   assert.match(main.text, /importPackagePluginsTableView/);
   assert.match(main.text, /importPackageBanksTableView/);
+  assert.match(main.text, /wizardsTableView/);
+  // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
+  assert.match(main.text, /associationAuditTableView/);
+  assert.match(main.text, /client\.associationAudit\.list/);
+  // El campo del cajón manda el filtro por plugin al servidor con rebote.
+  assert.match(main.text, /auditPluginFilter/);
+  assert.match(main.text, /\{ plugin \}/);
   assert.match(main.text, /import-result/);
   // Y la columna de la tabla se actualiza al guardar, sin volver a escanear.
   assert.match(main.text, /markPluginHasMeta/);
@@ -396,8 +384,11 @@ test('los ids y selectores de la UI existen en index.html', async () => {
   );
 
   // Sin estos mínimos, un cambio de sintaxis dejaría el test comparando nada.
+  // Los selectores cautelares bajaron con la migración del catálogo a la tabla
+  // reutilizable: su lógica vive en `table.ts` y ya casi no queda `querySelector`
+  // literal en la vista.
   assert.ok(ids.length >= 25, `solo se encontraron ${ids.length} ids en la UI`);
-  assert.ok(selectors.length >= 10, `solo se encontraron ${selectors.length} selectores en la UI`);
+  assert.ok(selectors.length >= 8, `solo se encontraron ${selectors.length} selectores en la UI`);
 
   const missingIds = ids.filter((ref) => !htmlIds.has(ref.value));
   assert.deepEqual(

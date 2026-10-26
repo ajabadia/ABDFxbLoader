@@ -241,6 +241,32 @@ test('POST /library/association-audit/list: 200 sin almacén, 200 con eventos y 
   assert.equal(ok.body.total, 1);
   assert.equal(ok.body.entries[0]!.kind, 'association-change');
 
+  // El filtro por plugin (el del visor de la UI) se recorta y estrecha el
+  // snapshot en el servidor; vacío o en blanco no filtra.
+  const byPlugin = await request(app.getHttpServer())
+    .post(`${base}/list`)
+    .send({ libraryRoot: root, plugin: 'Synth' });
+  assert.equal(byPlugin.status, 200);
+  assert.equal(byPlugin.body.total, 1);
+  assert.equal(byPlugin.body.entries[0]!.plugin, 'Synth');
+
+  const trimmed = await request(app.getHttpServer())
+    .post(`${base}/list`)
+    .send({ libraryRoot: root, plugin: '  Synth  ' });
+  assert.equal(trimmed.body.total, 1, 'el filtro por plugin se recorta antes de comparar');
+
+  const blank = await request(app.getHttpServer())
+    .post(`${base}/list`)
+    .send({ libraryRoot: root, plugin: '   ' });
+  assert.equal(blank.body.total, 1, 'un plugin en blanco no filtra');
+
+  const otherPlugin = await request(app.getHttpServer())
+    .post(`${base}/list`)
+    .send({ libraryRoot: root, plugin: 'OtroPlugin' });
+  assert.equal(otherPlugin.status, 200);
+  assert.equal(otherPlugin.body.total, 0);
+  assert.deepEqual(otherPlugin.body.entries, []);
+
   const missing = await request(app.getHttpServer()).post(`${base}/list`).send({});
   assert.equal(missing.status, 400);
 

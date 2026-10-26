@@ -104,6 +104,24 @@ test('crea un banco FxBk con el FourCC del id de vfxinfo', async (t) => {
   assert.equal(parsed.bank?.fxVersion, 1000);
   // 156 de cabecera + 3 programas de 68 bytes (48 + 4*3 parámetros).
   assert.equal(file.length, 156 + 3 * 68);
+
+  // Y el mismo banco en big-endian: los campos de 32 bits cambian de orden.
+  const big = (
+    await create(data.root, 'MySynth', {
+      programNames: ['Init'],
+      overwrite: true,
+      endianness: 'big',
+    }).expect(200)
+  ).body as BankCreateResult;
+  assert.equal(big.bank.endianness, 'big', 'la revalidación detecta el orden');
+  const bigBytes = await readFile(big.target);
+  assert.equal(bigBytes.readUInt32BE(0), 0x43636e4b, 'chunkMagic CcnK en big-endian');
+  assert.equal(bigBytes.readUInt32BE(8), 0x4678426b, 'fxMagic FxBk en big-endian');
+  assert.equal(bigBytes.readUInt32BE(16), 0x4d795379, 'FourCC MySy tal cual');
+  // Los bytes del nombre de programa no se invierten; solo los campos numéricos.
+  // El nombre vive en el payload del programa: 156 de cabecera + 28 de campos
+  // del FxCk (chunkMagic, byteSize, fxMagic, version, fxID, fxVersion, numParams).
+  assert.equal(bigBytes.subarray(156 + 28, 156 + 34).toString('latin1'), 'Init\x00\x00');
 });
 
 test('reusa el nombre por defecto <plugin>.fxb y respeta overwrite=false', async (t) => {
@@ -191,6 +209,40 @@ test('crea un banco FBCh con el chunk opaco del plugin (versiones 1 y 2)', async
   assert.equal(createdV2.bank.version, 2);
   assert.equal(createdV2.bank.currentProgram, 2, 'currentProgram solo en versión 2');
   assert.equal(createdV2.bank.chunkSize, 6);
+
+  // En modo chunk también es configurable, y el chunk opaco queda intacto.
+  const chunkBig = (
+    await create(data.root, 'Chunky', {
+      mode: 'chunk',
+      chunkHex,
+      chunkVersion: 2,
+      currentProgram: 2,
+      overwrite: true,
+      endianness: 'big',
+    }).expect(200)
+  ).body as BankCreateResult;
+  assert.equal(chunkBig.bank.endianness, 'big');
+  const chunkBigBytes = await readFile(chunkBig.target);
+  assert.equal(chunkBigBytes.readUInt32BE(0), 0x43636e4b);
+  assert.equal(chunkBigBytes.readUInt32BE(8), 0x46424368);
+  assert.equal(chunkBigBytes.readUInt32BE(28), 2, 'currentProgram en big-endian');
+  assert.equal(chunkBigBytes.readUInt32BE(156), 6, 'chunkSize en big-endian');
+  assert.deepEqual(chunkBigBytes.subarray(160), Buffer.from(chunkHex, 'hex'), 'chunk intacto');
+
+  // El log del plugin separa resumen y detalle del chunk opaco.
+  const log = fs.readFileSync(path.join(data.pluginDir, 'fxbLoader.log'), 'utf8');
+  const lastLine = log.trim().split(/\r?\n/).at(-1) ?? '';
+  assert.match(lastLine, /\[create-bank\]/);
+  assert.match(lastLine, /Reemplazado banco [^(]+\(FBCh, chunk de 6 bytes\)/);
+  assert.match(lastLine, /\| formato FBCh versión 2/);
+  assert.match(lastLine, /programa activo 2 · chunk de 6 bytes/);
+  // La última entrada es la del chunkBig, que no declara chunkNumPrograms.
+  assert.match(lastLine, /sin programas informativos/);
+  // Y la v2 anterior sí lleva el número informativo declarado (chunkNumPrograms: 0).
+  assert.match(
+    log,
+    /\| formato FBCh versión 2 · programa activo 2 · chunk de 6 bytes · 0 programa\(s\) informativo\(s\)/,
+  );
 });
 
 test('rechaza el modo chunk con chunkHex vacío, no hexadecimal, userInfo ilegal o chunkVersion rara', async (t) => {
@@ -199,7 +251,11 @@ test('rechaza el modo chunk con chunkHex vacío, no hexadecimal, userInfo ilegal
   await create(data.root, 'Chunky', { chunkHex: '' }).expect(400);
   await create(data.root, 'Chunky', { chunkHex: 'no-es-hex' }).expect(400);
   await create(data.root, 'Chunky', { chunkHex: 'de ad be ef 0' }).expect(400);
-  await create(data.root, 'Chunky', { chunkHex: 'beef', chunkVersion: 9 }).expect(400);    await create(data.root, 'Chunky', { chunkHex: 'beef', chunkNumPrograms: -1 }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'beef', chunkVersion: 9 }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'beef', chunkNumPrograms: -1 }).expect(400);
+  // El orden de bytes también se valida en los dos modos.
+  await create(data.root, 'Chunky', { chunkHex: 'beef', endianness: 'middle' as never }).expect(400);
+  await create(data.root, 'Chunky', { programNames: ['Init'], endianness: 42 as never }).expect(400);
   // En modo chunk no se admiten programas ni params.
   await create(data.root, 'Chunky', { chunkHex: 'beef', programNames: ['Init'] }).expect(400);
   await create(data.root, 'Chunky', { chunkHex: 'beef', numParams: 4 }).expect(400);

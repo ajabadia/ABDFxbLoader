@@ -825,6 +825,14 @@ export class LibraryController {
       ...(record['chunkNumPrograms'] === undefined
         ? {}
         : { chunkNumPrograms: record['chunkNumPrograms'] as number }),
+      ...(record['endianness'] === undefined
+        ? {}
+        : {
+            endianness:
+              record['endianness'] === 'big' || record['endianness'] === 'little'
+                ? record['endianness']
+                : (record['endianness'] as never),
+          }),
     };
     try {
       return await this.service.createBank(input);

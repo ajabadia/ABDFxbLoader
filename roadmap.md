@@ -31,7 +31,7 @@
 - Entrada: `ts` ISO-8601, `kind` (`association-change`, `import`, `reimport`, `collision`), `plugin`, `libraryRoot`, `field`/`previousValue`/`newValue` y, en importaciones, `packageSource`, `collisionPolicy`, `collisionNames` y `repairedBanks`, que enlazan las líneas de una misma llamada.
 - Escritura solo desde los servicios (`LibraryService` y `LibraryImportService`) a través de `AssociationAuditService.append`: `previousValue` se lee del disco y no del borrador de la UI, y un fallo degrada a `false` sin abortar la operación.
 - `POST /library/association-audit/list` y `GET /library/association-audit/stream`: snapshot de solo lectura con `auditPath`, `exists`, `size`, `total` y `entries`, filtros opcionales `plugin`, `kind`, `from`, `to` y `limit` (200 por defecto, los últimos eventos en orden cronológico). Sin almacén, 200 con `exists: false` y lista vacía; `libraryRoot` inválido o filtro mal formado, 400.
-- DTOs con dos ejemplos de 200 (con eventos y vacío) y el 400, `openapi.json` y tipos del cliente regenerados, y suite `association-audit.service.test.ts` (apéndice con `fsync`, filtros, límite, líneas corruptas, snapshot vacío y HTTP).
+- DTOs con dos ejemplos de 200 —`conEventos` con los tres tipos reales (`association-change`, `import` y `collision` enlazados por `packageSource`) y `sinAlmacen` vacío— y el 400, `openapi.json` y tipos del cliente regenerados, y suites `association-audit.service.test.ts` (apéndice con `fsync`, filtros, límite, líneas corruptas, snapshot vacío y HTTP) y `association-audit.docs.test.ts` (ejemplos contra la API real, incluida una importación con su colisión).
 - Pendiente: visor de auditoría en la UI (el endpoint de lectura ya está) y políticas de colisión nuevas más allá de las que registra la importación.
 
 - **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
@@ -358,10 +358,10 @@ Modificados:
 
 > **Objetivo:** Ampliar las capacidades de gestión de presets permitiendo no solo importar y convertir bancos existentes, sino crearlos, descomponerlos y editarlos directamente desde la web sin depender de un DAW externo.
 
-- [x] **Generador de bancos FXB (parcial: backend, COMPLETO como `POST /library/banks/create`):**
+- [x] **Generador de bancos FXB (COMPLETO como `POST /library/banks/create`):**
   - [x] Creación desde cero de bancos `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0), cabecera estándar de Steinberg; el FourCC sale del `id` de `vfxinfo.txt` del plugin objetivo y el banco se revalida al escribirlo.
-  - [ ] Soporte del chunk opaco `FBCh` para plugins con estado que no expongan parámetros.
-  - [ ] Interfaz en la web (el backend y su contrato OpenAPI ya están en verde).
+  - [x] Soporte del chunk opaco `FBCh` (`mode: 'chunk'`) para plugins con estado que no expongan parámetros: `chunkHex` con o sin `0x`, `chunkVersion` 1/2 con `currentProgram` en v2, `chunkNumPrograms` informativo, sin `programNames`/`numParams` (400 explícito) y `overwrite` compartido con el modo de programas; cabecera de 156 bytes + tamaño + contenido byte a byte. *(commit `47ae121`)*
+  - [x] Visor y log con el chunk opaco: la tabla de bancos distingue el `FBCh` (tooltip con versión, chunk y programa activo; `numPrograms` marcado como informativo y columna «Chunk» con el tamaño del chunk opaco) y el log `create-bank` separa resumen y detalle del formato. E2e de Playwright contra el servidor real que crea el banco desde la página y verifica disco, visor y log.
 - [ ] **Empaquetador y extractor `.fxp` ↔ `.fxb`:**
   - Importación por lotes de presets individuales (`.fxp`) para combinarlos en un banco unificado (`.fxb`).
   - Extracción de un banco `.fxb` hacia una colección de archivos `.fxp` individuales con nombre normalizado.
@@ -369,6 +369,19 @@ Modificados:
   - Editor de la tabla de nombres de programas dentro de bancos FXB.
   - Reordenación, clonación y eliminación de programas individuales dentro de un banco.
   - Verificación cruzada entre el FourCC del banco y el `id` o binario del VST para alertar antes de intentar cargarlo si el preset no pertenece a ese plugin.
+
+### Pendiente inmediato (trabajo en curso en el árbol, sin commit)
+
+- **Fase FBCh en la UI ya verificada, sin commit:** columna y tooltip del chunk opaco en el
+  visor de bancos, detalle del `create-bank` en el log del plugin, test de log en
+  `banks.create.test.ts` y e2e de navegador de la creación FBCh (17/17 e2e, 557 unit). Falta
+  commit junto a los dos puntos de abajo.
+- **Ejemplos de auditoría con los tres tipos reales:** `ASSOCIATION_AUDIT_LIST_EXAMPLE` con
+  `association-change`, `import` y `collision` enlazados por `packageSource`, test de contratos
+  `openapi.test.ts` correspondiente y suite nueva `association-audit.docs.test.ts` (los contra la
+  API real). Falta commit.
+- **Regeneración de artefactos:** `openapi.json` y `api-types.ts` ya están regenerados contra el
+  árbol completo; quedan marcados como modificados hasta que salga el commit de arriba.
 
 ---
 
