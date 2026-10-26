@@ -3638,6 +3638,25 @@ test(
         { timeout: 20_000 },
       );
 
+      // El tooltip de la columna Tipo muestra el orden de bytes de cada banco.
+      for (const [name, order] of [
+        [LITTLE_NAME, 'little-endian (legacy de Windows)'],
+        [BIG_NAME, 'big-endian (estándar VST2)'],
+      ] as const) {
+        const bankRow = page.locator('#banks-rows tr').filter({ hasText: name });
+        assert.equal(await bankRow.count(), 1, `${name} aparece en la tabla`);
+        const titles = await bankRow
+          .locator('td[title]')
+          .evaluateAll((cells) => cells.map((cell) => (cell as HTMLElement).title));
+        const title = titles.find((value) => value.includes('orden de bytes')) ?? '';
+        assert.ok(title.includes(order), `tooltip de ${name}: ${title}`);
+        assert.match(title, /versión del formato 1/);
+        assert.match(title, /1 programa/);
+        // Cada fila solo declara su propio orden, no el contrario.
+        const other = order.startsWith('little') ? 'big-endian' : 'little-endian';
+        assert.ok(!title.includes(other), `tooltip de ${name} no mezcla órdenes: ${title}`);
+      }
+
       /* 3. El log registra ambos con su orden de bytes ------------------ */
       await page.keyboard.press('Escape');
       await page.locator('#banks').waitFor({ state: 'hidden' });

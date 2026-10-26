@@ -1985,7 +1985,16 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
           ]
             .filter((part) => part !== undefined)
             .join('\n')
-          : undefined,
+          : [
+            `Banco CcnK/FxBk con programas`,
+            `orden de bytes ${
+              entry.bank.endianness === 'little'
+                ? 'little-endian (legacy de Windows)'
+                : 'big-endian (estándar VST2)'
+            }`,
+            `versión del formato ${entry.bank.version}`,
+            `${entry.bank.numPrograms} programa(s)`,
+          ].join('\n'),
     },
     {
       id: 'programs',
