@@ -131,3 +131,7 @@ Swagger/DTOs y cliente tipado siguen las convenciones de
 - UI específica de auditoría (el visor puede empezar en el cajón de historial del plugin con un toast si el evento viene del audit).
 - Compresión, rotación o compactación del JSONL.
 - Auditoría de campos de banco más allá de las reparaciones que ya recoge `ImportPackageResult.repairedBanks`.
+
+## Estado posterior (2026-10-26)
+
+La UI específica de auditoría, fuera de alcance en esta fase, se implementó después: el botón **Auditoría** de la cabecera abre el cajón modal «Auditoría durable de asociaciones» (`#audit-drawer`), que monta el snapshot sobre `mountTable` con orden por `ts`, filtros por `kind` y rango de fechas, filtro de texto por plugin que se manda al servidor, y recarga silenciosa cada 2 s cuando el almacén crece mientras el cajón está abierto. El detalle vive en `webapp/README.md` («Visor en la UI») y en el roadmap (Fase III.F).

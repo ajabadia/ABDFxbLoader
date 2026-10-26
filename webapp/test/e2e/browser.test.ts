@@ -2826,7 +2826,7 @@ test(
  * de una preferencia de DLL, ejercitando el multiselección por `kind` y el
  * rango de fechas por `ts`.
  */
-test('visor de auditoría: snapshot vacío, evento real y filtros por tipo y fecha', { skip }, async (t) => {
+test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola', { skip }, async (t) => {
   assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
 
   const auditDll = 'OB-Xd-audit.dll';
@@ -2946,6 +2946,29 @@ test('visor de auditoría: snapshot vacío, evento real y filtros por tipo y fec
       await page.locator('#audit-table tbody tr[data-row-id]').count(),
       1,
       'sin filtro vuelve el evento a la tabla',
+    );
+
+    /* Recarga sola: un evento nuevo con el cajón abierto ------------ */
+    // El almacén es un apéndice: basta con añadir una línea para que el
+    // sondeo de 2 s la detecte y la pinte sin pulsar «Actualizar».
+    await writeFile(
+      path.join(library, 'fxbLoader.audit.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        kind: 'association-change',
+        plugin: PLUGIN,
+        libraryRoot: library,
+        field: 'dll_name',
+        previousValue: 'a.dll',
+        newValue: 'b.dll',
+      })}\n`,
+      { flag: 'a' },
+    );
+    await waitForText(page, '#audit-summary', /2 evento\(s\)/);
+    assert.equal(
+      await page.locator('#audit-table tbody tr[data-row-id]').count(),
+      2,
+      'la tabla se recarga sola al entrar el evento nuevo',
     );
 
     assert.deepEqual(

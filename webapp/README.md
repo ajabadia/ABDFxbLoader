@@ -16,7 +16,8 @@ de `fxbLoaderConfig.exe` y de `fxbLoader.dll` sobre una librería VFX (`<library
 - **Catálogo de metadatos y logs:** catálogo estructurado `fxbLoader.meta.json`
   (campos comunes y libres) y registro de actividad `fxbLoader.log` rotado por tamaño.
 - **Auditoría durable:** trazabilidad de asociaciones de DLL en `fxbLoader.audit.jsonl`
-  con numeración de secuencia monótona sin rotación ni truncado.
+  con numeración de secuencia monótona sin rotación ni truncado, y visor en la UI
+  (cajón con filtros por tipo, fecha y plugin y recarga sola al llegar eventos).
 - **Preferencia de DLL:** selección de la DLL objetivo (`dll_name`) por plugin con
   respaldo automático y persistencia en `vfxinfo.txt`.
 - **Importador de paquetes y reparación:** importación selectiva desde paquetes
@@ -1549,6 +1550,31 @@ GET /library/association-audit/stream?libraryRoot=C:\vfx\mylib&plugin=MySynth
 Códigos: **200** y **400** (`libraryRoot` ausente, vacío, relativo o con un NUL;
 `kind` fuera de los cuatro válidos; `limit` que no sea un entero positivo).
 
+### Visor en la UI
+
+El botón **Auditoría** de la cabecera abre el cajón modal «Auditoría durable de
+asociaciones» (`#audit-drawer`), que monta este mismo snapshot sobre
+`mountTable`: orden por `ts` (más reciente arriba por defecto), filtros nativos
+de tipo (`multi-select` por `kind`) y de rango de fechas, paginación y estado
+vacío semántico. El **filtro por plugin** es un campo del propio cajón que se
+manda al servidor (`plugin` del listado): el snapshot trae los últimos 200
+eventos del fichero completo, así que estrecharlo en el navegador solo vería
+esa cola y no el histórico. El resumen del cajón marca «filtrado por X» cuando
+el filtro está activo y se limpia al abrir o cerrar el cajón.
+
+Con el cajón abierto el visor **se recarga solo** cuando el almacén crece: cada
+2 s compara la huella `size:total` del snapshot con la última pintada y, si
+cambia, recarga en silencio —sin el estado «leyendo» ni vaciar la tabla ante un
+fallo puntual—, conservando el orden, los filtros y la página elegidos. Al
+cerrar el cajón el sondeo se detiene.
+
+Lo cubren [test/ui.test.ts](test/ui.test.ts) (marcado y módulo),
+[test/client.test.ts](test/client.test.ts) (`associationAudit.list` con el
+filtro por plugin en el cuerpo) y el e2e del visor en
+[test/e2e/browser.test.ts](test/e2e/browser.test.ts): snapshot vacío, evento
+real de instalación, filtros por tipo y fecha, filtro por plugin y recarga sola
+al entrar un evento nuevo sin pulsar «Actualizar».
+
 ## Diálogo nativo
 
 ### `POST /system/pick`
@@ -1848,6 +1874,16 @@ mismo contenido, solo para mover su `mtimeMs`—, y **400** al escanear una ruta
 relativa y al guardar un catálogo con notas de más de 255 caracteres. En todos
 los casos la vista tiene que enseñar el mensaje del API, no un texto propio, y en
 el último además el `issue` del servidor debajo, línea a línea. Al final exige que la página no haya lanzado errores de JavaScript.
+
+El test del **visor de auditoría** va contra el almacén real: empieza sin
+`fxbLoader.audit.jsonl`, provoca un evento de verdad guardando la preferencia de
+DLL desde el catálogo y exige que el cajón pinte el evento sobre `mountTable`.
+Cubre sus filtros —el `multi-select` por tipo y el rango de fechas, que se
+resuelven en el navegador—, el **filtro por plugin** que se manda al servidor
+(resumen con «filtrado por…», tabla vacía sin coincidencias y el evento de
+vuelta al vaciarlo) y la **recarga sola**: con el cajón abierto, añade una línea
+al JSONL desde la prueba y el visor debe pasar a «2 evento(s)» y pintar dos
+filas sin pulsar «Actualizar».
 
 El segundo test comprueba el troceado del lote sin instalar 501 plugins de
 verdad: responde al escaneo y a `POST /library/batch/stream` desde Playwright con

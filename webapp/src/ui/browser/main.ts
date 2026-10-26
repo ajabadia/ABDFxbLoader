@@ -4818,7 +4818,10 @@ function setAuditStatus(message: string, kind = ''): void {
   els.auditStatus.className = kind ? `status ${kind}` : 'status';
 }
 
-async function loadAssociationAudit(): Promise<void> {
+async function loadAssociationAudit(options?: { silent?: boolean }): Promise<void> {
+  // La recarga silenciosa viene del sondeo con el cajón abierto: no pone el
+  // estado «leyendo» ni vacía la tabla si el servidor falla un momento.
+  const silent = options?.silent === true;
   if (auditBusy) return;
   if (!libraryRoot) {
     destroyAssociationAuditTable();
@@ -4830,7 +4833,7 @@ async function loadAssociationAudit(): Promise<void> {
 
   auditBusy = true;
   els.auditRefresh.disabled = true;
-  setAuditStatus('Leyendo el almacén de auditoría…', 'busy');
+  if (!silent) setAuditStatus('Leyendo el almacén de auditoría…', 'busy');
   try {
     // El filtro por plugin se manda al servidor: el snapshot trae los últimos
     // 200 eventos del fichero completo, así que estrecharlo en el navegador
@@ -4852,16 +4855,56 @@ async function loadAssociationAudit(): Promise<void> {
     } else {
       auditTableController.setRows(snapshot.entries);
     }
+    auditFingerprint = `${snapshot.size}:${snapshot.total}:${snapshot.entries.length}`;
     setAuditStatus('');
   } catch (error) {
-    destroyAssociationAuditTable();
-    els.auditPath.textContent = '';
-    els.auditSummary.textContent = '';
+    if (!silent) {
+      destroyAssociationAuditTable();
+      els.auditPath.textContent = '';
+      els.auditSummary.textContent = '';
+    }
     setAuditStatus(`No se pudo leer la auditoría: ${describeError(error)}`, 'error');
   } finally {
     auditBusy = false;
     els.auditRefresh.disabled = false;
   }
+}
+
+/**
+ * Con el cajón abierto, mira cada 2 s si el almacén ha crecido: el fichero es
+ * un apéndice, así que basta comparar tamaño y total para detectar un evento
+ * nuevo sin rehacer nada. Al cambiar la huella se recarga en silencio, y
+ * `setRows` conserva el orden, los filtros y la página elegidos por el usuario.
+ */
+async function pollAssociationAudit(): Promise<void> {
+  if (auditBusy || els.auditDrawer.hidden || !libraryRoot) return;
+  const plugin = els.auditPluginFilter.value.trim();
+  let fingerprint: string;
+  try {
+    const snapshot = await client.associationAudit.list({
+      libraryRoot,
+      limit: 200,
+      ...(plugin === '' ? {} : { plugin }),
+    });
+    fingerprint = `${snapshot.size}:${snapshot.total}:${snapshot.entries.length}`;
+  } catch {
+    // El sondeo no interrumpe lo que se esté haciendo: el siguiente tic
+    // reintenta, y si el fallo persiste lo dirá una recarga normal.
+    return;
+  }
+  if (fingerprint === auditFingerprint) return;
+  await loadAssociationAudit({ silent: true });
+}
+
+function startAuditPolling(): void {
+  if (auditPollTimer !== null) return;
+  auditPollTimer = setInterval(() => void pollAssociationAudit(), 2000);
+}
+
+function stopAuditPolling(): void {
+  if (auditPollTimer === null) return;
+  clearInterval(auditPollTimer);
+  auditPollTimer = null;
 }
 
 function openAuditDrawer(opener?: HTMLElement): void {
@@ -4878,16 +4921,20 @@ function openAuditDrawer(opener?: HTMLElement): void {
   els.auditPluginFilter.value = '';
   destroyAssociationAuditTable();
   setAuditStatus('');
+  auditFingerprint = '';
+  startAuditPolling();
   void loadAssociationAudit();
 }
 
 function closeAuditDrawer(): void {
   if (els.auditDrawer.hidden) return;
+  stopAuditPolling();
   hidePanel(els.auditDrawer);
   destroyAssociationAuditTable();
   els.auditPath.textContent = '';
   els.auditSummary.textContent = '';
   els.auditPluginFilter.value = '';
+  auditFingerprint = '';
   setAuditStatus('');
 }
 
