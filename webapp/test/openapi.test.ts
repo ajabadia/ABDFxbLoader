@@ -931,13 +931,30 @@ test('POST /library/association-audit/list documenta 200 con eventos y vacío, y
 
   const withEvents = examples['conEventos']!.value;
   assert.equal(withEvents['exists'], true);
-  assert.equal(withEvents['total'], 2);
-  assert.equal((withEvents['entries'] as unknown[]).length, 2);
+  assert.equal(withEvents['total'], 3);
+  assert.equal((withEvents['entries'] as unknown[]).length, 3);
   assert.ok(
     (withEvents['entries'] as Record<string, unknown>[]).every(
       (entry) => typeof entry['kind'] === 'string' && typeof entry['ts'] === 'string',
     ),
     'cada evento del ejemplo lleva kind y ts',
+  );
+
+  const entries = withEvents['entries'] as Record<string, unknown>[];
+  assert.deepEqual(
+    entries.map((entry) => entry['kind']).sort(),
+    ['association-change', 'collision', 'import'],
+    'el ejemplo cubre los tres tipos reales de evento',
+  );
+  const collision = entries.find((entry) => entry['kind'] === 'collision')!;
+  assert.equal(typeof collision['packageSource'], 'string', 'la colisión enlaza su paquete');
+  assert.equal(collision['collisionPolicy'], 'skip');
+  assert.deepEqual(collision['collisionNames'], ['OtroPlugin']);
+  const imported = entries.find((entry) => entry['kind'] === 'import')!;
+  assert.equal(
+    typeof imported['packageSource'],
+    'string',
+    'la importación también enlaza su paquete',
   );
 
   const bad = jsonBody(list['400']);

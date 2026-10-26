@@ -1520,14 +1520,14 @@ export class LibraryBanksCreateRequestDto {
   })
   bankName?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       'Nombres de programa, en orden; cada uno genera un `FxCk` con `numParams` ' +
       'parámetros a cero. Un nombre vacío se sustituye por `Program <n>`.',
     type: [String],
     example: ['Init', 'Bright Rhodes', 'Dark Rhodes'],
   })
-  programNames!: string[];
+  programNames?: string[];
 
   @ApiPropertyOptional({
     description: 'Parámetros por programa; por defecto 0 (solo el nombre).',
@@ -1546,6 +1546,47 @@ export class LibraryBanksCreateRequestDto {
     example: 1000,
   })
   fxVersion?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Modo de creación: `programNames` (por defecto) genera un banco `FxBk` con programas; ' +
+      '`chunk` genera un banco `FBCh` con el contenido opaco del plugin. Obliga a ' +
+      '`chunkHex` si se fija en `chunk`.',
+    enum: ['programNames', 'chunk'],
+    example: 'programNames',
+  })
+  mode?: 'programNames' | 'chunk';
+
+  @ApiPropertyOptional({
+    description:
+      'Solo en modo `chunk`: contenido opaco del chunk del plugin en hexadecimal, sin ' +
+      '`0x`. Crea un banco `CcnK/FBCh` con esos bytes íntegros tal cual los devuelve ' +
+      '`getChunk`.',
+    example: 'beef cafe',
+  })
+  chunkHex?: string;
+
+  @ApiPropertyOptional({
+    description: 'Solo en modo `chunk`: versión del formato del banco, 1 o 2. Por defecto 1.',
+    example: 2,
+  })
+  chunkVersion?: 1 | 2;
+
+  @ApiPropertyOptional({
+    description:
+      'Solo en modo `chunk` con `chunkVersion: 2`: programa activo del banco. ' +
+      'Por defecto 0.',
+    example: 0,
+  })
+  currentProgram?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Solo en modo `chunk`: número de programas informativo que declara la ' +
+      'cabecera del banco FBCh. Por defecto 0.',
+    example: 0,
+  })
+  chunkNumPrograms?: number;
 }
 
 export class LibraryBanksCreateResponseDto {

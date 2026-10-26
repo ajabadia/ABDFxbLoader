@@ -194,8 +194,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Crea un banco .fxb desde cero
-         * @description Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo escribe en `<plugin>\<programDirName>\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.
+         * Crea un banco .fxb desde cero (programas o chunk opaco)
+         * @description Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) o, si llega `chunkHex`, un banco `CcnK/FBCh` con el chunk opaco del plugin (bancos de plugins con estado que no exponen parámetros). Lo escribe en `<plugin>\<programDirName>\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar. `programNames` y `numParams` no se admiten en modo chunk.
          */
         post: operations["LibraryController_createBank"];
         delete?: never;
@@ -1447,7 +1447,7 @@ export interface components {
              *       "Dark Rhodes"
              *     ]
              */
-            programNames: string[];
+            programNames?: string[];
             /**
              * @description Parámetros por programa; por defecto 0 (solo el nombre).
              * @example 12
@@ -1463,6 +1463,32 @@ export interface components {
              * @example 1000
              */
             fxVersion?: number;
+            /**
+             * @description Modo de creación: `programNames` (por defecto) genera un banco `FxBk` con programas; `chunk` genera un banco `FBCh` con el contenido opaco del plugin. Obliga a `chunkHex` si se fija en `chunk`.
+             * @example programNames
+             * @enum {string}
+             */
+            mode?: "programNames" | "chunk";
+            /**
+             * @description Solo en modo `chunk`: contenido opaco del chunk del plugin en hexadecimal, sin `0x`. Crea un banco `CcnK/FBCh` con esos bytes íntegros tal cual los devuelve `getChunk`.
+             * @example beef cafe
+             */
+            chunkHex?: string;
+            /**
+             * @description Solo en modo `chunk`: versión del formato del banco, 1 o 2. Por defecto 1.
+             * @example 2
+             */
+            chunkVersion?: number;
+            /**
+             * @description Solo en modo `chunk` con `chunkVersion: 2`: programa activo del banco. Por defecto 0.
+             * @example 0
+             */
+            currentProgram?: number;
+            /**
+             * @description Solo en modo `chunk`: número de programas informativo que declara la cabecera del banco FBCh. Por defecto 0.
+             * @example 0
+             */
+            chunkNumPrograms?: number;
         };
         LibraryBanksCreateResponseDto: {
             /** @description Estado del plugin tras la creación. */
@@ -3853,7 +3879,7 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryBanksCreateResponseDto"];
                 };
             };
-            /** @description Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente. */
+            /** @description Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `chunkHex` vacío o no hexadecimal, `chunkVersion` distinta de 1/2, para `programNames`/`numParams` en modo chunk, `bankName` con separadores de ruta o `libraryRoot` inexistente. */
             400: {
                 headers: {
                     [name: string]: unknown;

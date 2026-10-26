@@ -24,11 +24,13 @@ import { resolveWizardsDir, WizardService } from '../wizard/wizard.service';
 import { inspectPeExports } from './pe-exports';
 import {
   buildFxBank,
+  buildFxBankChunk,
   checkBankCompatibility,
   convertFxbEndianness,
   FXB_CHUNK_HEADER_SIZE,
   FXB_HEADER_SIZE,
   FXB_MAX_BYTES,
+  FXB_MAX_CREATED_CHUNK_BYTES,
   FXB_MAX_CREATED_PARAMS,
   FXB_MAX_CREATED_PROGRAMS,
   parseFxbBank,
@@ -886,29 +888,94 @@ export class LibraryService {
     const fourCc = await this.readVfxinfoId(pluginDir);
     const uniqueIdValue = parseUniqueIdInput(fourCc);
 
-    const names = Array.isArray(input.programNames)
-      ? input.programNames.map((name, index) => {
-          if (typeof name !== 'string') {
-            throw new LibraryPathError(`programNames[${index}] debe ser una cadena`);
-          }
-          return name.trim() === '' ? `Program ${index + 1}` : name.trim();
-        })
-      : [];
-    if (names.length === 0) {
-      throw new LibraryPathError('programNames debe contener al menos un programa');
-    }
-    if (names.length > FXB_MAX_CREATED_PROGRAMS) {
-      throw new LibraryPathError(
-        `programNames supera el máximo de ${FXB_MAX_CREATED_PROGRAMS} programas`,
-      );
-    }
-    const numParams = input.numParams ?? 0;
-    if (!Number.isInteger(numParams) || numParams < 0 || numParams > FXB_MAX_CREATED_PARAMS) {
-      throw new LibraryPathError(`numParams debe ser un entero entre 0 y ${FXB_MAX_CREATED_PARAMS}`);
+    const chunkMode = input.mode === 'chunk' || input.chunkHex !== undefined;
+    let names: string[] = [];
+    let numParams = 0;
+    if (chunkMode) {
+      if (Array.isArray(input.programNames) && input.programNames.length > 0) {
+        throw new LibraryPathError(
+          'en modo chunk no se admiten programNames: el banco FBCh lleva un chunk opaco, no programas FxCk',
+        );
+      }
+      if (input.numParams !== undefined) {
+        throw new LibraryPathError(
+          'en modo chunk numParams no aplica: el banco FBCh lleva un chunk opaco, no parámetros FxCk',
+        );
+      }
+    } else {
+      names = Array.isArray(input.programNames)
+        ? input.programNames.map((name, index) => {
+            if (typeof name !== 'string') {
+              throw new LibraryPathError(`programNames[${index}] debe ser una cadena`);
+            }
+            return name.trim() === '' ? `Program ${index + 1}` : name.trim();
+          })
+        : [];
+      if (names.length === 0) {
+        throw new LibraryPathError('programNames debe contener al menos un programa');
+      }
+      if (names.length > FXB_MAX_CREATED_PROGRAMS) {
+        throw new LibraryPathError(
+          `programNames supera el máximo de ${FXB_MAX_CREATED_PROGRAMS} programas`,
+        );
+      }
+      numParams = input.numParams ?? 0;
+      if (!Number.isInteger(numParams) || numParams < 0 || numParams > FXB_MAX_CREATED_PARAMS) {
+        throw new LibraryPathError(`numParams debe ser un entero entre 0 y ${FXB_MAX_CREATED_PARAMS}`);
+      }
     }
     const fxVersion = input.fxVersion ?? 0;
     if (!Number.isInteger(fxVersion) || fxVersion < 0 || fxVersion > 0xffffffff) {
       throw new LibraryPathError('fxVersion debe ser un entero entre 0 y 0xFFFFFFFF');
+    }
+
+    // Modo chunk: contenido opaco en hexadecimal, versión del banco 1/2,
+    // e informativos `currentProgram` (solo versión 2) y `numPrograms`.
+    let chunkBytes: Buffer | null = null;
+    let chunkVersion: 1 | 2 = 1;
+    if (chunkMode) {
+      const chunkHex = typeof input.chunkHex === 'string' ? input.chunkHex.trim() : '';
+      const normalized = chunkHex.toLowerCase().startsWith('0x') ? chunkHex.slice(2) : chunkHex;
+      if (normalized === '') {
+        throw new LibraryPathError('chunkHex es obligatorio en modo chunk y no puede quedar vacío');
+      }
+      if (normalized.length % 2 !== 0 || /[^0-9a-fA-F]/.test(normalized)) {
+        throw new LibraryPathError('chunkHex debe ser hexadecimal válido, sin separadores');
+      }
+      chunkBytes = Buffer.from(normalized, 'hex');
+      if (chunkBytes.length === 0) {
+        throw new LibraryPathError('chunkHex no puede quedar vacío');
+      }
+      if (chunkBytes.length > FXB_MAX_CREATED_CHUNK_BYTES) {
+        throw new LibraryPathError(
+          `chunkHex supera el máximo de ${FXB_MAX_CREATED_CHUNK_BYTES} bytes`,
+        );
+      }
+      if (input.chunkVersion !== undefined) {
+        if (input.chunkVersion !== 1 && input.chunkVersion !== 2) {
+          throw new LibraryPathError('chunkVersion debe ser 1 o 2');
+        }
+        chunkVersion = input.chunkVersion;
+      }
+      if (chunkVersion === 1 && input.currentProgram !== undefined && input.currentProgram !== 0) {
+        throw new LibraryPathError(
+          'currentProgram solo aplica con chunkVersion 2 (la versión 1 no lo usa)',
+        );
+      }
+      if (input.currentProgram !== undefined) {
+        if (!Number.isInteger(input.currentProgram) || input.currentProgram < 0 || input.currentProgram > 0xffffffff) {
+          throw new LibraryPathError('currentProgram debe ser un entero entre 0 y 0xFFFFFFFF');
+        }
+      }
+      if (input.chunkNumPrograms !== undefined) {
+        if (
+          !Number.isInteger(input.chunkNumPrograms) ||
+          input.chunkNumPrograms < 0 ||
+          input.chunkNumPrograms > 0xffffffff
+        ) {
+          throw new LibraryPathError('chunkNumPrograms debe ser un entero entre 0 y 0xFFFFFFFF');
+        }
+      }
     }
 
     const bankNameInput = typeof input.bankName === 'string' ? input.bankName.trim() : '';
@@ -923,12 +990,21 @@ export class LibraryService {
       throw new PluginStateError(`ya existe ${target}; marca overwrite para reemplazarlo`);
     }
 
-    const data = buildFxBank({
-      uniqueId: uniqueIdValue,
-      fxVersion,
-      programNames: names,
-      numParams,
-    });
+    const data = chunkMode
+      ? buildFxBankChunk({
+          uniqueId: uniqueIdValue,
+          fxVersion,
+          chunk: chunkBytes!,
+          version: chunkVersion,
+          ...(chunkVersion === 2 ? { currentProgram: input.currentProgram ?? 0 } : {}),
+          ...(input.chunkNumPrograms !== undefined ? { numPrograms: input.chunkNumPrograms } : {}),
+        })
+      : buildFxBank({
+          uniqueId: uniqueIdValue,
+          fxVersion,
+          programNames: names,
+          numParams,
+        });
     const parsed = parseFxbBank(data);
     if (parsed.bank === null || parsed.issues.length > 0) {
       // No se va a escribir un banco que el propio validador rechace.
@@ -947,7 +1023,9 @@ export class LibraryService {
     await this.logService?.append(
       pluginDir,
       'create-bank',
-      `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (${names.length} programa(s))`,
+      chunkMode
+        ? `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (FBCh, chunk de ${chunkBytes?.length ?? 0} bytes)`
+        : `${targetExists ? 'Reemplazado' : 'Creado'} banco ${fileName} (${names.length} programa(s))`,
     );
 
     return {

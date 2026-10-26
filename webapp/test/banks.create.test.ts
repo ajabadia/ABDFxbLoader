@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -67,9 +68,14 @@ async function scaffold(
 }
 
 function create(root: string, plugin: string, extra: Record<string, unknown> = {}) {
+  const body: Record<string, unknown> = { libraryRoot: root, plugin };
+  // En modo chunk el banco lleva un chunk opaco; `programNames` no aplica.
+  if (extra['mode'] !== 'chunk' && extra['chunkHex'] === undefined) {
+    body.programNames = ['Init'];
+  }
   return http()
     .post('/library/banks/create')
-    .send({ libraryRoot: root, plugin, programNames: ['Init'], ...extra });
+    .send({ ...body, ...extra });
 }
 
 test('crea un banco FxBk con el FourCC del id de vfxinfo', async (t) => {
@@ -143,6 +149,66 @@ test('cross-FourCC: el banco creado es incompatible con otro plugin', async (t) 
   assert.equal(inspected.compatibility, 'incompatible');
   assert.match(inspected.reason ?? '', /uniqueID/);
   assert.equal(inspected.existingBanks.length, 0);
+});
+
+test('crea un banco FBCh con el chunk opaco del plugin (versiones 1 y 2)', async (t) => {
+  const data = await scaffold(t, { plugin: 'Chunky' });
+  const chunkHex = 'deadbeefcafe';
+
+  const createdV1 = (
+    await create(data.root, 'Chunky', {
+      mode: 'chunk',
+      chunkHex,
+    }).expect(200)
+  ).body as BankCreateResult;
+  assert.ok(createdV1.bank, 'la respuesta lleva el banco revalidado');
+  assert.equal(createdV1.bank.version, 1);
+  assert.equal(createdV1.bank.uniqueId, 'MySy');
+  assert.equal(createdV1.bank.numPrograms, 0);
+  assert.ok(fs.existsSync(createdV1.target), 'existSync del .fxb creado');
+  const v1Bytes = fs.readFileSync(createdV1.target);
+  // Mismas constantes que usa `parseFxbBank` (little-endian del FourCC).
+  const CCNK = 0x43636e4b;
+  const FBCH = 0x46424368;
+  assert.equal(v1Bytes.length, 156 + 4 + 6);
+  assert.equal(v1Bytes.readUInt32LE(0), CCNK);
+  assert.equal(v1Bytes.readUInt32LE(8), FBCH);
+  assert.equal(v1Bytes.readUInt32LE(152), CCNK, 'chunkMagic de cierre');
+  assert.equal(v1Bytes.readUInt32LE(156), 6, 'chunkSize');
+  assert.deepEqual(v1Bytes.subarray(160), Buffer.from(chunkHex, 'hex'), 'chunk íntegro byte a byte');
+
+  const createdV2 = (
+    await create(data.root, 'Chunky', {
+      mode: 'chunk',
+      chunkHex,
+      chunkVersion: 2,
+      currentProgram: 2,
+      chunkNumPrograms: 0,
+      overwrite: true,
+    }).expect(200)
+  ).body as BankCreateResult;
+  assert.equal(createdV2.status, 'overwritten', 'se reemplazó el banco existente');
+  assert.equal(createdV2.bank.version, 2);
+  assert.equal(createdV2.bank.currentProgram, 2, 'currentProgram solo en versión 2');
+  assert.equal(createdV2.bank.chunkSize, 6);
+});
+
+test('rechaza el modo chunk con chunkHex vacío, no hexadecimal, userInfo ilegal o chunkVersion rara', async (t) => {
+  const data = await scaffold(t, { plugin: 'Chunky' });
+  await create(data.root, 'Chunky', { mode: 'chunk' }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: '' }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'no-es-hex' }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'de ad be ef 0' }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'beef', chunkVersion: 9 }).expect(400);    await create(data.root, 'Chunky', { chunkHex: 'beef', chunkNumPrograms: -1 }).expect(400);
+  // En modo chunk no se admiten programas ni params.
+  await create(data.root, 'Chunky', { chunkHex: 'beef', programNames: ['Init'] }).expect(400);
+  await create(data.root, 'Chunky', { chunkHex: 'beef', numParams: 4 }).expect(400);
+
+  // Y la orden corrupta queda en el log, no en el disco.
+  const presets = path.join(data.root, 'plugs', 'Chunky', data.presets);
+  if (fs.existsSync(presets)) {
+    assert.equal(fs.readdirSync(presets).length, 0, 'ningún .fxb escrito con chunk inválido');
+  }
 });
 
 test('rechaza crear sin vfxinfo id, con plugin ausente y peticiones mal formadas', async (t) => {

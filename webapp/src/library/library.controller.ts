@@ -696,11 +696,13 @@ export class LibraryController {
     @Post('banks/create')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Crea un banco .fxb desde cero',
+    summary: 'Crea un banco .fxb desde cero (programas o chunk opaco)',
     description:
-      'Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo ' +
-      'escribe en `<plugin>\\<programDirName>\\`. El FourCC sale del `id` de `vfxinfo.txt` ' +
-      'del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.',
+      'Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) o, si llega ' +
+      '`chunkHex`, un banco `CcnK/FBCh` con el chunk opaco del plugin (bancos de plugins con ' +
+      'estado que no exponen parámetros). Lo escribe en `<plugin>\\<programDirName>\\`. ' +
+      'El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` ' +
+      'no hay banco que generar. `programNames` y `numParams` no se admiten en modo chunk.',
   })
   @ApiBody({
     type: LibraryBanksCreateRequestDto,
@@ -724,6 +726,22 @@ export class LibraryController {
           fxVersion: 1000,
         },
       },
+      chunkOpaco: {
+        summary: 'Banco FBCh con el chunk opaco del plugin',
+        description:
+          'Banco `CcnK/FBCh` versión 2 para un plugin con estado: el chunk hex ' +
+          'es íntegro el que devolvería `getChunk`, sin recortes.',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          bankName: 'Estado del sínt.fxb',
+          mode: 'chunk',
+          chunkHex: 'beef cafe',
+          chunkVersion: 2,
+          currentProgram: 0,
+          chunkNumPrograms: 0,
+        },
+      },
     },
   })
   @ApiOkResponse({
@@ -734,7 +752,9 @@ export class LibraryController {
   @ApiBadRequestResponse({
     description:
       'Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` ' +
-      'fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente.',
+      'fuera de rango, `chunkHex` vacío o no hexadecimal, `chunkVersion` distinta de 1/2, ' +
+      'para `programNames`/`numParams` en modo chunk, ' +
+      '`bankName` con separadores de ruta o `libraryRoot` inexistente.',
     schema: { $ref: getSchemaPath(LibraryErrorDto) },
     examples: {
       sinProgramas: {
@@ -762,16 +782,49 @@ export class LibraryController {
   })
   async createBank(@Body() body: unknown) {
     const record = asRecord(body);
+    const mode = typeof record['mode'] === 'string' ? record['mode'] : undefined;
+    if (mode !== undefined && mode !== 'programNames' && mode !== 'chunk') {
+      throw new BadRequestException('mode debe ser "programNames" o "chunk"');
+    }
+    const hasChunk = record['chunkHex'] !== undefined || mode === 'chunk';
+    if (mode === 'chunk' && record['chunkHex'] === undefined) {
+      throw new BadRequestException('mode "chunk" exige chunkHex con el contenido opaco del plugin');
+    }
+    if (hasChunk) {
+      // El banco FBCh lleva un chunk opaco, no programas FxCk: explicitarlo es
+      // un error, no algo que el endpoint ignore en silencio.
+      if (Array.isArray(record['programNames']) && record['programNames'].length > 0) {
+        throw new BadRequestException('en modo chunk no se admiten programNames');
+      }
+      if (record['numParams'] !== undefined) {
+        throw new BadRequestException('en modo chunk no se admite numParams');
+      }
+    }
     const input: BankCreateInput = {
       libraryRoot: requireString(record, 'libraryRoot'),
       plugin: requireString(record, 'plugin'),
-      programNames: readProgramNames(record),
+      // En modo chunk el banco lleva un chunk opaco, así que `programNames` no
+      // hace falta; fuera del chunk, manda la validación de siempre.
+      ...(hasChunk ? {} : { programNames: readProgramNames(record) }),
       ...(typeof record['bankName'] === 'string' ? { bankName: record['bankName'] } : {}),
       ...(record['numParams'] === undefined ? {} : { numParams: record['numParams'] as number }),
       ...(record['fxVersion'] === undefined ? {} : { fxVersion: record['fxVersion'] as number }),
       ...(optionalBoolean(record, 'overwrite') === undefined
         ? {}
         : { overwrite: optionalBoolean(record, 'overwrite') }),
+      ...(hasChunk ? { mode: 'chunk' as const } : {}),
+      ...(record['chunkHex'] === undefined
+        ? {}
+        : { chunkHex: typeof record['chunkHex'] === 'string' ? record['chunkHex'] : '' }),
+      ...(record['chunkVersion'] === undefined
+        ? {}
+        : { chunkVersion: record['chunkVersion'] as 1 | 2 }),
+      ...(record['currentProgram'] === undefined
+        ? {}
+        : { currentProgram: record['currentProgram'] as number }),
+      ...(record['chunkNumPrograms'] === undefined
+        ? {}
+        : { chunkNumPrograms: record['chunkNumPrograms'] as number }),
     };
     try {
       return await this.service.createBank(input);

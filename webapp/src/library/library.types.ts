@@ -220,15 +220,32 @@ export interface BankCreateInput {
   /**
    * Nombres de programa, en orden. Cada uno genera un `FxCk` con
    * `numParams` parámetros a cero; los nombres vacíos se sustituyen
-   * por `Program <n>`.
+   * por `Program <n>`. Solo se admiten en modo `programNames`;
+   * el modo `chunk` los rechaza.
    */
-  programNames: string[];
+  programNames?: string[];
   /** Parámetros por programa; por defecto 0. */
   numParams?: number;
   /** Sobrescribir si ya existe ese archivo (por defecto no). */
   overwrite?: boolean;
   /** Reemplaza el `fxVersion` del fichero; por defecto 0. */
   fxVersion?: number;
+  /**
+   * Modo de creación: `programNames` (por defecto) genera programas
+   * `FxCk`; `chunk` genera un banco `CcnK/FBCh` con contenido opaco.
+   */
+  mode?: 'programNames' | 'chunk';
+  /**
+   * Solo en modo `chunk`: contenido opaco del plugin en hexadecimal (sin
+   * `0x`), sin la cabecera del banco; genera un banco `CcnK/FBCh`.
+   */
+  chunkHex?: string;
+  /** Solo en modo `chunk`: versión del formato (1 o 2); por defecto 1. */
+  chunkVersion?: 1 | 2;
+  /** Solo en modo `chunk` con `chunkVersion: 2`: programa activo; por defecto 0. */
+  currentProgram?: number;
+  /** Solo en modo `chunk`: número de programas informativo; por defecto 0. */
+  chunkNumPrograms?: number;
 }
 
 export interface BankCreateResult {

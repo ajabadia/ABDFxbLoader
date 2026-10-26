@@ -466,6 +466,84 @@ export function checkBankCompatibility(
 export const FXB_MAX_CREATED_PROGRAMS = 4096;
 /** Tope defensivo de parámetros por programa generado (VST2 usa índices). */
 export const FXB_MAX_CREATED_PARAMS = 65536;
+/** Tope defensivo del chunk opaco de un banco FBCh recién generado. */
+export const FXB_MAX_CREATED_CHUNK_BYTES = 16 * 1024 * 1024;
+
+export interface FxBankChunkBuildInput {
+  /** uniqueID canónico `CCONST(a,b,c,d)` del plugin objetivo. */
+  uniqueId: number;
+  /** Versión del plugin que declarará el banco (por defecto 0). */
+  fxVersion?: number;
+  /** Contenido opaco del chunk del plugin (sin cabecera del banco). */
+  chunk: Buffer;
+  /** Versión del formato de banco: 1 o 2 (2 añade `currentProgram`) (por defecto 1). */
+  version?: 1 | 2;
+  /** Programa activo del banco; solo aplica con `version: 2` (por defecto 0). */
+  currentProgram?: number;
+  /** Número de programas informativo del banco (por defecto 0). */
+  numPrograms?: number;
+  /** Orden de bytes del archivo: little en Windows (por defecto). */
+  endianness?: FxbEndianness;
+}
+
+/**
+ * Construye desde cero un banco VST2 `CcnK/FBCh` con un chunk opaco:
+ * cabecera de banco de 156 bytes (como `fxBank` del struct nativo, con el
+ * `chunkMagic` de cierre), 4 bytes con el tamaño del chunk y el contenido
+ * opaco byte a byte. Es el formato que usa `fxfxChunkCallback` de un
+ * `AEffect` sin parámetros expuestos; quien llama ya trajo el chunk hex
+ * validado en el servicio.
+ */
+export function buildFxBankChunk(input: FxBankChunkBuildInput): Buffer {
+  const endianness = input.endianness ?? 'little';
+  const writeU32 = (buffer: Buffer, offset: number, value: number): void => {
+    if (endianness === 'little') buffer.writeUInt32LE(value >>> 0, offset);
+    else buffer.writeUInt32BE(value >>> 0, offset);
+  };
+  if (!Buffer.isBuffer(input.chunk)) {
+    throw new TypeError('chunk debe ser un Buffer');
+  }
+  if (input.chunk.length === 0) {
+    throw new RangeError('chunk no puede estar vacío');
+  }
+  if (input.chunk.length > FXB_MAX_CREATED_CHUNK_BYTES) {
+    throw new RangeError(
+      `chunk supera el máximo de ${FXB_MAX_CREATED_CHUNK_BYTES} bytes`,
+    );
+  }
+  const version = input.version ?? 1;
+  if (version !== 1 && version !== 2) {
+    throw new RangeError('version debe ser 1 o 2');
+  }
+  if (version === 1 && input.currentProgram !== undefined && input.currentProgram !== 0) {
+    throw new RangeError('currentProgram solo aplica en un banco de versión 2');
+  }
+  const numPrograms = input.numPrograms ?? 0;
+  if (!Number.isInteger(numPrograms) || numPrograms < 0 || numPrograms > 0xffffffff) {
+    throw new RangeError('numPrograms debe ser un entero entre 0 y 0xFFFFFFFF');
+  }
+  const currentProgram = version === 2 ? (input.currentProgram ?? 0) : 0;
+  if (!Number.isInteger(currentProgram) || currentProgram < 0 || currentProgram > 0xffffffff) {
+    throw new RangeError('currentProgram debe ser un entero entre 0 y 0xFFFFFFFF');
+  }
+
+  const total = FXB_HEADER_SIZE + 4 + input.chunk.length;
+  const buffer = Buffer.alloc(total);
+
+  writeU32(buffer, 0, CHUNK_MAGIC); // 'CcnK'
+  writeU32(buffer, 4, total - 8);
+  writeU32(buffer, 8, FX_CHUNK_BANK_MAGIC); // 'FBCh'
+  writeU32(buffer, 12, version);
+  writeU32(buffer, 16, input.uniqueId >>> 0);
+  writeU32(buffer, 20, (input.fxVersion ?? 0) >>> 0);
+  writeU32(buffer, 24, numPrograms);
+  writeU32(buffer, 28, currentProgram); // 0 salvo versión 2
+  writeU32(buffer, 152, CHUNK_MAGIC); // chunkMagic de cierre del struct
+  writeU32(buffer, FXB_HEADER_SIZE, input.chunk.length);
+  input.chunk.copy(buffer, FXB_CHUNK_HEADER_SIZE);
+
+  return buffer;
+}
 
 export interface FxBankProgramInput {
   /** Nombre del programa (se recorta a los 28 bytes del formato). */

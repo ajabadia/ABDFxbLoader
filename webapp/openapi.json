@@ -41,8 +41,8 @@
                     "value": {
                       "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
                       "exists": true,
-                      "size": 648,
-                      "total": 2,
+                      "size": 1024,
+                      "total": 3,
                       "entries": [
                         {
                           "ts": "2026-10-25T09:32:11.482Z",
@@ -58,11 +58,18 @@
                           "kind": "import",
                           "libraryRoot": "C:/vfx/mylib",
                           "packageSource": "C:/downloads/pack.vfxlibrary",
+                          "repairedBanks": []
+                        },
+                        {
+                          "ts": "2026-10-25T09:35:02.115Z",
+                          "kind": "collision",
+                          "plugin": "OtroPlugin",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "packageSource": "C:/downloads/pack.vfxlibrary",
                           "collisionPolicy": "skip",
                           "collisionNames": [
                             "OtroPlugin"
-                          ],
-                          "repairedBanks": []
+                          ]
                         }
                       ]
                     }
@@ -139,8 +146,8 @@
                     "value": {
                       "auditPath": "C:\\vfx\\mylib\\fxbLoader.audit.jsonl",
                       "exists": true,
-                      "size": 648,
-                      "total": 2,
+                      "size": 1024,
+                      "total": 3,
                       "entries": [
                         {
                           "ts": "2026-10-25T09:32:11.482Z",
@@ -156,11 +163,18 @@
                           "kind": "import",
                           "libraryRoot": "C:/vfx/mylib",
                           "packageSource": "C:/downloads/pack.vfxlibrary",
+                          "repairedBanks": []
+                        },
+                        {
+                          "ts": "2026-10-25T09:35:02.115Z",
+                          "kind": "collision",
+                          "plugin": "OtroPlugin",
+                          "libraryRoot": "C:/vfx/mylib",
+                          "packageSource": "C:/downloads/pack.vfxlibrary",
                           "collisionPolicy": "skip",
                           "collisionNames": [
                             "OtroPlugin"
-                          ],
-                          "repairedBanks": []
+                          ]
                         }
                       ]
                     }
@@ -1217,7 +1231,7 @@
     },
     "/library/banks/create": {
       "post": {
-        "description": "Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) y lo escribe en `<plugin>\\<programDirName>\\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar.",
+        "description": "Genera un banco `CcnK/FxBk` con programas `FxCk` (`numParams` parámetros a 0) o, si llega `chunkHex`, un banco `CcnK/FBCh` con el chunk opaco del plugin (bancos de plugins con estado que no exponen parámetros). Lo escribe en `<plugin>\\<programDirName>\\`. El FourCC sale del `id` de `vfxinfo.txt` del propio plugin: con vfxinfo ausente o sin `id` no hay banco que generar. `programNames` y `numParams` no se admiten en modo chunk.",
         "operationId": "LibraryController_createBank",
         "parameters": [],
         "requestBody": {
@@ -1251,6 +1265,20 @@
                     ],
                     "numParams": 12,
                     "fxVersion": 1000
+                  }
+                },
+                "chunkOpaco": {
+                  "summary": "Banco FBCh con el chunk opaco del plugin",
+                  "description": "Banco `CcnK/FBCh` versión 2 para un plugin con estado: el chunk hex es íntegro el que devolvería `getChunk`, sin recortes.",
+                  "value": {
+                    "libraryRoot": "C:\\VFX\\Library",
+                    "plugin": "MySynth",
+                    "bankName": "Estado del sínt.fxb",
+                    "mode": "chunk",
+                    "chunkHex": "beef cafe",
+                    "chunkVersion": 2,
+                    "currentProgram": 0,
+                    "chunkNumPrograms": 0
                   }
                 }
               }
@@ -1300,7 +1328,7 @@
             }
           },
           "400": {
-            "description": "Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `bankName` con separadores de ruta o `libraryRoot` inexistente.",
+            "description": "Petición mal formada: `programNames` vacío o no cadenas, `numParams`/`fxVersion` fuera de rango, `chunkHex` vacío o no hexadecimal, `chunkVersion` distinta de 1/2, para `programNames`/`numParams` en modo chunk, `bankName` con separadores de ruta o `libraryRoot` inexistente.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1349,7 +1377,7 @@
             }
           }
         },
-        "summary": "Crea un banco .fxb desde cero",
+        "summary": "Crea un banco .fxb desde cero (programas o chunk opaco)",
         "tags": [
           "library"
         ]
@@ -5775,12 +5803,40 @@
             "type": "number",
             "description": "`fxVersion` declarada por el banco; por defecto 0.",
             "example": 1000
+          },
+          "mode": {
+            "type": "string",
+            "description": "Modo de creación: `programNames` (por defecto) genera un banco `FxBk` con programas; `chunk` genera un banco `FBCh` con el contenido opaco del plugin. Obliga a `chunkHex` si se fija en `chunk`.",
+            "enum": [
+              "programNames",
+              "chunk"
+            ],
+            "example": "programNames"
+          },
+          "chunkHex": {
+            "type": "string",
+            "description": "Solo en modo `chunk`: contenido opaco del chunk del plugin en hexadecimal, sin `0x`. Crea un banco `CcnK/FBCh` con esos bytes íntegros tal cual los devuelve `getChunk`.",
+            "example": "beef cafe"
+          },
+          "chunkVersion": {
+            "type": "number",
+            "description": "Solo en modo `chunk`: versión del formato del banco, 1 o 2. Por defecto 1.",
+            "example": 2
+          },
+          "currentProgram": {
+            "type": "number",
+            "description": "Solo en modo `chunk` con `chunkVersion: 2`: programa activo del banco. Por defecto 0.",
+            "example": 0
+          },
+          "chunkNumPrograms": {
+            "type": "number",
+            "description": "Solo en modo `chunk`: número de programas informativo que declara la cabecera del banco FBCh. Por defecto 0.",
+            "example": 0
           }
         },
         "required": [
           "libraryRoot",
-          "plugin",
-          "programNames"
+          "plugin"
         ],
         "additionalProperties": false
       },
