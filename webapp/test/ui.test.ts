@@ -269,12 +269,21 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /importPackagePluginsTableView/);
   assert.match(main.text, /importPackageBanksTableView/);
   assert.match(main.text, /wizardsTableView/);
+  // El repositorio de wizards usa los mismos `rowActions` que el historial:
+  // el menú «···» de la fila con Instalar… y Ver registro.
+  assert.match(main.text, /label: 'Instalar…'/);
+  assert.match(main.text, /label: 'Ver registro'/);
+  assert.match(main.text, /openWizardLog/);
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
   assert.match(main.text, /associationAuditTableView/);
   assert.match(main.text, /client\.associationAudit\.list/);
   // El campo del cajón manda el filtro por plugin al servidor con rebote.
   assert.match(main.text, /auditPluginFilter/);
   assert.match(main.text, /\{ plugin \}/);
+  // Y con el cajón abierto el visor se recarga solo cuando crece el almacén.
+  assert.match(main.text, /pollAssociationAudit/);
+  assert.match(main.text, /startAuditPolling/);
+  assert.match(main.text, /stopAuditPolling/);
   assert.match(main.text, /import-result/);
   // Y la columna de la tabla se actualiza al guardar, sin volver a escanear.
   assert.match(main.text, /markPluginHasMeta/);

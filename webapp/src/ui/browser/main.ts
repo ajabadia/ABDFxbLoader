@@ -3412,8 +3412,9 @@ async function promptAndInstallFromWizard(
  *
  * El orden también lo resuelve el servidor (`sort`/`dir` de `GET /wizards`):
  * pulsar una cabecera ordenable recarga el listado con ese orden antes de
- * renderizar. Configuración y Acciones no tienen campo en el servidor y quedan
- * sin orden.
+ * renderizar. Configuración no tiene campo en el servidor y queda sin orden;
+ * las acciones (Instalar… y Ver registro) van en el menú «···» de la fila,
+ * con los mismos `rowActions` que el historial y el resto de tablas.
  */
 const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
   columns: [
@@ -3473,25 +3474,24 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
           .filter((flag): flag is string => flag !== null)
           .join(', ') || 'Estándar',
     },
-    {
-      id: 'actions',
-      label: '',
-      sortable: false,
-      searchable: false,
-      cellClass: 'actions',
-      getValue: () => '',
-      renderNode: (w) => {
-        const install = document.createElement('button');
-        install.type = 'button';
-        install.textContent = 'Instalar…';
-        install.title = `Instalar ${w.name} en la librería activa`;
-        install.addEventListener('click', () => {
-          void promptAndInstallFromWizard(w.id, w.name);
-        });
-        return install;
-      },
-    },
   ],
+  rowActions: {
+    actions: (w) => [
+      {
+        id: 'install',
+        label: 'Instalar…',
+        icon: 'download',
+        tone: 'primary',
+        onSelect: () => void promptAndInstallFromWizard(w.id, w.name),
+      },
+      {
+        id: 'log',
+        label: 'Ver registro',
+        icon: 'list',
+        onSelect: (_w, trigger) => openWizardLog(w, trigger),
+      },
+    ],
+  },
   getRowId: (w) => w.id,
   onSortChange: (sort) => {
     wizardsSort = sort;
@@ -3511,6 +3511,18 @@ function renderWizardsList(items: WizardListResponse['items'], total: number): v
   } else {
     wizardsTableController.setRows(items);
   }
+}
+
+/**
+ * Registro de un wizard desde su fila: si el plugin ya está escaneado en la
+ * librería se abre con su carpeta real; si aún no existe, con la ruta
+ * candidata bajo `plugs\` para que el cajón diga que todavía no hay log.
+ */
+function openWizardLog(w: WizardListResponse['items'][number], opener?: HTMLElement): void {
+  const scanned = scanData?.plugins.find((plugin) => plugin.name === w.name);
+  const plugs = scanData?.plugsPath ?? (libraryRoot === '' ? '' : `${libraryRoot}/plugs`);
+  const target: ScanPlugin = scanned ?? ({ name: w.name, path: `${plugs}/${w.name}` } as ScanPlugin);
+  void openLogDrawer(target, opener);
 }
 
 interface PluginWizardState {
