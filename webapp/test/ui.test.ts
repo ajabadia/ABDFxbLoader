@@ -274,6 +274,18 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /label: 'Instalar…'/);
   assert.match(main.text, /label: 'Ver registro'/);
   assert.match(main.text, /openWizardLog/);
+  // «Ver registro» es el mismo action estandarizado que en el historial:
+  // `view-record` con icono `file`, no el `log`/`list` de «Historial».
+  assert.equal(
+    (main.text.match(/id: 'view-record'/g) ?? []).length,
+    2,
+    'view-record debe declararlo el historial y la tabla de wizards',
+  );
+  assert.doesNotMatch(
+    main.text,
+    /label: 'Ver registro',\s*icon: 'list'/,
+    'Ver registro no puede heredar el icono de la acción Historial',
+  );
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
   assert.match(main.text, /associationAuditTableView/);
   assert.match(main.text, /client\.associationAudit\.list/);
