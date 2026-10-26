@@ -528,6 +528,10 @@ test(
         'faltó registrar alguna operación del recorrido',
       );
 
+      // La tabla puede pintar una fila decorativa vacía; el estado se mide
+      // solo con los registros reales.
+      const logRows = (): Promise<number> =>
+        page.locator('#log-table tbody tr:not(.table-empty-row)').count();
       const logActions = (): Promise<string[]> =>
         page.locator('#log-table tbody td.table-action').allTextContents();
       // Mismo comparador que la tabla: fecha descendente y, a igual marca, el
@@ -541,7 +545,7 @@ test(
         .map((item) => item.entry.action);
 
       await waitForText(page, '#log-table tbody', /Instalado fxbLoader\.dll/);
-      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length);
+      assert.equal(await logRows(), logEntries.length);
       assert.deepEqual(
         await logActions(),
         newestFirst,
@@ -564,7 +568,7 @@ test(
         `[${logEntries.find(entry => entry.action === newestFirst[0])?.timestamp}] ` +
           `[${newestFirst[0]}] ${logEntries.find(entry => entry.action === newestFirst[0])?.summary}`,
       );
-      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length, 'el detalle conserva el historial visible');
+      assert.equal(await logRows(), logEntries.length, 'el detalle conserva el historial visible');
       await page.locator('#log-record-detail-close').click();
       assert.equal(await page.locator('#log-record-detail').isHidden(), true);
       assert.equal(await page.locator('#log-record-detail-fields .log-record-field').count(), 0);
@@ -576,17 +580,17 @@ test(
       // La búsqueda recorre acción y resumen: «instalado» solo encaja con la
       // primera operación, y el filtro vacío devuelve todas las entradas.
       await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('instalado');
-      assert.equal(await page.locator('#log-table tbody tr').count(), 1);
+      assert.equal(await logRows(), 1);
       assert.deepEqual(await logActions(), ['install']);
       assert.match(
         (await page.locator('#log-table tbody').textContent()) ?? '',
         /Instalado fxbLoader\.dll/,
       );
       await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('no existe');
-      assert.equal(await page.locator('#log-table tbody tr').count(), 0);
+      assert.equal(await logRows(), 0);
       assert.equal(await page.locator('#log-table .table-empty').isVisible(), true);
       await page.locator('#log-table [aria-label="Buscar en la tabla"]').fill('');
-      assert.equal(await page.locator('#log-table tbody tr').count(), logEntries.length);
+      assert.equal(await logRows(), logEntries.length);
 
       // Orden ascendente: el archivo tal cual se escribió.
       await page.locator('#log-table th button').first().click();
@@ -3103,7 +3107,7 @@ test(
         (await page.textContent('#custom-plugin-bitness-warning')) ?? '',
         /no es apto para el host de 32 bits/,
       );
-
+
 
       // El cajón es clicable solo una vez por revisión: al cerrarlo y abrir el
       // importador, el cajón del asistente queda oculto y sin estado pintado.

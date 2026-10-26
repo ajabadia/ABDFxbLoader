@@ -10,9 +10,11 @@ export interface TableColumn<T> {
   sortType?: TableSortType;
   searchable?: boolean;
   renderCell?: (row: T, value: unknown) => string | number | null | undefined;
+  renderNode?: (row: T, value: unknown) => Node | null | undefined;
   cellClass?: string | ((row: T, value: unknown) => string);
   cellTitle?: (row: T, value: unknown) => string | undefined;
   cellHref?: (row: T, value: unknown) => string | undefined;
+  cellDataset?: (row: T, value: unknown) => Record<string, string>;
 }
 
 export interface TableFilterOption<T> {
@@ -57,6 +59,8 @@ export interface TableView<T> {
   searchColumns?: readonly string[];
   filters?: readonly TableFilterDefinition<T>[];
   rowActions?: TableRowActions<T>;
+  rowClass?: (row: T) => string | undefined;
+  tbodyId?: string;
 }
 
 export interface TableState {
@@ -233,7 +237,9 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     header.append(th);
   }
   if (view.rowActions) { const th = document.createElement('th'); th.scope = 'col'; th.className = 'table-actions-heading'; th.setAttribute('aria-label', 'Acciones'); header.append(th); }
-  thead.append(header); table.append(thead); const tbody = document.createElement('tbody'); table.append(tbody); wrap.append(table); shell.append(wrap);
+  thead.append(header); table.append(thead); const tbody = document.createElement('tbody');
+  if (view.tbodyId) tbody.id = view.tbodyId;
+  table.append(tbody); wrap.append(table); shell.append(wrap);
   const empty = document.createElement('p'); empty.className = 'table-empty'; empty.hidden = true; empty.textContent = view.emptyText ?? 'No hay registros.'; shell.append(empty);
   const pager = document.createElement('div'); pager.className = 'pagination table-pagination';
   const sizeLabel = document.createElement('label'); sizeLabel.className = 'pagination-size'; sizeLabel.append(document.createTextNode('Mostrar: '));
@@ -248,36 +254,56 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   pager.append(sizeLabel, prev, info, next); shell.append(pager); root.replaceChildren(shell);
   function render(): void {
     const result = processTableRows(rows, view, state); state.page = result.page; tbody.replaceChildren();
-    for (const row of result.rows) {
-      const tr = document.createElement('tr'); tr.dataset['rowId'] = view.getRowId(row);
-      for (const column of view.columns) {
-        const td = document.createElement('td'); const value = column.getValue(row);
-        const className = typeof column.cellClass === 'function' ? column.cellClass(row, value) : column.cellClass; if (className) td.className = className;
-        const title = column.cellTitle?.(row, value); if (title) td.title = title;
-        const text = column.renderCell ? String(column.renderCell(row, value) ?? '—') : value === null || value === undefined || value === '' ? '—' : String(value);
-        const href = column.cellHref?.(row, value);
-        if (href) { const link = document.createElement('a'); link.href = href; link.textContent = text; td.append(link); }
-        else td.textContent = text;
-        tr.append(td);
-      }
-      if (view.rowActions) {
-        const td = document.createElement('td'); td.className = 'actions table-actions';
-        const menu = document.createElement('div'); menu.className = 'row-menu';
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'row-menu-btn'; button.textContent = '···';
-        button.setAttribute('aria-label', 'Acciones del registro'); button.setAttribute('aria-expanded', 'false');
-        const dropdown = document.createElement('div'); dropdown.className = 'row-menu-dropdown'; dropdown.hidden = true;
-        const actions = typeof view.rowActions.actions === 'function' ? view.rowActions.actions(row) : view.rowActions.actions;
-        for (const action of actions) {
-          const item = document.createElement('button'); item.type = 'button'; item.dataset['action'] = action.id; item.className = action.tone ? `${action.tone} row-menu-action` : 'row-menu-action';
-          item.disabled = action.disabled?.(row) ?? false;
-          if (action.icon) { const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#icon-${action.icon}`); icon.append(use); item.append(icon); }
-          item.append(document.createTextNode(action.label));
-          listen(item, 'click', () => { dropdown.hidden = true; button.setAttribute('aria-expanded', 'false'); action.onSelect(row, button); }); dropdown.append(item);
+    if (result.rows.length === 0) {
+      const emptyTr = document.createElement('tr'); emptyTr.className = 'table-empty-row';
+      const emptyTd = document.createElement('td');
+      emptyTd.colSpan = view.columns.length + (view.rowActions ? 1 : 0);
+      emptyTd.textContent = view.emptyText ?? 'No hay registros.';
+      emptyTr.append(emptyTd);
+      tbody.append(emptyTr);
+    } else {
+      for (const row of result.rows) {
+        const tr = document.createElement('tr'); tr.dataset['rowId'] = view.getRowId(row);
+        const rClass = view.rowClass?.(row); if (rClass) tr.className = rClass;
+        for (const column of view.columns) {
+          const td = document.createElement('td'); const value = column.getValue(row);
+          const className = typeof column.cellClass === 'function' ? column.cellClass(row, value) : column.cellClass; if (className) td.className = className;
+          const title = column.cellTitle?.(row, value); if (title) td.title = title;
+          if (column.cellDataset) {
+            const ds = column.cellDataset(row, value);
+            for (const [k, v] of Object.entries(ds)) td.dataset[k] = v;
+          }
+          if (column.renderNode) {
+            const node = column.renderNode(row, value);
+            if (node) td.append(node);
+            else td.textContent = '—';
+          } else {
+            const text = column.renderCell ? String(column.renderCell(row, value) ?? '—') : value === null || value === undefined || value === '' ? '—' : String(value);
+            const href = column.cellHref?.(row, value);
+            if (href) { const link = document.createElement('a'); link.href = href; link.textContent = text; td.append(link); }
+            else td.textContent = text;
+          }
+          tr.append(td);
         }
-        listen(button, 'click', event => { event.stopPropagation(); const opening = dropdown.hidden; for (const other of root.querySelectorAll<HTMLElement>('.row-menu-dropdown')) other.hidden = true; for (const other of root.querySelectorAll<HTMLButtonElement>('.row-menu-btn')) other.setAttribute('aria-expanded', 'false'); dropdown.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); });
-        menu.append(button, dropdown); td.append(menu); tr.append(td);
+        if (view.rowActions) {
+          const td = document.createElement('td'); td.className = 'actions table-actions';
+          const menu = document.createElement('div'); menu.className = 'row-menu';
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'row-menu-btn'; button.textContent = '···';
+          button.setAttribute('aria-label', 'Acciones del registro'); button.setAttribute('aria-expanded', 'false');
+          const dropdown = document.createElement('div'); dropdown.className = 'row-menu-dropdown'; dropdown.hidden = true;
+          const actions = typeof view.rowActions.actions === 'function' ? view.rowActions.actions(row) : view.rowActions.actions;
+          for (const action of actions) {
+            const item = document.createElement('button'); item.type = 'button'; item.dataset['action'] = action.id; item.className = action.tone ? `${action.tone} row-menu-action` : 'row-menu-action';
+            item.disabled = action.disabled?.(row) ?? false;
+            if (action.icon) { const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false'); const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#icon-${action.icon}`); icon.append(use); item.append(icon); }
+            item.append(document.createTextNode(action.label));
+            listen(item, 'click', () => { dropdown.hidden = true; button.setAttribute('aria-expanded', 'false'); action.onSelect(row, button); }); dropdown.append(item);
+          }
+          listen(button, 'click', event => { event.stopPropagation(); const opening = dropdown.hidden; for (const other of root.querySelectorAll<HTMLElement>('.row-menu-dropdown')) other.hidden = true; for (const other of root.querySelectorAll<HTMLButtonElement>('.row-menu-btn')) other.setAttribute('aria-expanded', 'false'); dropdown.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); });
+          menu.append(button, dropdown); td.append(menu); tr.append(td);
+        }
+        tbody.append(tr);
       }
-      tbody.append(tr);
     }
     for (const [index, column] of view.columns.entries()) {
       const th = header.children[index] as HTMLTableCellElement; const active = state.sort.columnId === column.id && column.sortable !== false;

@@ -140,7 +140,7 @@ const els = {
   banksPresets: byId<HTMLElement>('banks-presets'),
   banksExists: byId<HTMLElement>('banks-exists'),
   banksStatus: byId<HTMLParagraphElement>('banks-status'),
-  banksRows: byId<HTMLTableSectionElement>('banks-rows'),
+  banksTable: byId<HTMLElement>('banks-table'),
   defaultBank: byId<HTMLSelectElement>('default-bank'),
   loadFxb: byId<HTMLInputElement>('load-fxb'),
   defaultSave: byId<HTMLButtonElement>('default-save'),
@@ -235,7 +235,7 @@ const els = {
   wizardsClose: byId<HTMLButtonElement>('wizards-close'),
   wizardsFilter: byId<HTMLInputElement>('wizards-filter'),
   wizardsCount: byId<HTMLElement>('wizards-count'),
-  wizardsRows: byId<HTMLTableSectionElement>('wizards-rows'),
+  wizardsTable: byId<HTMLDivElement>('wizards-table'),
   wizardsStatus: byId<HTMLParagraphElement>('wizards-status'),
   importPkgNavBtn: byId<HTMLButtonElement>('import-pkg-nav-btn'),
   importPackageDrawer: byId<HTMLElement>('import-package-drawer'),
@@ -248,7 +248,7 @@ const els = {
   importPackageSource: byId<HTMLElement>('import-package-source'),
   importPackagePluginsWrap: byId<HTMLElement>('import-package-plugins-wrap'),
   importPackageAllPlugs: byId<HTMLInputElement>('import-package-all-plugs'),
-  importPackagePluginsRows: byId<HTMLTableSectionElement>('import-package-plugins-rows'),
+  importPackagePluginsTable: byId<HTMLElement>('import-package-plugins-table'),
   importPackageBanksWrap: byId<HTMLElement>('import-package-banks-wrap'),
   importPackageAllBanks: byId<HTMLInputElement>('import-package-all-banks'),
   importPackageBanksRows: byId<HTMLTableSectionElement>('import-package-banks-rows'),
@@ -370,10 +370,12 @@ let batchProgress: BatchProgress | null = null;
 let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
+let banksTableController: TableController<LibraryBanksListResponse['banks'][number]> | null = null;
 let metaState: MetaState | null = null;
 let logTableController: TableController<PluginLogSnapshotResponse['entries'][number]> | null = null;
 let logDetailOpener: HTMLButtonElement | null = null;
 let metaBusy = false;
+let wizardsTableController: TableController<WizardListResponse['items'][number]> | null = null;
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
@@ -843,7 +845,7 @@ function syncBanksDisabled(): void {
   els.exportOrder.disabled = banksBusy;
   els.exportOverwrite.disabled = banksBusy;
   els.exportButton.disabled = banksBusy || els.exportBank.value === '';
-  for (const button of els.banksRows.querySelectorAll<HTMLButtonElement>('button')) {
+  for (const button of els.banksTable.querySelectorAll<HTMLButtonElement>('button')) {
     button.disabled = locked || button.dataset['default'] === 'true';
   }
 }
@@ -1923,7 +1925,9 @@ function clearBanksView(pluginName: string): void {
   els.banksPresets.textContent = '';
   els.banksExists.textContent = '';
   els.defaultBank.replaceChildren();
-  els.banksRows.replaceChildren();
+  banksTableController?.destroy();
+  banksTableController = null;
+  els.banksTable.replaceChildren();
   els.importResults.replaceChildren();
   hideImportProgress();
   els.exportBank.replaceChildren();
@@ -2009,75 +2013,111 @@ function closeBanks(): void {
   if (els.banks.hidden) return;
   hidePanel(els.banks);
   banks = null;
+  banksTableController?.destroy();
+  banksTableController = null;
+  els.banksTable.replaceChildren();
   hideImportProgress();
   setBanksStatus('');
   syncBanksDisabled();
 }
 
+const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
+  columns: [
+    {
+      id: 'fileName',
+      label: 'Banco',
+      sortType: 'text',
+      cellDataset: () => ({ field: 'bank-name' }),
+      getValue: (entry) => entry.fileName,
+      renderNode: (entry) => {
+        const span = document.createElement('span');
+        span.textContent = entry.fileName;
+        const current = banks?.data.config.config.defaultFxbName;
+        if (entry.fileName === current) {
+          const badge = document.createElement('span');
+          badge.className = 'badge on';
+          badge.textContent = 'por defecto';
+          span.append(' ', badge);
+        }
+        return span;
+      },
+    },
+    {
+      id: 'kind',
+      label: 'Tipo',
+      sortType: 'text',
+      getValue: (entry) => (entry.bank.kind === 'FBCh' ? 'FBCh (opaco)' : 'FxBk'),
+    },
+    {
+      id: 'programs',
+      label: 'Programas',
+      sortType: 'number',
+      getValue: (entry) => entry.bank.numPrograms,
+    },
+    {
+      id: 'uniqueId',
+      label: 'uniqueID',
+      sortType: 'text',
+      getValue: (entry) => entry.bank.uniqueId,
+    },
+    {
+      id: 'fxVersion',
+      label: 'fxVersion',
+      sortType: 'number',
+      getValue: (entry) => entry.bank.fxVersion,
+    },
+    {
+      id: 'size',
+      label: 'Tamaño',
+      sortType: 'number',
+      getValue: (entry) => entry.size,
+      renderCell: (entry) => formatBytes(entry.size),
+    },
+    {
+      id: 'actions',
+      label: '',
+      sortable: false,
+      searchable: false,
+      cellClass: 'actions',
+      getValue: () => '',
+      renderNode: (entry) => {
+        const use = document.createElement('button');
+        use.type = 'button';
+        use.textContent = 'Usar';
+        use.prepend(createIcon('check'));
+        const current = banks?.data.config.config.defaultFxbName;
+        if (entry.fileName === current) use.dataset['default'] = 'true';
+        use.title = `Elegir ${entry.fileName} como banco por defecto`;
+        use.addEventListener('click', () => {
+          els.defaultBank.value = entry.fileName;
+          void saveDefault(entry.fileName);
+        });
+        return use;
+      },
+    },
+  ],
+  getRowId: (entry) => entry.fileName,
+  initialSort: { columnId: 'fileName', direction: 'asc' },
+  pageSize: 100,
+  searchColumns: ['fileName', 'kind', 'uniqueId'],
+  tbodyId: 'banks-rows',
+  rowClass: (entry) => {
+    const current = banks?.data.config.config.defaultFxbName;
+    return entry.fileName === current ? 'is-default' : undefined;
+  },
+  emptyText: 'La carpeta de bancos está vacía; importa un .fxb.',
+};
+
 function renderBankRows(data: LibraryBanksListResponse): void {
-  els.banksRows.replaceChildren();
-  const current = data.config.config.defaultFxbName;
+  const emptyMessage = data.presetsDirExists
+    ? 'La carpeta de bancos está vacía; importa un .fxb.'
+    : 'La carpeta de bancos aún no existe; se crea al importar un .fxb.';
+  banksTableView.emptyText = emptyMessage;
 
-  if (data.banks.length === 0) {
-    const row = document.createElement('tr');
-    row.append(
-      cell(
-        7,
-        data.presetsDirExists
-          ? 'La carpeta de bancos está vacía; importa un .fxb.'
-          : 'La carpeta de bancos aún no existe; se crea al importar un .fxb.',
-      ),
-    );
-    els.banksRows.append(row);
-    return;
-  }
-
-  for (const entry of data.banks) {
-    const bank = entry.bank;
-    const row = document.createElement('tr');
-    if (entry.fileName === current) row.classList.add('is-default');
-
-    const name = document.createElement('td');
-    name.dataset['field'] = 'bank-name';
-    name.textContent = entry.fileName;
-    if (entry.fileName === current) {
-      const badge = document.createElement('span');
-      badge.className = 'badge on';
-      badge.textContent = 'por defecto';
-      name.append(' ', badge);
-    }
-
-    const kind = document.createElement('td');
-    kind.textContent = bank.kind === 'FBCh' ? 'FBCh (opaco)' : 'FxBk';
-
-    const programs = document.createElement('td');
-    programs.textContent = String(bank.numPrograms);
-
-    const uniqueId = document.createElement('td');
-    uniqueId.textContent = bank.uniqueId;
-
-    const version = document.createElement('td');
-    version.textContent = String(bank.fxVersion);
-
-    const size = document.createElement('td');
-    size.textContent = formatBytes(entry.size);
-
-    const actions = document.createElement('td');
-    actions.className = 'actions';
-    const use = document.createElement('button');
-    use.type = 'button';
-    use.textContent = 'Usar';
-    use.prepend(createIcon('check'));
-    if (entry.fileName === current) use.dataset['default'] = 'true';
-    use.title = `Elegir ${entry.fileName} como banco por defecto`;
-    use.addEventListener('click', () => {
-      els.defaultBank.value = entry.fileName;
-      void saveDefault(entry.fileName);
-    });
-    actions.append(use);
-
-    row.append(name, kind, programs, uniqueId, version, size, actions);
-    els.banksRows.append(row);
+  if (banksTableController === null) {
+    banksTableController = mountTable(els.banksTable, banksTableView, data.banks);
+  } else {
+    banksTableController.setRows(data.banks);
   }
 }
 
@@ -3215,8 +3255,20 @@ async function loadWizards(query: string): Promise<void> {
   els.wizardsStatus.textContent = 'Cargando wizards…';
   els.wizardsStatus.className = 'status busy';
   try {
-    const res = await client.wizards.list({ query: query || undefined, limit: 100 });
-    renderWizardsList(res.items, res.total);
+    // El servidor topa cada lectura a 100; la tabla pagina en cliente, así que
+    // releemos por offset hasta completar el total y la paginación ve todo.
+    const first = await client.wizards.list({ query: query || undefined, limit: 100 });
+    const items: WizardListResponse['items'] = [...first.items];
+    while (items.length < first.total && first.items.length > 0) {
+      const next = await client.wizards.list({
+        query: query || undefined,
+        limit: 100,
+        offset: items.length,
+      });
+      if (next.items.length === 0) break;
+      items.push(...next.items);
+    }
+    renderWizardsList(items, first.total);
     els.wizardsStatus.textContent = '';
     els.wizardsStatus.className = 'status';
   } catch (error) {
@@ -3301,60 +3353,111 @@ async function promptAndInstallFromWizard(
   }
 }
 
+/**
+ * Tabla estándar del repositorio de wizards (`mountTable`): mismo modelo de
+ * columnas, orden, paginación y estado vacío que el resto de tablas.
+ *
+ * La búsqueda del cajón sigue siendo el filtro del servidor (`wizards-filter`):
+ * no se duplica en la tabla, así que ninguna columna marca `searchable: false`
+ * de más y el toolbar no añade su propio cuadro.
+ */
+const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
+  columns: [
+    {
+      id: 'name',
+      label: 'Plugin',
+      getValue: (w) => w.name,
+      sortable: false,
+      searchable: false,
+    },
+    {
+      id: 'vendor',
+      label: 'Fabricante',
+      getValue: (w) => w.vendor,
+      sortable: false,
+      searchable: false,
+    },
+    {
+      id: 'genre',
+      label: 'Género',
+      getValue: (w) => w.genre || 'VST',
+      sortable: false,
+      searchable: false,
+    },
+    {
+      id: 'dllName',
+      label: 'DLL',
+      getValue: (w) => w.dllName,
+      sortable: false,
+      searchable: false,
+      renderNode: (w) => {
+        const code = document.createElement('code');
+        code.textContent = w.dllName;
+        return code;
+      },
+    },
+    {
+      id: 'id',
+      label: 'ID',
+      getValue: (w) => w.id,
+      sortable: false,
+      searchable: false,
+      renderNode: (w) => {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = w.id;
+        return badge;
+      },
+    },
+    {
+      id: 'config',
+      label: 'Configuración',
+      sortable: false,
+      searchable: false,
+      getValue: (w) =>
+        [
+          w.hasRegistryKeys ? 'Registro' : null,
+          w.hasFilesToCopy || w.hasDirsToCopy ? 'Archivos' : null,
+          w.hasReadme ? 'Readme' : null,
+          w.isSynth ? 'Sinte' : null,
+        ]
+          .filter((flag): flag is string => flag !== null)
+          .join(', ') || 'Estándar',
+    },
+    {
+      id: 'actions',
+      label: '',
+      sortable: false,
+      searchable: false,
+      cellClass: 'actions',
+      getValue: () => '',
+      renderNode: (w) => {
+        const install = document.createElement('button');
+        install.type = 'button';
+        install.textContent = 'Instalar…';
+        install.title = `Instalar ${w.name} en la librería activa`;
+        install.addEventListener('click', () => {
+          void promptAndInstallFromWizard(w.id, w.name);
+        });
+        return install;
+      },
+    },
+  ],
+  getRowId: (w) => w.id,
+  // Sin sort ni búsqueda cliente: el servidor ya filtra por `wizards-filter`.
+  initialSort: { columnId: 'name', direction: 'asc' },
+  pageSize: 100,
+  searchColumns: [],
+  emptyText: 'No se encontraron wizards coincidentes.',
+};
+
 function renderWizardsList(items: WizardListResponse['items'], total: number): void {
   els.wizardsCount.textContent = `${items.length} de ${total}`;
-  els.wizardsRows.replaceChildren();
 
-  if (items.length === 0) {
-    const tr = document.createElement('tr');
-    tr.append(cell(7, 'No se encontraron wizards coincidentes.'));
-    els.wizardsRows.append(tr);
-    return;
-  }
-
-  for (const w of items) {
-    const tr = document.createElement('tr');
-
-    const tdName = document.createElement('td');
-    tdName.textContent = w.name;
-
-    const tdVendor = document.createElement('td');
-    tdVendor.textContent = w.vendor || '—';
-
-    const tdGenre = document.createElement('td');
-    tdGenre.textContent = w.genre || 'VST';
-
-    const tdDll = document.createElement('td');
-    const code = document.createElement('code');
-    code.textContent = w.dllName;
-    tdDll.append(code);
-
-    const tdId = document.createElement('td');
-    const badgeId = document.createElement('span');
-    badgeId.className = 'badge';
-    badgeId.textContent = w.id;
-    tdId.append(badgeId);
-
-    const tdConfig = document.createElement('td');
-    const flags: string[] = [];
-    if (w.hasRegistryKeys) flags.push('Registro');
-    if (w.hasFilesToCopy || w.hasDirsToCopy) flags.push('Archivos');
-    if (w.hasReadme) flags.push('Readme');
-    if (w.isSynth) flags.push('Sinte');
-    tdConfig.textContent = flags.length > 0 ? flags.join(', ') : 'Estándar';
-
-    const tdAction = document.createElement('td');
-    const installBtn = document.createElement('button');
-    installBtn.type = 'button';
-    installBtn.title = `Instalar ${w.name} en la librería activa`;
-    installBtn.textContent = 'Instalar…';
-    installBtn.addEventListener('click', () => {
-      void promptAndInstallFromWizard(w.id, w.name);
-    });
-    tdAction.append(installBtn);
-
-    tr.append(tdName, tdVendor, tdGenre, tdDll, tdId, tdConfig, tdAction);
-    els.wizardsRows.append(tr);
+  if (wizardsTableController === null) {
+    wizardsTableController = mountTable(els.wizardsTable, wizardsTableView, items);
+  } else {
+    wizardsTableController.setRows(items);
   }
 }
 
@@ -3825,7 +3928,9 @@ els.themeToggle.addEventListener('click', cycleTheme);
 
 let importPackageInspection: LibraryInspectPackageResponse | null = null;
 let importPackageBusy = false;
-let importPlugCheckboxes: { name: string; input: HTMLInputElement }[] = [];
+let selectedImportPlugins = new Set<string>();
+let currentInspectionPlugins: LibraryInspectPackageResponse['plugins'] = [];
+let importPackagePluginsTableController: TableController<LibraryInspectPackageResponse['plugins'][number]> | null = null;
 let importBankCheckboxes: { name: string; input: HTMLInputElement }[] = [];
 
 function setImportPackageBusy(busy: boolean): void {
@@ -3858,6 +3963,11 @@ function closeImportPackageDrawer(): void {
   if (els.importPackageDrawer.hidden) return;
   hidePanel(els.importPackageDrawer);
   importPackageInspection = null;
+  importPackagePluginsTableController?.destroy();
+  importPackagePluginsTableController = null;
+  els.importPackagePluginsTable.replaceChildren();
+  selectedImportPlugins.clear();
+  currentInspectionPlugins = [];
   els.importPackagePreview.hidden = true;
   els.importPackageStatus.textContent = '';
   els.importPackageStatus.className = 'status';
@@ -4135,77 +4245,142 @@ els.customPluginBrowse.addEventListener('click', async () => {
   }
 });
 
+const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['plugins'][number]> = {
+  columns: [
+    {
+      id: 'select',
+      label: '',
+      sortable: false,
+      searchable: false,
+      cellClass: 'table-check',
+      getValue: (plug) => selectedImportPlugins.has(plug.sourceDir || plug.name),
+      renderNode: (plug) => {
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        const key = plug.sourceDir || plug.name;
+        chk.checked = selectedImportPlugins.has(key);
+        chk.title = `Seleccionar ${plug.name}`;
+        chk.addEventListener('change', () => {
+          if (chk.checked) selectedImportPlugins.add(key);
+          else selectedImportPlugins.delete(key);
+          els.importPackageAllPlugs.checked =
+            currentInspectionPlugins.length > 0 &&
+            currentInspectionPlugins.every((p) => selectedImportPlugins.has(p.sourceDir || p.name));
+        });
+        return chk;
+      },
+    },
+    {
+      id: 'name',
+      label: 'Plugin',
+      sortType: 'text',
+      getValue: (plug) => plug.name,
+      renderNode: (plug) => {
+        const wrap = document.createElement('div');
+        const nameTitle = document.createElement('div');
+        nameTitle.textContent = plug.name;
+        wrap.append(nameTitle);
+
+        const plugWizard = (plug as { matchedWizard?: { name: string; vendor: string } }).matchedWizard;
+        if (plugWizard) {
+          const wizardSubtitle = document.createElement('div');
+          wizardSubtitle.className = 'note';
+          wizardSubtitle.style.color = 'var(--accent)';
+          wizardSubtitle.textContent = `Wizard: ${plugWizard.vendor} ${plugWizard.name}`;
+          wrap.append(wizardSubtitle);
+        }
+
+        if ((plug as { packageSource?: string }).packageSource) {
+          const srcSubtitle = document.createElement('div');
+          srcSubtitle.className = 'note';
+          srcSubtitle.style.fontSize = '0.75rem';
+          srcSubtitle.textContent = (plug as { packageSource?: string }).packageSource!;
+          wrap.append(srcSubtitle);
+        }
+        return wrap;
+      },
+    },
+    {
+      id: 'dllName',
+      label: 'DLL',
+      sortType: 'text',
+      getValue: (plug) => plug.dllName ?? '—',
+    },
+    {
+      id: 'vfxinfo',
+      label: 'vfxinfo.txt',
+      sortType: 'text',
+      getValue: (plug) => (plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No'),
+      renderNode: (plug) => {
+        const badgeVfx = document.createElement('span');
+        badgeVfx.className = plug.hasVfxinfo ? 'badge on' : 'badge off';
+        badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No';
+        return badgeVfx;
+      },
+    },
+    {
+      id: 'size',
+      label: 'Tamaño',
+      sortType: 'number',
+      getValue: (plug) => plug.totalSizeBytes,
+      renderCell: (plug) => formatBytes(plug.totalSizeBytes),
+    },
+    {
+      id: 'target',
+      label: 'En destino',
+      sortType: 'text',
+      getValue: (plug) => (plug.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo'),
+      renderNode: (plug) => {
+        const badgeTarget = document.createElement('span');
+        if (plug.alreadyExistsInTarget) {
+          badgeTarget.className = 'badge';
+          badgeTarget.textContent = 'Ya existe';
+        } else {
+          badgeTarget.className = 'badge on';
+          badgeTarget.textContent = 'Nuevo';
+        }
+        return badgeTarget;
+      },
+    },
+  ],
+  getRowId: (plug) => plug.sourceDir || plug.name,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  pageSize: 50,
+  searchColumns: ['name', 'dllName'],
+  tbodyId: 'import-package-plugins-rows',
+  emptyText: 'No se detectaron plugins en el origen.',
+  filters: [
+    {
+      id: 'targetFilter',
+      label: 'Destino',
+      columnId: 'target',
+      options: [
+        { value: 'all', label: 'Todos los plugins', tone: 'neutral' },
+        { value: 'new', label: 'Solo nuevos', tone: 'positive', predicate: (p) => !p.alreadyExistsInTarget },
+        { value: 'exists', label: 'Solo ya existentes', tone: 'negative', predicate: (p) => p.alreadyExistsInTarget },
+      ],
+    },
+  ],
+};
+
 function renderImportPackageInspection(result: LibraryInspectPackageResponse): void {
   importPackageInspection = result;
   els.importPackagePreview.hidden = false;
   els.importPackageKind.textContent = result.resolvedKind === 'vfxlibrary' ? 'Paquete .vfxlibrary' : 'Carpeta de plugin';
   els.importPackageSource.textContent = result.sourcePath;
 
-  importPlugCheckboxes = [];
-  els.importPackagePluginsRows.replaceChildren();
-  if (result.plugins.length === 0) {
-    const tr = document.createElement('tr');
-    tr.append(cell(6, 'No se detectaron plugins en el origen.'));
-    els.importPackagePluginsRows.append(tr);
+  currentInspectionPlugins = result.plugins;
+  selectedImportPlugins = new Set(result.plugins.map((p) => p.sourceDir || p.name));
+  els.importPackageAllPlugs.checked = true;
+
+  if (importPackagePluginsTableController === null) {
+    importPackagePluginsTableController = mountTable(
+      els.importPackagePluginsTable,
+      importPackagePluginsTableView,
+      result.plugins,
+    );
   } else {
-    for (const plug of result.plugins) {
-      const tr = document.createElement('tr');
-      const tdCheck = document.createElement('td');
-      const chk = document.createElement('input');
-      chk.type = 'checkbox';
-      chk.checked = true;
-      chk.title = `Seleccionar ${plug.name}`;
-      importPlugCheckboxes.push({ name: plug.sourceDir || plug.name, input: chk });
-      tdCheck.append(chk);
-
-      const tdName = document.createElement('td');
-      const nameTitle = document.createElement('div');
-      nameTitle.textContent = plug.name;
-      tdName.append(nameTitle);
-
-      const plugWizard = (plug as { matchedWizard?: { name: string; vendor: string } }).matchedWizard;
-      if (plugWizard) {
-        const wizardSubtitle = document.createElement('div');
-        wizardSubtitle.className = 'note';
-        wizardSubtitle.style.color = 'var(--accent)';
-        wizardSubtitle.textContent = `Wizard: ${plugWizard.vendor} ${plugWizard.name}`;
-        tdName.append(wizardSubtitle);
-      }
-
-      if ((plug as { packageSource?: string }).packageSource) {
-        const srcSubtitle = document.createElement('div');
-        srcSubtitle.className = 'note';
-        srcSubtitle.style.fontSize = '0.75rem';
-        srcSubtitle.textContent = (plug as { packageSource?: string }).packageSource!;
-        tdName.append(srcSubtitle);
-      }
-
-      const tdDll = document.createElement('td');
-      tdDll.textContent = plug.dllName ?? '—';
-
-      const tdVfxinfo = document.createElement('td');
-      const badgeVfx = document.createElement('span');
-      badgeVfx.className = plug.hasVfxinfo ? 'badge on' : 'badge off';
-      badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No';
-      tdVfxinfo.append(badgeVfx);
-
-      const tdSize = document.createElement('td');
-      tdSize.textContent = formatBytes(plug.totalSizeBytes);
-
-      const tdTarget = document.createElement('td');
-      const badgeTarget = document.createElement('span');
-      if (plug.alreadyExistsInTarget) {
-        badgeTarget.className = 'badge';
-        badgeTarget.textContent = 'Ya existe';
-      } else {
-        badgeTarget.className = 'badge on';
-        badgeTarget.textContent = 'Nuevo';
-      }
-      tdTarget.append(badgeTarget);
-
-      tr.append(tdCheck, tdName, tdDll, tdVfxinfo, tdSize, tdTarget);
-      els.importPackagePluginsRows.append(tr);
-    }
+    importPackagePluginsTableController.setRows(result.plugins);
   }
 
   importBankCheckboxes = [];
@@ -4319,6 +4494,11 @@ async function inspectPackage(): Promise<void> {
     renderImportPackageInspection(result);
   } catch (error) {
     els.importPackagePreview.hidden = true;
+    importPackagePluginsTableController?.destroy();
+    importPackagePluginsTableController = null;
+    els.importPackagePluginsTable.replaceChildren();
+    selectedImportPlugins.clear();
+    currentInspectionPlugins = [];
     els.importPackageStatus.textContent = `Error al inspeccionar: ${describeError(error)}`;
     els.importPackageStatus.className = 'status error';
   } finally {
@@ -4331,7 +4511,7 @@ async function executeImportPackage(): Promise<void> {
   if (!libraryRoot) return;
 
   const pkgPath = els.importPackagePath.value.trim();
-  const selectedPlugins = importPlugCheckboxes.filter((item) => item.input.checked).map((item) => item.name);
+  const selectedPlugins = [...selectedImportPlugins];
   const selectedBanks = importBankCheckboxes.filter((item) => item.input.checked).map((item) => item.name);
 
   if (selectedPlugins.length === 0 && selectedBanks.length === 0) {
@@ -4419,8 +4599,15 @@ els.importPackageExecuteBtn.addEventListener('click', () => {
 });
 
 els.importPackageAllPlugs.addEventListener('change', () => {
-  for (const item of importPlugCheckboxes) {
-    item.input.checked = els.importPackageAllPlugs.checked;
+  if (els.importPackageAllPlugs.checked) {
+    for (const item of currentInspectionPlugins) {
+      selectedImportPlugins.add(item.sourceDir || item.name);
+    }
+  } else {
+    selectedImportPlugins.clear();
+  }
+  if (importPackagePluginsTableController) {
+    importPackagePluginsTableController.setRows(currentInspectionPlugins);
   }
 });
 

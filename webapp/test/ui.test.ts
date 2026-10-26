@@ -69,7 +69,8 @@ test('sirve la UI y carga el módulo tipado', async () => {
     response.text,
     /id="banks"[\s\S]{0,200}role="dialog"[\s\S]{0,200}aria-modal="true"[\s\S]{0,200}aria-labelledby="banks-title"[\s\S]{0,200}tabindex="-1"/,
   );
-  assert.match(response.text, /id="banks-rows"/);
+  assert.match(response.text, /id="banks-table"/);
+  assert.doesNotMatch(response.text, /id="banks-rows"/);
   assert.match(response.text, /id="default-bank"/);
   assert.match(response.text, /id="default-convert"/);
   assert.match(response.text, /Convertir orden de bytes/);
@@ -183,6 +184,8 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="log-summary"/);
   assert.match(response.text, /id="log-table"/);
   assert.doesNotMatch(response.text, /id="log-entries"/);
+  assert.match(response.text, /id="import-package-plugins-table"/);
+  assert.doesNotMatch(response.text, /id="import-package-plugins-rows"/);
   assert.match(response.text, /id="log-rotated"/);
   assert.match(response.text, /data-action="log"/);
   assert.match(response.text, /Historial/);
@@ -277,6 +280,8 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /client\.plugins\.log\.read/);
   assert.match(main.text, /renderPluginLog/);
   assert.match(main.text, /pluginHistoryTableView/);
+  assert.match(main.text, /banksTableView/);
+  assert.match(main.text, /importPackagePluginsTableView/);
   assert.match(main.text, /import-result/);
   // Y la columna de la tabla se actualiza al guardar, sin volver a escanear.
   assert.match(main.text, /markPluginHasMeta/);

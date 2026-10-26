@@ -509,22 +509,7 @@
 
         <p id="banks-status" class="status" role="status" aria-live="polite"></p>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Banco</th>
-                <th>Tipo</th>
-                <th>Programas</th>
-                <th>uniqueID</th>
-                <th>fxVersion</th>
-                <th>Tamaño</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="banks-rows"></tbody>
-          </table>
-        </div>
+        <div id="banks-table" class="banks-table"></div>
 
         <details class="import">
           <summary>
@@ -862,22 +847,7 @@
           <span id="wizards-count" class="filter-count"></span>
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Plugin</th>
-                <th>Fabricante</th>
-                <th>Género</th>
-                <th>DLL</th>
-                <th>ID</th>
-                <th>Configuración</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody id="wizards-rows"></tbody>
-          </table>
-        </div>
+        <div id="wizards-table" class="wizards-table"></div>
 
         <p id="wizards-status" class="status" role="status" aria-live="polite"></p>
       </section>
@@ -931,22 +901,13 @@
           </div>
 
           <div id="import-package-plugins-wrap" class="field">
-            <label>Plugins detectados</label>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th><input id="import-package-all-plugs" type="checkbox" checked title="Seleccionar todos los plugins" /></th>
-                    <th>Plugin</th>
-                    <th>DLL</th>
-                    <th>vfxinfo.txt</th>
-                    <th>Tamaño</th>
-                    <th>En destino</th>
-                  </tr>
-                </thead>
-                <tbody id="import-package-plugins-rows"></tbody>
-              </table>
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <label>Plugins detectados</label>
+              <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
+                <input id="import-package-all-plugs" type="checkbox" checked title="Seleccionar todos los plugins" /> Seleccionar todos
+              </label>
             </div>
+            <div id="import-package-plugins-table" class="import-package-plugins-table"></div>
           </div>
 
           <div id="import-package-banks-wrap" class="field">
