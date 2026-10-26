@@ -171,6 +171,99 @@ describe('WizardService', () => {
     assert.ok(found !== undefined, 'debe encontrar SuperWave');
   });
 
+  it('list ordena por campo y dirección, con vacíos al final y campo desconocido ignorado', async () => {
+    const standaloneService = new WizardService(metaService);
+    const count = await standaloneService.initIndex();
+    assert.ok(count >= 200);
+
+    const fetchAll = (sort?: string, dir?: string) => {
+      const items: ReturnType<WizardService['list']>['items'] = [];
+      for (let offset = 0; ; offset += 100) {
+        const page = standaloneService.list({ limit: 100, offset, sort, dir }).items;
+        if (page.length === 0) break;
+        items.push(...page);
+        if (items.length >= standaloneService.list({ limit: 1 }).total) break;
+      }
+      return items;
+    };
+
+    // Orden por defecto: name ascendente, igual que pedirlo explícitamente.
+    const unordered = standaloneService.list({ limit: 100 }).items.slice(0, 5);
+    assert.deepEqual(
+      standaloneService.list({ limit: 5, sort: 'name', dir: 'asc' }).items,
+      unordered,
+    );
+
+    // Ascendente y descendente por nombre: cada lista está ordenada de verdad.
+    const cmpName = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+    const ascNames = fetchAll('name', 'asc').map((item) => item.name);
+    for (let i = 1; i < ascNames.length; i++) {
+      assert.ok(cmpName(ascNames[i - 1]!, ascNames[i]!) <= 0, `asc: ${ascNames[i - 1]} debe ir antes de ${ascNames[i]}`);
+    }
+    const descNames = fetchAll('name', 'desc').map((item) => item.name);
+    for (let i = 1; i < descNames.length; i++) {
+      assert.ok(cmpName(descNames[i - 1]!, descNames[i]!) >= 0, `desc: ${descNames[i - 1]} debe ir después de ${descNames[i]}`);
+    }
+
+    // Vacíos al final en ambos sentidos (el catálogo real tiene wizards sin fabricante).
+    for (const dir of ['asc', 'desc'] as const) {
+      const vendors = fetchAll('vendor', dir).map((item) => item.vendor.trim());
+      assert.ok(vendors.some((v) => v === ''), 'debe haber wizards sin fabricante');
+      const emptyFirstAt = vendors.indexOf('');
+      assert.ok(
+        vendors.slice(emptyFirstAt).every((v) => v === ''),
+        `dir=${dir}: los vacíos quedan en bloque al final`,
+      );
+    }
+
+    // Campo desconocido o dirección rara: vuelven al orden por defecto.
+    assert.deepEqual(
+      standaloneService.list({ limit: 5, sort: 'cuqui' }).items,
+      standaloneService.list({ limit: 5 }).items,
+    );
+    assert.deepEqual(
+      standaloneService.list({ limit: 5, sort: 'name', dir: 'arriba' }).items,
+      standaloneService.list({ limit: 5 }).items,
+    );
+  });
+
+  it('list ordena en servidor por campo y dirección solicitados', () => {
+    const asc = wizardService.list({ sort: 'vendor', dir: 'asc', limit: 100 });
+    const vendors: string[] = asc.items.map((w) => w.vendor);
+    const noAscendente = vendors.findIndex((v, i) =>
+      i + 1 < vendors.length &&
+      v !== '' &&
+      vendors[i + 1]! !== '' &&
+      v.localeCompare(vendors[i + 1]!, undefined, { sensitivity: 'base', numeric: true }) > 0,
+    );
+    assert.equal(
+      noAscendente,
+      -1,
+      noAscendente === -1 ? '' : `orden ascendente roto: ${vendors[noAscendente]!}`,  
+    );
+
+    const desc = wizardService.list({ sort: 'vendor', dir: 'desc', limit: 100 });
+    const noDescendente = desc.items.findIndex((w, i) =>
+      i + 1 < desc.items.length &&
+      w.vendor !== '' &&
+      desc.items[i + 1]!.vendor !== '' &&
+      w.vendor.localeCompare(desc.items[i + 1]!.vendor, undefined, { sensitivity: 'base', numeric: true }) < 0,
+    );
+    assert.ok(noDescendente === -1, `orden descendente roto en ${noDescendente}`);
+    assert.notDeepEqual(
+      desc.items.slice(0, 10),
+      asc.items.slice(0, 10),
+      'desc debe invertir el orden respecto a asc',
+    );
+
+    const invalid = wizardService.list({ sort: 'noexiste', dir: 'raro', limit: 5 });
+    assert.ok(invalid.items.length > 0, 'sort/dir inválidos vuelven al por defecto sin fallar');
+    const nulos = wizardService.list({ sort: 'genre', dir: 'asc', limit: 100 });
+    const ultimoNoNulo = nulos.items[nulos.items.length - 1];
+    assert.ok(ultimoNoNulo && ultimoNoNulo.genre !== '', 'los vacíos van al final del listado');
+  });
+
   it('getById recupera el wizard por su VST ID exacto', () => {
     const wizard = wizardService.getById('1398231096');
     assert.ok(wizard !== null, 'debe encontrar SuperWave P8 por ID');

@@ -4970,6 +4970,10 @@ export interface operations {
                 offset?: number;
                 /** @description Límite de elementos (1..100) */
                 limit?: number;
+                /** @description Ordenar por un campo admitido (name, vendor, genre, dllName o id); otro valor usa el orden por defecto */
+                sort?: string;
+                /** @description Dirección del orden: asc o desc (por defecto asc) */
+                dir?: string;
             };
             header?: never;
             path?: never;

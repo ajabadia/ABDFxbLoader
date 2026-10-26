@@ -251,7 +251,7 @@ const els = {
   importPackagePluginsTable: byId<HTMLElement>('import-package-plugins-table'),
   importPackageBanksWrap: byId<HTMLElement>('import-package-banks-wrap'),
   importPackageAllBanks: byId<HTMLInputElement>('import-package-all-banks'),
-  importPackageBanksRows: byId<HTMLTableSectionElement>('import-package-banks-rows'),
+  importPackageBanksTable: byId<HTMLElement>('import-package-banks-table'),
   importPackagePolicy: byId<HTMLSelectElement>('import-package-policy'),
   importPackageRepair: byId<HTMLInputElement>('import-package-repair'),
   importPackageExecuteBtn: byId<HTMLButtonElement>('import-package-execute-btn'),
@@ -376,6 +376,11 @@ let logTableController: TableController<PluginLogSnapshotResponse['entries'][num
 let logDetailOpener: HTMLButtonElement | null = null;
 let metaBusy = false;
 let wizardsTableController: TableController<WizardListResponse['items'][number]> | null = null;
+
+/** Orden actual del repositorio de wizards: el servidor ordena, la tabla lo replica. */
+let wizardsSort: { columnId: string; direction: 'asc' | 'desc' } = { columnId: 'name', direction: 'asc' };
+/** Última búsqueda enviada al servidor; el reordenar sobre ella lanza una recarga. */
+let wizardsQuery = '';
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
@@ -3244,6 +3249,7 @@ async function openWizards(): Promise<void> {
   els.drawerBackdrop.hidden = false;
   document.body.classList.add('drawer-open');
   els.wizardsFilter.value = '';
+  wizardsQuery = '';
   await loadWizards('');
 }
 
@@ -3255,15 +3261,23 @@ async function loadWizards(query: string): Promise<void> {
   els.wizardsStatus.textContent = 'Cargando wizards…';
   els.wizardsStatus.className = 'status busy';
   try {
-    // El servidor topa cada lectura a 100; la tabla pagina en cliente, así que
-    // releemos por offset hasta completar el total y la paginación ve todo.
-    const first = await client.wizards.list({ query: query || undefined, limit: 100 });
+    // El servidor ordena y filtra: `sort`/`dir` van de la mano del orden que el
+    // usuario pulsó en la tabla. La paginación es en cliente, así que releemos
+    // por offset hasta completar el total con ese mismo orden del servidor.
+    const first = await client.wizards.list({
+      query: query || undefined,
+      limit: 100,
+      sort: wizardsSort.columnId,
+      dir: wizardsSort.direction,
+    });
     const items: WizardListResponse['items'] = [...first.items];
     while (items.length < first.total && first.items.length > 0) {
       const next = await client.wizards.list({
         query: query || undefined,
         limit: 100,
         offset: items.length,
+        sort: wizardsSort.columnId,
+        dir: wizardsSort.direction,
       });
       if (next.items.length === 0) break;
       items.push(...next.items);
@@ -3360,6 +3374,11 @@ async function promptAndInstallFromWizard(
  * La búsqueda del cajón sigue siendo el filtro del servidor (`wizards-filter`):
  * no se duplica en la tabla, así que ninguna columna marca `searchable: false`
  * de más y el toolbar no añade su propio cuadro.
+ *
+ * El orden también lo resuelve el servidor (`sort`/`dir` de `GET /wizards`):
+ * pulsar una cabecera ordenable recarga el listado con ese orden antes de
+ * renderizar. Configuración y Acciones no tienen campo en el servidor y quedan
+ * sin orden.
  */
 const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
   columns: [
@@ -3367,28 +3386,24 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
       id: 'name',
       label: 'Plugin',
       getValue: (w) => w.name,
-      sortable: false,
       searchable: false,
     },
     {
       id: 'vendor',
       label: 'Fabricante',
       getValue: (w) => w.vendor,
-      sortable: false,
       searchable: false,
     },
     {
       id: 'genre',
       label: 'Género',
       getValue: (w) => w.genre || 'VST',
-      sortable: false,
       searchable: false,
     },
     {
       id: 'dllName',
       label: 'DLL',
       getValue: (w) => w.dllName,
-      sortable: false,
       searchable: false,
       renderNode: (w) => {
         const code = document.createElement('code');
@@ -3400,7 +3415,6 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
       id: 'id',
       label: 'ID',
       getValue: (w) => w.id,
-      sortable: false,
       searchable: false,
       renderNode: (w) => {
         const badge = document.createElement('span');
@@ -3444,7 +3458,10 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     },
   ],
   getRowId: (w) => w.id,
-  // Sin sort ni búsqueda cliente: el servidor ya filtra por `wizards-filter`.
+  onSortChange: (sort) => {
+    wizardsSort = sort;
+    void loadWizards(wizardsQuery);
+  },
   initialSort: { columnId: 'name', direction: 'asc' },
   pageSize: 100,
   searchColumns: [],
@@ -3768,7 +3785,8 @@ let filterTimeout: ReturnType<typeof setTimeout> | null = null;
 els.wizardsFilter.addEventListener('input', () => {
   if (filterTimeout) clearTimeout(filterTimeout);
   filterTimeout = setTimeout(() => {
-    void loadWizards(els.wizardsFilter.value.trim());
+    wizardsQuery = els.wizardsFilter.value.trim();
+    void loadWizards(wizardsQuery);
   }, 200);
 });
 
@@ -3931,7 +3949,9 @@ let importPackageBusy = false;
 let selectedImportPlugins = new Set<string>();
 let currentInspectionPlugins: LibraryInspectPackageResponse['plugins'] = [];
 let importPackagePluginsTableController: TableController<LibraryInspectPackageResponse['plugins'][number]> | null = null;
-let importBankCheckboxes: { name: string; input: HTMLInputElement }[] = [];
+let selectedImportBanks = new Set<string>();
+let currentInspectionBanks: LibraryInspectPackageResponse['banks'] = [];
+let importPackageBanksTableController: TableController<LibraryInspectPackageResponse['banks'][number]> | null = null;
 
 function setImportPackageBusy(busy: boolean): void {
   importPackageBusy = busy;
@@ -3968,6 +3988,11 @@ function closeImportPackageDrawer(): void {
   els.importPackagePluginsTable.replaceChildren();
   selectedImportPlugins.clear();
   currentInspectionPlugins = [];
+  importPackageBanksTableController?.destroy();
+  importPackageBanksTableController = null;
+  els.importPackageBanksTable.replaceChildren();
+  selectedImportBanks.clear();
+  currentInspectionBanks = [];
   els.importPackagePreview.hidden = true;
   els.importPackageStatus.textContent = '';
   els.importPackageStatus.className = 'status';
@@ -4363,6 +4388,154 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
   ],
 };
 
+/**
+ * Tabla estándar de los bancos detectados en la inspección (`mountTable`):
+ * orden por presets, concordancia o tamaño, filtros de concordancia técnica y
+ * la casilla de selección por fila enlazada con «Seleccionar todos».
+ */
+const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['banks'][number]> = {
+  columns: [
+    {
+      id: 'select',
+      label: '',
+      sortable: false,
+      searchable: false,
+      cellClass: 'table-check',
+      getValue: (bank) => selectedImportBanks.has(bankSelectionKey(bank)),
+      renderNode: (bank) => {
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = selectedImportBanks.has(bankSelectionKey(bank));
+        chk.title = `Seleccionar ${bank.name}`;
+        chk.addEventListener('change', () => {
+          const key = bankSelectionKey(bank);
+          if (chk.checked) selectedImportBanks.add(key);
+          else selectedImportBanks.delete(key);
+          els.importPackageAllBanks.checked =
+            currentInspectionBanks.length > 0 &&
+            currentInspectionBanks.every((item) => selectedImportBanks.has(bankSelectionKey(item)));
+        });
+        return chk;
+      },
+    },
+    {
+      id: 'name',
+      label: 'Banco',
+      sortType: 'text',
+      getValue: (bank) => bank.name,
+      renderNode: (bank) => {
+        const wrap = document.createElement('div');
+        const nameTitle = document.createElement('div');
+        nameTitle.textContent = bank.name;
+        wrap.append(nameTitle);
+        if (bank.packageSource) {
+          const srcSubtitle = document.createElement('div');
+          srcSubtitle.className = 'note';
+          srcSubtitle.style.fontSize = '0.75rem';
+          srcSubtitle.textContent = bank.packageSource;
+          wrap.append(srcSubtitle);
+        }
+        return wrap;
+      },
+    },
+    {
+      id: 'presets',
+      label: 'Presets',
+      sortType: 'number',
+      getValue: (bank) => bank.presetCount,
+      renderCell: (bank) => `${bank.presetCount} presets`,
+    },
+    {
+      id: 'concordance',
+      label: 'Concordancia',
+      sortType: 'text',
+      getValue: (bank) => {
+        const state = bankConcordance(bank);
+        if (state === 'concordant') return 'Concordante';
+        if (state === 'repairable') return 'Carencias (reparable)';
+        if (state === 'deficient') return 'Carencias';
+        return 'Sin datos';
+      },
+      renderNode: (bank) => {
+        const state = bankConcordance(bank);
+        if (state === 'concordant') {
+          const badge = document.createElement('span');
+          badge.className = 'badge on';
+          const label = bank.chunkPluginFourCc || (bank.chunkPluginId ? `ID ${bank.chunkPluginId}` : 'OK');
+          badge.textContent = `Concordante (${label})`;
+          if (bank.matchedWizardName) {
+            badge.title = `Compatible con wizard: ${bank.matchedWizardName}`;
+          }
+          return badge;
+        }
+        if (state === 'repairable' || state === 'deficient') {
+          const badge = document.createElement('span');
+          badge.className = 'badge off';
+          badge.textContent = state === 'repairable' ? 'Carencias (reparable)' : 'Carencias';
+          badge.title = (bank.deficiencies ?? []).join('; ');
+          return badge;
+        }
+        return null;
+      },
+    },
+    {
+      id: 'size',
+      label: 'Tamaño',
+      sortType: 'number',
+      getValue: (bank) => bank.totalSizeBytes,
+      renderCell: (bank) => formatBytes(bank.totalSizeBytes),
+    },
+    {
+      id: 'target',
+      label: 'En destino',
+      sortType: 'text',
+      getValue: (bank) => (bank.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo'),
+      renderNode: (bank) => {
+        const badge = document.createElement('span');
+        badge.className = bank.alreadyExistsInTarget ? 'badge' : 'badge on';
+        badge.textContent = bank.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo';
+        return badge;
+      },
+    },
+  ],
+  getRowId: bankSelectionKey,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  pageSize: 50,
+  searchColumns: ['name'],
+  tbodyId: 'import-package-banks-rows',
+  emptyText: 'No se detectaron bancos en el origen.',
+  filters: [
+    {
+      id: 'concordanceFilter',
+      label: 'Concordancia',
+      columnId: 'concordance',
+      options: [
+        { value: 'all', label: 'Toda la concordancia', tone: 'neutral' },
+        { value: 'concordant', label: 'Concordante', tone: 'positive', predicate: (bank) => bankConcordance(bank) === 'concordant' },
+        { value: 'repairable', label: 'Carencias (reparable)', tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'repairable' },
+        { value: 'deficient', label: 'Carencias', tone: 'negative', predicate: (bank) => bankConcordance(bank) === 'deficient' },
+        { value: 'unknown', label: 'Sin datos', tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'unknown' },
+      ],
+    },
+  ],
+};
+
+/** Clave de selección de un banco: su carpeta de origen, o su nombre. */
+function bankSelectionKey(bank: LibraryInspectPackageResponse['banks'][number]): string {
+  return bank.sourceDir || bank.name;
+}
+
+/** Concordancia técnica de un banco, con los cuatro estados que pinta la tabla. */
+function bankConcordance(
+  bank: LibraryInspectPackageResponse['banks'][number],
+): 'concordant' | 'repairable' | 'deficient' | 'unknown' {
+  if (bank.isConcordant) return 'concordant';
+  if (bank.deficiencies && bank.deficiencies.length > 0) {
+    return bank.canRepair ? 'repairable' : 'deficient';
+  }
+  return 'unknown';
+}
+
 function renderImportPackageInspection(result: LibraryInspectPackageResponse): void {
   importPackageInspection = result;
   els.importPackagePreview.hidden = false;
@@ -4383,83 +4556,17 @@ function renderImportPackageInspection(result: LibraryInspectPackageResponse): v
     importPackagePluginsTableController.setRows(result.plugins);
   }
 
-  importBankCheckboxes = [];
-  els.importPackageBanksRows.replaceChildren();
-  if (result.banks.length === 0) {
-    const tr = document.createElement('tr');
-    tr.append(cell(6, 'No se detectaron bancos en el origen.'));
-    els.importPackageBanksRows.append(tr);
+  currentInspectionBanks = result.banks;
+  selectedImportBanks = new Set(result.banks.map(bankSelectionKey));
+
+  if (importPackageBanksTableController === null) {
+    importPackageBanksTableController = mountTable(
+      els.importPackageBanksTable,
+      importPackageBanksTableView,
+      result.banks,
+    );
   } else {
-    for (const bank of result.banks) {
-      const tr = document.createElement('tr');
-      const tdCheck = document.createElement('td');
-      const chk = document.createElement('input');
-      chk.type = 'checkbox';
-      chk.checked = true;
-      chk.title = `Seleccionar ${bank.name}`;
-      importBankCheckboxes.push({ name: bank.sourceDir || bank.name, input: chk });
-      tdCheck.append(chk);
-
-      const tdName = document.createElement('td');
-      const nameTitle = document.createElement('div');
-      nameTitle.textContent = bank.name;
-      tdName.append(nameTitle);
-      if ((bank as { packageSource?: string }).packageSource) {
-        const srcSubtitle = document.createElement('div');
-        srcSubtitle.className = 'note';
-        srcSubtitle.style.fontSize = '0.75rem';
-        srcSubtitle.textContent = (bank as { packageSource?: string }).packageSource!;
-        tdName.append(srcSubtitle);
-      }
-
-      const tdPresets = document.createElement('td');
-      tdPresets.textContent = `${bank.presetCount} presets`;
-
-      const tdConcordance = document.createElement('td');
-      const bInfo = bank as {
-        isConcordant?: boolean;
-        chunkPluginFourCc?: string;
-        chunkPluginId?: number;
-        matchedWizardName?: string;
-        canRepair?: boolean;
-        deficiencies?: string[];
-      };
-      if (bInfo.isConcordant) {
-        const badge = document.createElement('span');
-        badge.className = 'badge on';
-        const label = bInfo.chunkPluginFourCc || (bInfo.chunkPluginId ? `ID ${bInfo.chunkPluginId}` : 'OK');
-        badge.textContent = `Concordante (${label})`;
-        if (bInfo.matchedWizardName) {
-          badge.title = `Compatible con wizard: ${bInfo.matchedWizardName}`;
-        }
-        tdConcordance.append(badge);
-      } else if (bInfo.deficiencies && bInfo.deficiencies.length > 0) {
-        const badge = document.createElement('span');
-        badge.className = 'badge off';
-        badge.textContent = bInfo.canRepair ? 'Carencias (reparable)' : 'Carencias';
-        badge.title = bInfo.deficiencies.join('; ');
-        tdConcordance.append(badge);
-      } else {
-        tdConcordance.textContent = '—';
-      }
-
-      const tdSize = document.createElement('td');
-      tdSize.textContent = formatBytes(bank.totalSizeBytes);
-
-      const tdTarget = document.createElement('td');
-      const badgeTarget = document.createElement('span');
-      if (bank.alreadyExistsInTarget) {
-        badgeTarget.className = 'badge';
-        badgeTarget.textContent = 'Ya existe';
-      } else {
-        badgeTarget.className = 'badge on';
-        badgeTarget.textContent = 'Nuevo';
-      }
-      tdTarget.append(badgeTarget);
-
-      tr.append(tdCheck, tdName, tdPresets, tdConcordance, tdSize, tdTarget);
-      els.importPackageBanksRows.append(tr);
-    }
+    importPackageBanksTableController.setRows(result.banks);
   }
 
   els.importPackageAllPlugs.checked = true;
@@ -4499,6 +4606,11 @@ async function inspectPackage(): Promise<void> {
     els.importPackagePluginsTable.replaceChildren();
     selectedImportPlugins.clear();
     currentInspectionPlugins = [];
+    importPackageBanksTableController?.destroy();
+    importPackageBanksTableController = null;
+    els.importPackageBanksTable.replaceChildren();
+    selectedImportBanks.clear();
+    currentInspectionBanks = [];
     els.importPackageStatus.textContent = `Error al inspeccionar: ${describeError(error)}`;
     els.importPackageStatus.className = 'status error';
   } finally {
@@ -4512,7 +4624,7 @@ async function executeImportPackage(): Promise<void> {
 
   const pkgPath = els.importPackagePath.value.trim();
   const selectedPlugins = [...selectedImportPlugins];
-  const selectedBanks = importBankCheckboxes.filter((item) => item.input.checked).map((item) => item.name);
+  const selectedBanks = [...selectedImportBanks];
 
   if (selectedPlugins.length === 0 && selectedBanks.length === 0) {
     els.importPackageStatus.textContent = 'Selecciona al menos un plugin o un banco para importar.';
@@ -4612,9 +4724,14 @@ els.importPackageAllPlugs.addEventListener('change', () => {
 });
 
 els.importPackageAllBanks.addEventListener('change', () => {
-  for (const item of importBankCheckboxes) {
-    item.input.checked = els.importPackageAllBanks.checked;
+  if (els.importPackageAllBanks.checked) {
+    for (const item of currentInspectionBanks) {
+      selectedImportBanks.add(bankSelectionKey(item));
+    }
+  } else {
+    selectedImportBanks.clear();
   }
+  importPackageBanksTableController?.setRows(currentInspectionBanks);
 });
 
 els.drawerBackdrop.addEventListener('click', () => {

@@ -82,6 +82,10 @@ export interface WizardListResult {
   items: WizardSummary[];
 }
 
+/** Campos por los que se puede ordenar el listado en el servidor. */
+export type WizardSortField = 'name' | 'vendor' | 'genre' | 'dllName' | 'id';
+export type WizardSortDir = 'asc' | 'desc';
+
 export interface WizardMatchQuery {
   id?: string;
   name?: string;

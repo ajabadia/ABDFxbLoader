@@ -16,6 +16,8 @@ import type {
   WizardListResult,
   WizardMatchQuery,
   WizardRecord,
+  WizardSortDir,
+  WizardSortField,
   WizardSummary,
 } from './wizard.types';
 
@@ -99,6 +101,32 @@ export function cleanNotesForCommon(raw: string): string {
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .trim()
     .slice(0, 250);
+}
+
+const WIZARD_SORT_FIELDS: readonly WizardSortField[] = ['name', 'vendor', 'genre', 'dllName', 'id'];
+
+/** Valida `sort`/`dir` de la query; campo desconocido o dirección rara vuelven al por defecto (`name` ascendente). */
+export function parseWizardSort(sort?: string, dir?: string): { sort: WizardSortField; dir: WizardSortDir } {
+  const field = (WIZARD_SORT_FIELDS as readonly string[]).includes(sort ?? '') ? (sort as WizardSortField) : 'name';
+  const direction: WizardSortDir = dir === 'desc' ? 'desc' : 'asc';
+  return { sort: field, dir: direction };
+}
+
+/** Ordena una lista de wizards por el campo pedido y su dirección, estable ante empates. */
+function sortWizards(rows: WizardRecord[], sort: WizardSortField, dir: WizardSortDir): WizardRecord[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const left = String(a.row[sort] ?? '');
+      const right = String(b.row[sort] ?? '');
+      // El vacío va al final en ambos sentidos, igual que en la tabla.
+      const leftEmpty = left.trim() === '';
+      const rightEmpty = right.trim() === '';
+      if (leftEmpty || rightEmpty) return leftEmpty === rightEmpty ? a.index - b.index : leftEmpty ? 1 : -1;
+      return sign * (left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true }));
+    })
+    .map((item) => item.row);
 }
 
 @Injectable()
@@ -267,13 +295,23 @@ export class WizardService implements OnModuleInit {
   }
 
   /**
-   * Lista los wizards con paginación y filtros opcionales.
+   * Lista los wizards con paginación, filtros y orden opcionales. El orden es
+   * case-insensitive y con números naturales; los valores vacíos van al final,
+   * igual que en la tabla del navegador.
    */
-  list(options: { query?: string; genre?: string; offset?: number; limit?: number } = {}): WizardListResult {
+  list(options: {
+    query?: string;
+    genre?: string;
+    offset?: number;
+    limit?: number;
+    sort?: string;
+    dir?: string;
+  } = {}): WizardListResult {
     const offset = Math.max(0, options.offset ?? 0);
     const limit = Math.max(1, Math.min(100, options.limit ?? 20));
     const q = (options.query ?? '').toLowerCase().trim();
     const genre = (options.genre ?? '').toLowerCase().trim();
+    const { sort, dir } = parseWizardSort(options.sort, options.dir);
 
     let filtered = this.records;
 
@@ -291,7 +329,8 @@ export class WizardService implements OnModuleInit {
       );
     }
 
-    const items = filtered.slice(offset, offset + limit).map(toWizardSummary);
+    const sorted = sortWizards(filtered, sort, dir);
+    const items = sorted.slice(offset, offset + limit).map(toWizardSummary);
 
     return {
       total: filtered.length,

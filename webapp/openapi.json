@@ -3353,6 +3353,26 @@
               "example": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "description": "Ordenar por un campo admitido (name, vendor, genre, dllName o id); otro valor usa el orden por defecto",
+            "schema": {
+              "example": "name",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "required": false,
+            "in": "query",
+            "description": "Dirección del orden: asc o desc (por defecto asc)",
+            "schema": {
+              "example": "asc",
+              "type": "string"
+            }
           }
         ],
         "responses": {

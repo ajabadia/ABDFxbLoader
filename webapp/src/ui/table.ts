@@ -61,6 +61,8 @@ export interface TableView<T> {
   rowActions?: TableRowActions<T>;
   rowClass?: (row: T) => string | undefined;
   tbodyId?: string;
+  /** Aviso de que el usuario quiere cambiar el orden (para tablas que resuelven el orden en el servidor y recargan). */
+  onSortChange?: (sort: { columnId: string; direction: TableDirection }) => void;
 }
 
 export interface TableState {
@@ -232,7 +234,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     else {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'table-sort'; button.textContent = column.label;
       button.setAttribute('aria-label', `Ordenar por ${column.label}`);
-      button.addEventListener('click', () => { state.sort = { columnId: column.id, direction: state.sort.columnId === column.id && state.sort.direction === 'asc' ? 'desc' : 'asc' }; state.page = 1; render(); }); th.append(button);
+      button.addEventListener('click', () => { state.sort = { columnId: column.id, direction: state.sort.columnId === column.id && state.sort.direction === 'asc' ? 'desc' : 'asc' }; state.page = 1; view.onSortChange?.({ ...state.sort }); render(); }); th.append(button);
     }
     header.append(th);
   }

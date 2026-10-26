@@ -1151,6 +1151,10 @@ th.table-sorted .table-sort { color: var(--text); font-weight: 700; }
 .import-package-plugins-table table { min-width: 560px; }
 .import-package-plugins-table th { position: sticky; top: 0; z-index: 1; background: var(--surface); }
 .import-package-plugins-table .table-pagination { display: flex; }
+.import-package-banks-table .table-wrap { min-height: 0; max-height: 260px; overflow: auto; }
+.import-package-banks-table table { min-width: 560px; }
+.import-package-banks-table th { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.import-package-banks-table .table-pagination { display: flex; }
 .log-record-detail { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
 .log-record-detail[hidden] { display: none; }
 .log-record-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }

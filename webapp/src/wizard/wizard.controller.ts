@@ -61,6 +61,13 @@ export class WizardController {
   @ApiQuery({ name: 'genre', required: false, description: 'Filtrar por género (Synth, Effect, etc.)', example: 'Synth' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Desplazamiento para paginación', example: 0 })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Límite de elementos (1..100)', example: 20 })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    description: 'Ordenar por un campo admitido (name, vendor, genre, dllName o id); otro valor usa el orden por defecto',
+    example: 'name',
+  })
+  @ApiQuery({ name: 'dir', required: false, description: 'Dirección del orden: asc o desc (por defecto asc)', example: 'asc' })
   @ApiOkResponse({
     description: 'Listado de wizards paginado',
     type: WizardListResponseDto,
@@ -71,6 +78,8 @@ export class WizardController {
     @Query('genre') genre?: string,
     @Query('offset') offset?: string,
     @Query('limit') limit?: string,
+    @Query('sort') sort?: string,
+    @Query('dir') dir?: string,
   ): WizardListResponseDto {
     const parsedOffset = offset ? Number.parseInt(offset, 10) : 0;
     const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
@@ -80,6 +89,8 @@ export class WizardController {
       genre,
       offset: Number.isNaN(parsedOffset) ? 0 : parsedOffset,
       limit: Number.isNaN(parsedLimit) ? 20 : parsedLimit,
+      sort,
+      dir,
     });
   }
 

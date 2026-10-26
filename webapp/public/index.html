@@ -911,22 +911,13 @@
           </div>
 
           <div id="import-package-banks-wrap" class="field">
-            <label>Bancos detectados</label>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th><input id="import-package-all-banks" type="checkbox" checked title="Seleccionar todos los bancos" /></th>
-                    <th>Banco</th>
-                    <th>Presets</th>
-                    <th>Concordancia</th>
-                    <th>Tamaño</th>
-                    <th>En destino</th>
-                  </tr>
-                </thead>
-                <tbody id="import-package-banks-rows"></tbody>
-              </table>
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <label>Bancos detectados</label>
+              <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
+                <input id="import-package-all-banks" type="checkbox" checked title="Seleccionar todos los bancos" /> Seleccionar todos
+              </label>
             </div>
+            <div id="import-package-banks-table" class="import-package-banks-table"></div>
           </div>
 
           <div class="row">
