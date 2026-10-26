@@ -3507,3 +3507,161 @@ test(
   },
 );
 
+test(
+  'crea un banco little y otro big desde el formulario y verifica el orden de bytes en disco',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+    assert.ok(existsSync(LIBRARY_SOURCE), `la librería no existe: ${LIBRARY_SOURCE}`);
+
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-endian-'));
+    const library = path.join(temp, 'library');
+    await cp(path.join(LIBRARY_SOURCE, 'plugs'), path.join(library, 'plugs'), { recursive: true });
+
+    // La creación toma el FourCC del `id` de `vfxinfo.txt`, que el fixture no
+    // trae; se añade solo a la copia temporal.
+    const vfxinfoPath = path.join(library, 'plugs', PLUGIN, 'vfxinfo.txt');
+    await writeFile(
+      vfxinfoPath,
+      Buffer.concat([await readFile(vfxinfoPath), Buffer.from('id: Obxd\r\n', 'latin1')]),
+    );
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    const LITTLE_NAME = 'Little Bank.fxb';
+    const BIG_NAME = 'Big Bank.fxb';
+    const FX_BANK_MAGIC = 0x4678426b; // 'FxBk'
+    const FX_PROGRAM_MAGIC = 0x4678436b; // 'FxCk'
+    const CHUNK_MAGIC = 0x43636e4b; // 'CcnK'
+    const OBXD_ID = 0x4f627864; // 'Obxd'
+
+    async function createBank(name: string, order: 'little' | 'big'): Promise<void> {
+      await page.fill('#create-bank-name', name);
+      await page.selectOption('#create-mode', 'programNames');
+      await page.selectOption('#create-order', order);
+      await page.fill('#create-program-names', 'Init');
+      await page.click('#create-bank-button');
+      await waitForText(page, '#banks-status', /creado en/);
+      const row = page.locator('#banks-rows tr').filter({ hasText: name });
+      await row.waitFor({ timeout: 20_000 });
+      assert.equal(await row.count(), 1, `el banco ${name} aparece en la tabla`);
+    }
+
+    function expectProgramBank(bytes: Buffer, endianness: 'little' | 'big'): void {
+      const readU32 = endianness === 'little'
+        ? (offset: number) => bytes.readUInt32LE(offset)
+        : (offset: number) => bytes.readUInt32BE(offset);
+      // Cabecera de banco de 156 bytes + un programa de 48+0 parámetros.
+      assert.equal(bytes.length, 156 + 8 + 48, `tamaño del fichero (${endianness})`);
+      assert.equal(readU32(0), CHUNK_MAGIC, `CcnK de la cabecera en ${endianness}`);
+      assert.equal(readU32(8), FX_BANK_MAGIC, `FxBk en ${endianness}`);
+      assert.equal(readU32(16), OBXD_ID, `uniqueID Obxd en ${endianness}`);
+      assert.equal(readU32(24), 1, `numPrograms = 1 en ${endianness}`);
+      // El orden contrario debe dar basura, no coincidir por casualidad.
+      const wrong = endianness === 'little'
+        ? (offset: number) => bytes.readUInt32BE(offset)
+        : (offset: number) => bytes.readUInt32LE(offset);
+      assert.notEqual(wrong(8), FX_BANK_MAGIC, `bytes al revés en ${endianness}`);
+      // Programa: CcnK + byteSize 48 + FxCk + nombre 'Init'.
+      assert.equal(readU32(156), CHUNK_MAGIC);
+      assert.equal(readU32(164), FX_PROGRAM_MAGIC, `FxCk en ${endianness}`);
+      assert.equal(bytes.toString('latin1', 156 + 28, 156 + 32), 'Init', `nombre en ${endianness}`);
+    }
+
+    try {
+      await page.goto(url);
+      await page.waitForSelector('#scan-form');
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /plugin\(s\) encontrados/);
+
+      const row = pluginRow(page);
+      assert.equal(await row.count(), 1);
+      await row.locator('button[data-field="banks"]').click();
+      await page.locator('#banks').waitFor({ state: 'visible' });
+
+      // El `<details>` de creación puede estar plegado: se abre si hace falta.
+      const details = page.locator('#banks details.create');
+      if ((await details.getAttribute('open')) === null) {
+        await details.locator('summary').click();
+      }
+
+      /* 1. Banco little (por defecto del formulario) -------------------- */
+      await createBank(LITTLE_NAME, 'little');
+      const littlePath = path.join(library, 'plugs', PLUGIN, 'presets', LITTLE_NAME);
+      const littleBytes = await readFile(littlePath);
+      expectProgramBank(littleBytes, 'little');
+      assert.equal((await parseFxbBank(littleBytes)).bank?.endianness, 'little');
+
+      /* 2. Banco big con el mismo formulario ---------------------------- */
+      await page.selectOption('#create-order', 'big');
+      await page.fill('#create-bank-name', BIG_NAME);
+      await page.click('#create-bank-button');
+      await waitForText(page, '#banks-status', /creado en/);
+      const bigPath = path.join(library, 'plugs', PLUGIN, 'presets', BIG_NAME);
+      const bigBytes = await readFile(bigPath);
+      expectProgramBank(bigBytes, 'big');
+      assert.equal((await parseFxbBank(bigBytes)).bank?.endianness, 'big');
+
+      // La tabla muestra los dos con el mismo contenido, solo cambia el orden.
+      await page.waitForFunction(
+        'document.querySelectorAll("#banks-rows tr").length === 2',
+        { timeout: 20_000 },
+      );
+
+      /* 3. El log registra ambos con su orden de bytes ------------------ */
+      await page.keyboard.press('Escape');
+      await page.locator('#banks').waitFor({ state: 'hidden' });
+      await row.locator('[data-action="menu"]').click();
+      await row.locator('[data-action="log"]').click();
+      await page.locator('#log-drawer').waitFor({ state: 'visible' });
+      await waitForText(page, '#log-plugin', PLUGIN);
+            await waitForText(page, '#log-table tbody', /create-bank/);
+      const logTexts = await page
+        .locator('#log-table tbody tr')
+        .filter({ hasText: 'create-bank' })
+        .locator('td')
+        .allTextContents();
+      const logText = logTexts.join(' | ');
+      assert.ok(logText.includes('Little Bank.fxb'), `log del banco little: ${logText}`);
+      assert.ok(logText.includes('Big Bank.fxb'), `log del banco big: ${logText}`);
+
+      assert.deepEqual(pageErrors, [], `errores de JavaScript en la página: ${pageErrors.join(' | ')}`);
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({ path: path.join(ARTIFACTS, 'e2e-endian-bank-failure.png'), fullPage: true });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+

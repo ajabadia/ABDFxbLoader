@@ -3485,9 +3485,12 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
         onSelect: () => void promptAndInstallFromWizard(w.id, w.name),
       },
       {
-        id: 'log',
+        // Mismo «Ver registro» que el historial: `view-record` con icono
+        // `file`. Aquí no hay entrada que mostrar, así que abre el cajón del
+        // log del plugin que representa el wizard.
+        id: 'view-record',
         label: 'Ver registro',
-        icon: 'list',
+        icon: 'file',
         onSelect: (_w, trigger) => openWizardLog(w, trigger),
       },
     ],
@@ -3868,6 +3871,13 @@ els.importCancel.addEventListener('click', () => {
 els.exportButton.addEventListener('click', () => {
   void exportBank();
 });
+
+els.createBankButton.addEventListener('click', () => {
+  void createBank();
+});
+
+els.createMode.addEventListener('change', syncCreateMode);
+syncCreateMode();
 
 
 
