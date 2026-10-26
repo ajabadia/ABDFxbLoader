@@ -233,7 +233,14 @@ Abre <http://127.0.0.1:3210/> con el servidor arrancado. La página permite:
 5. **Bancos** abre la vista del plugin —también la pastilla de la columna
    **Bancos**, que muestra el recuento del último escaneo y lista los nombres
    al pasar el ratón—: sus `.fxb` con tipo, programas,
-   `uniqueID` y `fxVersion`; un formulario para importar rutas absolutas de
+   `uniqueID` y `fxVersion`. La columna **Tipo** distingue los bancos de
+   programas (`FxBk`) de los bancos de **chunk opaco** (`CcnK`/`FBCh`), que se
+   enseñan como «FBCh (opaco)» con su `chunkSize`, su número de programas
+   (informativo, la cabecera lo declara pero no trae programas) y su `uniqueID`,
+   tal como los escribe `POST /library/banks/create` (versiones 1 y 2, la 2 con
+   `currentProgram`) —para ellos el pipeline de conversión/restauración del
+   banco por defecto funciona igual, porque solo toca la cabecera y deja el
+   chunk byte a byte—; un formulario para importar rutas absolutas de
    `.fxb` (una por línea, admite las comillas de «copiar como ruta»), con un
    botón **Añadir archivos…** que abre el diálogo del sistema y **suma** los
    `.fxb` elegidos al cuadro de texto sin borrar lo escrito ni repetir rutas, con el
@@ -1428,7 +1435,7 @@ cuando el archivo había desaparecido).
 ## Endpoints de log por plugin
 
 `fxbLoader.log` guarda el historial de lo que la app hizo con cada plugin
-—cargador puesto o quitado, bancos importados, exportados o convertidos,
+—cargador puesto o quitado, bancos creados, importados, exportados o convertidos,
 respaldos restaurados o descartados, e instrumentos importados a la librería—
 en un archivo dentro del directorio del plugin que rota por tamaño: 1 MiB y
 siete `.log.N`, el `.log.7` se descarta al crear el siguiente. El log acompaña
@@ -1446,7 +1453,8 @@ Devuelve `logPath`, `exists`, `size`, `totalEntries`, `entries`, `raw` y
 `rotatedFiles`. Cada entrada trae `timestamp` (ISO-8601), `action`, `summary`,
 `detail` opcional y `raw`, la línea tal como está escrita en el archivo. Las
 acciones son `install` y `uninstall` (cargador), `import-banks`, `export-bank`,
-`convert-bank`, `restore-bank` y `discard-backup` (bancos) e `import`
+`convert-bank`, `restore-bank`, `discard-backup`, `create-bank` (creación de
+bancos `.fxb` desde cero, con modo `programNames` o chunk opaco `FBCh`) e `import`
 (instrumento traído a la librería desde un paquete externo).
 
 `entries` y `raw` recorren `.log.7` … `.log.1` y después el archivo activo, así
@@ -1462,6 +1470,17 @@ vez de un error.
 
 Códigos: **200** y **400** (`dir` ausente, vacío, con solo espacios o de otro
 tipo).
+
+### La acción `create-bank`
+
+La creación de bancos desde cero (endpoint de librería `POST
+/library/banks/create`, sin panel propio en la UI) registra la acción
+`create-bank`: el resumen narra si creó o reemplazó el `.fxb` y, en el modo
+`chunk`, lo señala como un banco FBCh con el tamaño del chunk («Creado banco
+X.fxb (FBCh, chunk de N bytes)»); el detalle añade el formato (`FBCh` versión 1
+o 2), el `currentProgram` en la versión 2, el tamaño del chunk y el número
+informativo en programas. El visor del historial, como el resto de entradas, la
+enseña con fecha, acción, resumen y detalle, y la línea en bruto en el `title`.
 
 ## Auditoría durable de asociaciones DLL
 
