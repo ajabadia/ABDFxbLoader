@@ -815,6 +815,17 @@
 
         <div id="audit-table" class="audit-table"></div>
 
+        <section id="audit-record-detail" class="log-record-detail" aria-labelledby="audit-record-detail-title" hidden>
+          <div class="log-record-detail-head">
+            <h3 id="audit-record-detail-title"></h3>
+            <button id="audit-record-detail-close" type="button" aria-label="Cerrar detalle del evento">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            </button>
+          </div>
+          <dl id="audit-record-detail-fields" class="log-record-detail-fields"></dl>
+          <p class="log-record-detail-foot">Solo lectura</p>
+        </section>
+
         <p id="audit-status" class="status" role="status" aria-live="polite"></p>
       </section>
 

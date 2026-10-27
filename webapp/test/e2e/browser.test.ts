@@ -3311,6 +3311,41 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
       'la tabla se recarga sola al entrar el evento nuevo',
     );
 
+    /* «Ver registro»: el evento completo en el cajón -------------- */
+    // La fila más nueva es la recién apendada (a.dll → b.dll) y su detalle
+    // lista todos los campos del JSONL, también los que la tabla no pinta.
+    const auditRow = page.locator('#audit-table tbody tr[data-row-id]').first();
+    await auditRow.locator('[data-action="menu"]').click();
+    assert.equal(await auditRow.locator('[data-action="view-record"]').textContent(), 'Ver registro');
+    assert.equal(
+      await auditRow.locator('[data-action="view-record"] use').getAttribute('href'),
+      '#icon-file',
+    );
+    await auditRow.locator('[data-action="view-record"]').click();
+    await page.locator('#audit-record-detail').waitFor({ state: 'visible' });
+    assert.match(
+      (await page.locator('#audit-record-detail-title').textContent()) ?? '',
+      /^Evento · /,
+    );
+    assert.equal(
+      await page
+        .locator('#audit-record-detail-fields dt')
+        .allTextContents()
+        .then((labels) => labels.join('|')),
+      'Fecha y hora|Tipo|Plugin|Librería|Campo|Valor anterior|Valor nuevo|Origen',
+      'el detalle lista los ocho campos del registro',
+    );
+    const detailValues = await page.locator('#audit-record-detail-fields dd').allTextContents();
+    assert.equal(detailValues[1], 'Cambio de asociación');
+    assert.equal(detailValues[2], PLUGIN);
+    assert.equal(detailValues[3], library, 'la librería, que la tabla no pinta');
+    assert.equal(detailValues[4], 'dll_name');
+    assert.equal(detailValues[5], 'a.dll');
+    assert.equal(detailValues[6], 'b.dll');
+    await page.click('#audit-record-detail-close');
+    assert.equal(await page.locator('#audit-record-detail').isHidden(), true);
+    assert.equal(await page.locator('#audit-record-detail-fields .log-record-field').count(), 0);
+
     assert.deepEqual(
       pageErrors,
       [],

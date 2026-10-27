@@ -285,12 +285,13 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
     2,
     'Historial debe declararlo el catálogo y la tabla de wizards',
   );
-  // `view-record`/«Ver registro» queda reservado a la tabla del historial,
-  // donde abre el detalle de una entrada, y conserva su icono `file`.
+  // `view-record`/«Ver registro» abre el detalle completo: en la tabla del
+  // historial, la entrada del log; en la de auditoría, el evento. Las dos
+  // conservan el icono `file`.
   assert.equal(
     (main.text.match(/id: 'view-record'/g) ?? []).length,
-    1,
-    'view-record solo lo declara la tabla del historial',
+    2,
+    'view-record lo declaran la tabla del historial y la de auditoría',
   );
   assert.match(
     main.text,

@@ -265,6 +265,10 @@ const els = {
   auditSummary: byId<HTMLElement>('audit-summary'),
   auditTable: byId<HTMLElement>('audit-table'),
   auditStatus: byId<HTMLParagraphElement>('audit-status'),
+  auditDetail: byId<HTMLElement>('audit-record-detail'),
+  auditDetailTitle: byId<HTMLElement>('audit-record-detail-title'),
+  auditDetailFields: byId<HTMLElement>('audit-record-detail-fields'),
+  auditDetailClose: byId<HTMLButtonElement>('audit-record-detail-close'),
   customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
   customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
   customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
@@ -3846,6 +3850,7 @@ els.logClose.addEventListener('click', () => {
   closeLogDrawer();
 });
 els.logDetailClose.addEventListener('click', closeLogRecordDetail);
+els.auditDetailClose.addEventListener('click', closeAuditRecordDetail);
 
 let filterTimeout: ReturnType<typeof setTimeout> | null = null;
 els.wizardsFilter.addEventListener('input', () => {
@@ -4703,6 +4708,50 @@ const AUDIT_KIND_LABELS: Record<string, string> = {
  * de tablas. El orden, la búsqueda y la paginación se resuelven en cliente
  * sobre los hasta 200 eventos del snapshot.
  */
+/** Botón que abrió el detalle del evento: para devolverle el foco al cerrar. */
+let auditDetailOpener: HTMLButtonElement | null = null;
+
+/**
+ * «Ver registro» de la tabla de auditoría: el evento completo, con todos los
+ * campos del JSONL —también los que la tabla no pinta, como la librería—, en
+ * el mismo bloque de solo lectura que el detalle del historial.
+ */
+function openAuditRecordDetail(entry: AssociationAuditEntry, trigger: HTMLButtonElement): void {
+  auditDetailOpener = trigger;
+  els.auditDetailTitle.textContent = `Evento · ${AUDIT_KIND_LABELS[entry.kind] ?? entry.kind}`;
+  const fields: HTMLElement[] = [
+    renderLogDetailField('Fecha y hora', logTimestamp(entry.ts) || entry.ts),
+    renderLogDetailField('Tipo', AUDIT_KIND_LABELS[entry.kind] ?? entry.kind),
+    renderLogDetailField('Plugin', entry.plugin ?? ''),
+    renderLogDetailField('Librería', entry.libraryRoot ?? ''),
+    renderLogDetailField('Campo', entry.field ?? ''),
+    renderLogDetailField('Valor anterior', entry.previousValue ?? ''),
+    renderLogDetailField('Valor nuevo', entry.newValue ?? ''),
+    renderLogDetailField('Origen', entry.packageSource ?? ''),
+  ];
+  if (entry.collisionPolicy) fields.push(renderLogDetailField('Política', entry.collisionPolicy));
+  if (entry.collisionNames && entry.collisionNames.length > 0) {
+    fields.push(renderLogDetailField('Omitidos', entry.collisionNames.join(', ')));
+  }
+  if (entry.repairedBanks && entry.repairedBanks.length > 0) {
+    fields.push(renderLogDetailField('Bancos reparados', entry.repairedBanks.join(', ')));
+  }
+  els.auditDetailFields.replaceChildren(...fields);
+  els.auditDetail.hidden = false;
+  els.auditDetailClose.focus({ preventScroll: true });
+}
+
+function closeAuditRecordDetail(): void {
+  if (els.auditDetail.hidden) return;
+  els.auditDetail.hidden = true;
+  els.auditDetailFields.replaceChildren();
+  const opener = auditDetailOpener;
+  auditDetailOpener = null;
+  if (opener?.isConnected && opener.getClientRects().length > 0) {
+    opener.focus({ preventScroll: true });
+  }
+}
+
 const associationAuditTableView: TableView<AssociationAuditEntry> = {
   columns: [
     {
@@ -4824,6 +4873,9 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     { id: 'tsFilter', label: 'Fecha', columnId: 'ts', type: 'date-range' },
   ],
+  rowActions: {
+    actions: [{ id: 'view-record', label: 'Ver registro', icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
+  },
 };
 
 let auditTableController: TableController<AssociationAuditEntry> | null = null;
@@ -4833,6 +4885,7 @@ let auditFingerprint = '';
 let auditPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function destroyAssociationAuditTable(): void {
+  closeAuditRecordDetail();
   auditTableController?.destroy();
   auditTableController = null;
   els.auditTable.replaceChildren();
@@ -4879,6 +4932,11 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
       auditTableController = mountTable(els.auditTable, associationAuditTableView, snapshot.entries);
     } else {
       auditTableController.setRows(snapshot.entries);
+    }
+    // Las filas se rehacen: si el detalle estaba abierto desde un botón que ya
+    // no existe, se cierra (como el del historial en cada pintado).
+    if (els.auditDetail.hidden === false && auditDetailOpener?.isConnected !== true) {
+      closeAuditRecordDetail();
     }
     auditFingerprint = `${snapshot.size}:${snapshot.total}:${snapshot.entries.length}`;
     setAuditStatus('');
