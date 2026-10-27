@@ -3426,8 +3426,9 @@ async function promptAndInstallFromWizard(
  * El orden también lo resuelve el servidor (`sort`/`dir` de `GET /wizards`):
  * pulsar una cabecera ordenable recarga el listado con ese orden antes de
  * renderizar. Configuración no tiene campo en el servidor y queda sin orden;
- * las acciones (Instalar… y Ver registro) van en el menú «···» de la fila,
- * con los mismos `rowActions` que el historial y el resto de tablas.
+ * las acciones (Instalar… e Historial) van en el menú «···» de la fila, y
+ * «Historial» es la misma acción (`log` + `list`) que en el catálogo: los dos
+ * abren el cajón del historial.
  */
 const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
   columns: [
@@ -3498,12 +3499,12 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
         onSelect: () => void promptAndInstallFromWizard(w.id, w.name),
       },
       {
-        // Mismo «Ver registro» que el historial: `view-record` con icono
-        // `file`. Aquí no hay entrada que mostrar, así que abre el cajón del
-        // log del plugin que representa el wizard.
-        id: 'view-record',
-        label: 'Ver registro',
-        icon: 'file',
+        // Misma «Historial» que el catálogo: id `log` con icono `list` y el
+        // mismo destino, el cajón del historial. Aquí no hay entrada que
+        // mostrar todavía, así que `openWizardLog` abre con la ruta candidata.
+        id: 'log',
+        label: 'Historial',
+        icon: 'list',
         onSelect: (_w, trigger) => openWizardLog(w, trigger),
       },
     ],
@@ -3530,9 +3531,10 @@ function renderWizardsList(items: WizardListResponse['items'], total: number): v
 }
 
 /**
- * Registro de un wizard desde su fila: si el plugin ya está escaneado en la
- * librería se abre con su carpeta real; si aún no existe, con la ruta
- * candidata bajo `plugs\` para que el cajón diga que todavía no hay log.
+ * Historial de un wizard desde su fila (acción «Historial», la misma que el
+ * catálogo): si el plugin ya está escaneado en la librería se abre con su
+ * carpeta real; si aún no existe, con la ruta candidata bajo `plugs\` para
+ * que el cajón diga que todavía no hay log.
  */
 function openWizardLog(w: WizardListResponse['items'][number], opener?: HTMLElement): void {
   const scanned = scanData?.plugins.find((plugin) => plugin.name === w.name);

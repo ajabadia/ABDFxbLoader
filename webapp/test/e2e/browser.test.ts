@@ -519,8 +519,15 @@ test(
       await page.click('#meta-close');
       assert.equal(await page.locator('#meta').isHidden(), true);
 
-      // El log del plugin: ruta, resumen, entradas y rotados, desde su propio cajón.
+      // El log del plugin: ruta, resumen, entradas y rotados, desde su propio
+      // cajón. La acción se llama «Historial» —la misma identidad que en la
+      // tabla de wizards— con id `log` e icono `list`.
       await pluginRow(page).locator('[data-action="menu"]').click();
+      assert.equal(await pluginRow(page).locator('[data-action="log"]').textContent(), 'Historial');
+      assert.equal(
+        await pluginRow(page).locator('[data-action="log"] use').getAttribute('href'),
+        '#icon-list',
+      );
       await pluginRow(page).locator('[data-action="log"]').click();
       await waitForText(page, '#log-path', /fxbLoader\.log$/);
 

@@ -269,22 +269,33 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   assert.match(main.text, /importPackagePluginsTableView/);
   assert.match(main.text, /importPackageBanksTableView/);
   assert.match(main.text, /wizardsTableView/);
-  // El repositorio de wizards usa los mismos `rowActions` que el historial:
-  // el menú «···» de la fila con Instalar… y Ver registro.
+  // El repositorio de wizards usa los mismos `rowActions` que el catálogo:
+  // el menú «···» de la fila con Instalar… e Historial.
   assert.match(main.text, /label: 'Instalar…'/);
-  assert.match(main.text, /label: 'Ver registro'/);
   assert.match(main.text, /openWizardLog/);
-  // «Ver registro» es el mismo action estandarizado que en el historial:
-  // `view-record` con icono `file`, no el `log`/`list` de «Historial».
+  // «Historial» es la MISMA acción en catálogo y wizards: id `log` con icono
+  // `list`, declarado exactamente en esas dos tablas.
+  assert.equal(
+    (main.text.match(/id: 'log'/g) ?? []).length,
+    2,
+    'log debe declararlo el catálogo y la tabla de wizards',
+  );
+  assert.equal(
+    (main.text.match(/label: 'Historial'/g) ?? []).length,
+    2,
+    'Historial debe declararlo el catálogo y la tabla de wizards',
+  );
+  // `view-record`/«Ver registro» queda reservado a la tabla del historial,
+  // donde abre el detalle de una entrada, y conserva su icono `file`.
   assert.equal(
     (main.text.match(/id: 'view-record'/g) ?? []).length,
-    2,
-    'view-record debe declararlo el historial y la tabla de wizards',
+    1,
+    'view-record solo lo declara la tabla del historial',
   );
-  assert.doesNotMatch(
+  assert.match(
     main.text,
-    /label: 'Ver registro',\s*icon: 'list'/,
-    'Ver registro no puede heredar el icono de la acción Historial',
+    /label: 'Ver registro',\s*icon: 'file'/,
+    'Ver registro sigue en el historial con el icono file',
   );
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
   assert.match(main.text, /associationAuditTableView/);
