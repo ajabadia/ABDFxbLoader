@@ -3016,16 +3016,15 @@ function renderPluginLog(snapshot: PluginLogSnapshotResponse): void {
       ? 'Sin archivos rotados.'
       : `Rotados (${snapshot.rotatedFiles.length}): ${snapshot.rotatedFiles.join(', ')}`;
 
-  if (snapshot.entries.length === 0) {
-    logTableController?.destroy();
-    logTableController = null;
-    els.logTable.replaceChildren();
-    const empty = document.createElement('p');
-    empty.className = 'table-empty';
-    empty.textContent = snapshot.exists ? 'El log no tiene entradas legibles.' : 'El plugin todavía no ha escrito nada en su log.';
-    els.logTable.append(empty);
-    return;
-  }
+  // Estado vacío unificado: como en el catálogo, se fija el `emptyText` de la
+  // vista y quien pinta el aviso es `mountTable` (su párrafo y su fila vacía),
+  // no un `<p class="table-empty">` escrito a mano en el contenedor.
+  pluginHistoryTableView.emptyText =
+    snapshot.entries.length > 0
+      ? 'No hay entradas que coincidan con la búsqueda.'
+      : snapshot.exists
+        ? 'El log no tiene entradas legibles.'
+        : 'El plugin todavía no ha escrito nada en su log.';
   if (logTableController === null) {
     logTableController = mountTable(els.logTable, pluginHistoryTableView, snapshot.entries);
   } else {
