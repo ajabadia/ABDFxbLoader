@@ -33,6 +33,16 @@ const WINDOWS_TRASH: TrashInfo = {
   hint: 'Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su carpeta.',
 };
 
+/**
+ * Milisegundos que se espera a PowerShell antes de rendirse. Mover un archivo
+ * a la Papelera tarda menos de un segundo; si el shell de Windows se atasca
+ * (como ya pasó al bloquearse la vista de la Papelera), el envío falla y deja
+ * el archivo en su sitio en vez de colgar la operación —y la suite— para
+ * siempre. Los tests pueden acortarlo con `FXB_TRASH_TIMEOUT_MS` para forzar
+ * el ramo del timeout sin esperar.
+ */
+const WINDOWS_TRASH_TIMEOUT_MS = 10_000;
+
 /** Mueve `target` a la Papelera de reciclaje con la API de .NET Framework. */
 const WINDOWS_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -60,11 +70,34 @@ function sendToWindowsRecycleBin(target: string): Promise<void> {
       stderr += chunk;
     });
 
+    // Un shell colgado no debe esperarse para siempre: se mata al proceso y se
+    // cuenta el fallo. El timeout se lee en cada llamada para que los tests
+    // puedan forzarlo con `FXB_TRASH_TIMEOUT_MS`.
+    const rawTimeout = Number(process.env['FXB_TRASH_TIMEOUT_MS']);
+    const timeoutMs =
+      Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : WINDOWS_TRASH_TIMEOUT_MS;
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      child.kill();
+      reject(
+        new Error(
+          `la Papelera de reciclaje no respondió en ${timeoutMs} ms; se abortó el envío de ${path.basename(target)}`,
+        ),
+      );
+    }, timeoutMs);
+
     child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       reject(new Error(`no se pudo abrir la Papelera de reciclaje: ${error.message}`));
     });
 
     child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (code !== 0) {
         reject(
           new Error(

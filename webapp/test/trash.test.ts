@@ -133,3 +133,31 @@ test('la papelera XDG no pisa un respaldo que ya tiene ese nombre', async (t) =>
   assert.equal(await readFile(path.join(files, 'Rhodes.fxb.orig'), 'utf8'), 'uno');
   assert.equal(await readFile(path.join(files, 'Rhodes.fxb (1).orig'), 'utf8'), 'dos');
 });
+
+/**
+ * El shell de Windows puede bloquearse para siempre al hablar con la Papelera
+ * (ya pasó al quedarse colgada su vista). El envío no debe colgar: el timeout
+ * mata a PowerShell y cuenta el fallo con el archivo aún en su sitio. Se fuerza
+ * un timeout de 1 ms para que dispare antes de que PowerShell arranque.
+ */
+test(
+  'el timeout aborta el envío si la Papelera no responde',
+  { skip: process.platform !== 'win32' && 'solo Windows' },
+  async (t) => {
+    const dir = await tempDir(t, 'fxb-trash-timeout-');
+    const target = path.join(dir, 'Rhodes.fxb.orig');
+    await writeFile(target, 'respaldo');
+
+    const previous = process.env['FXB_TRASH_TIMEOUT_MS'];
+    process.env['FXB_TRASH_TIMEOUT_MS'] = '1';
+    t.after(() => {
+      if (previous === undefined) delete process.env['FXB_TRASH_TIMEOUT_MS'];
+      else process.env['FXB_TRASH_TIMEOUT_MS'] = previous;
+    });
+
+    await assert.rejects(moveToTrash(target), /no respondió en 1 ms/);
+
+    // PowerShell murió sin llegar a mover nada: el respaldo sigue intacto.
+    assert.equal(await readFile(target, 'utf8'), 'respaldo');
+  },
+);
