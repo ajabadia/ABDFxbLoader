@@ -2528,6 +2528,141 @@ test('menú «···» de wizards: «Historial» abre el cajón de log como en e
 });
 
 /**
+ * El menú «···» de la tabla de wizards prueba sus dos acciones contra el
+ * servidor real. «Instalar…» pide el DLL en el diálogo del servidor
+ * (`POST /system/pick`, interceptado porque el navegador de prueba no tiene
+ * diálogos nativos): primero se cancela y la vista lo cuenta; después se elige
+ * el DLL real y el servidor crea el plugin en la librería escaneada — vfxinfo,
+ * presets y `fxbLoader.log` —, lo que confirma el disco. «Historial» (la misma
+ * identidad que en el catálogo) abre entonces el cajón de log sobre el plugin
+ * recién instalado, con su entrada «Instalado desde wizard».
+ */
+test('menú «···» de wizards: «Instalar…» instala el plugin y «Historial» abre su log', { skip }, async (t) => {
+  assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+  assert.ok(existsSync(LIBRARY_SOURCE), `la librería no existe: ${LIBRARY_SOURCE}`);
+
+  const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-wmenu-'));
+  const library = path.join(temp, 'library');
+  // Nunca se toca el fixture: se trabaja sobre una copia.
+  await cp(path.join(LIBRARY_SOURCE, 'plugs'), path.join(library, 'plugs'), { recursive: true });
+
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}/`;
+  const logs: string[] = [];
+  const server = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: WEBAPP,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout?.setEncoding('utf8');
+  server.stderr?.setEncoding('utf8');
+  server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+  server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+  let browser: Browser | null = null;
+
+  t.after(async () => {
+    await browser?.close();
+    if (server.exitCode === null && server.signalCode === null) {
+      server.kill();
+      await new Promise((resolve) => server.once('exit', resolve));
+    }
+    await rm(temp, { recursive: true, force: true });
+  });
+
+  await waitForServer(server, url, logs);
+
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  /** Primera vuelta: el diálogo se cancela; después se elige el DLL real. */
+  let pickMode: 'cancel' | 'dll' = 'cancel';
+  /** Cuerpos que la vista manda al diálogo, en orden. */
+  const pickBodies: Record<string, unknown>[] = [];
+  await page.route('**/system/pick', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    pickBodies.push(body);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ paths: pickMode === 'cancel' ? [] : [REPO_DLL] }),
+    });
+  });
+
+  try {
+    await page.goto(url);
+    await page.waitForSelector('#scan-form');
+    await page.fill('#library-root', library);
+    await page.click('#scan-button');
+    await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
+
+    await page.click('#wizards-nav-btn');
+    await page.locator('#wizards').waitFor({ state: 'visible' });
+    await waitForRowCount(page, '#wizards-table', 100);
+
+    const row = page.locator('#wizards-table tbody tr[data-row-id]').first();
+    const wizardName = ((await row.locator('td').first().textContent()) ?? '').trim();
+    assert.notEqual(wizardName, '', 'la primera fila pinta el nombre del wizard');
+
+    /* 1. «Instalar…» y diálogo cancelado ---------------------------- */
+    await row.locator('[data-action="menu"]').click();
+    assert.equal(await row.locator('[data-action="install"]').textContent(), 'Instalar…');
+    await row.locator('[data-action="install"]').click();
+    await waitForText(page, '#wizards-status', 'Instalación cancelada: no se seleccionó ningún archivo DLL.');
+    assert.equal(pickBodies.length, 1, 'la vista pidió el diálogo al servidor');
+    assert.equal(pickBodies[0]?.['kind'], 'file', 'pide un archivo, la DLL del plugin');
+    assert.ok(
+      String(pickBodies[0]?.['title'] ?? '').includes(wizardName),
+      'el diálogo se anuncia con el nombre del wizard',
+    );
+
+    /* 2. «Instalar…» eligiendo el DLL real -------------------------- */
+    pickMode = 'dll';
+    await row.locator('[data-action="menu"]').click();
+    await row.locator('[data-action="install"]').click();
+    await waitForText(page, '#wizards-status', /Instrumento ".*" instalado con éxito desde Wizard certificado/);
+    assert.equal(pickBodies.length, 2, 'cada vuelta vuelve a pasar por el diálogo');
+
+    // El disco confirma la instalación dentro de la librería escaneada.
+    const installedDir = path.join(library, 'plugs', wizardName);
+    assert.equal(existsSync(path.join(installedDir, 'vfxinfo.txt')), true, 'vfxinfo.txt oficial');
+    assert.equal(existsSync(path.join(installedDir, 'presets')), true, 'carpeta de bancos inicializada');
+    const pluginLog = await readFile(path.join(installedDir, 'fxbLoader.log'), 'utf8');
+    assert.match(pluginLog, /Instalado desde wizard/, 'la instalación queda en el log del plugin');
+
+    /* 3. «Historial» abre el cajón de log del plugin instalado ------- */
+    await row.locator('[data-action="menu"]').click();
+    assert.equal(await row.locator('[data-action="log"]').textContent(), 'Historial');
+    await row.locator('[data-action="log"]').click();
+    await page.locator('#log-drawer').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#wizards').isHidden(), true, 'abrir el historial cierra el cajón de wizards');
+    assert.equal(
+      (await page.locator('#log-plugin').textContent())?.trim(),
+      wizardName,
+      'el cajón muestra el plugin instalado desde el wizard',
+    );
+    await waitForText(page, '#log-path', /fxbLoader\.log$/);
+    await waitForText(page, '#log-table', /Instalado desde wizard/);
+
+    assert.deepEqual(
+      pageErrors,
+      [],
+      `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+    );
+  } catch (error) {
+    await mkdir(ARTIFACTS, { recursive: true });
+    await page.screenshot({
+      path: path.join(ARTIFACTS, 'e2e-wizards-menu-install-failure.png'),
+      fullPage: true,
+    });
+    console.error(`Servidor:\n${logs.join('')}`);
+    throw error;
+  }
+});
+
+/**
  * Cada eje del filtro es un menú de tres estados: positivo, negativo y «todos».
  * El chip anuncia si filtra (`aria-pressed`), si su menú está abierto
  * (`aria-expanded`) y el tono que aplica (`data-tone`); las opciones viajan con
