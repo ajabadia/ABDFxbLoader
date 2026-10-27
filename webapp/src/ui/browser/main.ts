@@ -3269,6 +3269,11 @@ async function applyWizardToMeta(): Promise<void> {
 function closeWizards(): void {
   if (els.wizards.hidden) return;
   els.wizards.hidden = true;
+  // Igual que el resto de cajones: al cerrar se destruye la tabla para que la
+  // próxima apertura monte una nueva sin arrastrar estado (orden/página).
+  wizardsTableController?.destroy();
+  wizardsTableController = null;
+  els.wizardsTable.replaceChildren();
   if (
     els.banks.hidden &&
     els.meta.hidden &&
