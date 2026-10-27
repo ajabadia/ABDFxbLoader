@@ -2323,6 +2323,204 @@ test(
 );
 
 /**
+ * El cajón de wizards destruye su tabla al cerrar, como el resto de cajones:
+ * el contenedor queda vacío y, al reabrir, `renderWizardsList` vuelve a montar
+ * una instancia nueva con los valores por defecto de la vista (100 por página,
+ * página 1), sin arrastrar el tamaño de página ni la página de la apertura
+ * anterior.
+ */
+test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, async (t) => {
+  assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}/`;
+  const logs: string[] = [];
+  const server = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: WEBAPP,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout?.setEncoding('utf8');
+  server.stderr?.setEncoding('utf8');
+  server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+  server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+  let browser: Browser | null = null;
+
+  t.after(async () => {
+    await browser?.close();
+    if (server.exitCode === null && server.signalCode === null) {
+      server.kill();
+      await new Promise((resolve) => server.once('exit', resolve));
+    }
+  });
+
+  await waitForServer(server, url, logs);
+
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  const pageInfo = async (): Promise<string> =>
+    (await page.$eval('#wizards-table .pagination-info', (el) => el.textContent?.trim())) ?? '';
+
+  try {
+    await page.goto(url);
+
+    /* Primer montaje: la vista fija 100 por página ---------------- */
+    await page.click('#wizards-nav-btn');
+    await page.locator('#wizards').waitFor({ state: 'visible' });
+    await waitForRowCount(page, '#wizards-table', 100);
+    assert.equal(
+      await page.inputValue('#wizards-table .pagination-select'),
+      '100',
+      'la tabla recién montada arranca con el tamaño por defecto de la vista',
+    );
+    assert.match(await pageInfo(), /^1–100 de \d+$/, 'y en la primera página');
+
+    // Estado que NO debe sobrevivir al cierre: 25 por página y página 2.
+    await page.selectOption('#wizards-table .pagination-select', '25');
+    await waitForRowCount(page, '#wizards-table', 25);
+    await page.click('#wizards-table .pagination-btn:has-text("Siguiente")');
+    assert.match(await pageInfo(), /^26–50 de \d+$/, 'antes de cerrar la tabla está en la página 2');
+
+    /* Cierre: la tabla se destruye y el contenedor queda vacío ----- */
+    await page.click('#wizards-close');
+    await page.locator('#wizards').waitFor({ state: 'hidden' });
+    assert.equal(
+      await page.$eval('#wizards-table', (el) => el.childElementCount),
+      0,
+      'al cerrar, closeWizards vacía el contenedor de la tabla',
+    );
+
+    /* Reapertura: tabla nueva con el estado inicial --------------- */
+    await page.click('#wizards-nav-btn');
+    await page.locator('#wizards').waitFor({ state: 'visible' });
+    await waitForRowCount(page, '#wizards-table', 100);
+    assert.equal(
+      await page.inputValue('#wizards-table .pagination-select'),
+      '100',
+      'la tabla remontada vuelve al tamaño por defecto, no al 25 de la apertura anterior',
+    );
+    assert.match(await pageInfo(), /^1–100 de \d+$/, 'y a la primera página');
+    assert.match(
+      (await page.locator('#wizards-count').textContent()) ?? '',
+      /^\d+ de \d+$/,
+      'el contador del cajón refleja el listado recargado',
+    );
+
+    assert.deepEqual(
+      pageErrors,
+      [],
+      `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+    );
+  } catch (error) {
+    await mkdir(ARTIFACTS, { recursive: true });
+    await page.screenshot({
+      path: path.join(ARTIFACTS, 'e2e-wizards-remount-failure.png'),
+      fullPage: true,
+    });
+    console.error(`Servidor:\n${logs.join('')}`);
+    throw error;
+  }
+});
+
+/**
+ * Catálogo y wizards comparten la acción de abrir el historial: id `log`,
+ * etiqueta «Historial» e icono `list`. El menú «···» de una fila de wizards la
+ * ofrece con esa identidad — y sin `view-record`, reservado a la tabla del
+ * historial — y el clic abre el mismo cajón de log que en el catálogo. Como el
+ * plugin del wizard no está escaneado, el cajón muestra el estado «todavía no
+ * ha escrito nada» en vez de fallar.
+ */
+test('menú «···» de wizards: «Historial» abre el cajón de log como en el catálogo', { skip }, async (t) => {
+  assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}/`;
+  const logs: string[] = [];
+  const server = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: WEBAPP,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout?.setEncoding('utf8');
+  server.stderr?.setEncoding('utf8');
+  server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+  server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+  let browser: Browser | null = null;
+
+  t.after(async () => {
+    await browser?.close();
+    if (server.exitCode === null && server.signalCode === null) {
+      server.kill();
+      await new Promise((resolve) => server.once('exit', resolve));
+    }
+  });
+
+  await waitForServer(server, url, logs);
+
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  try {
+    await page.goto(url);
+    await page.click('#wizards-nav-btn');
+    await page.locator('#wizards').waitFor({ state: 'visible' });
+    await waitForRowCount(page, '#wizards-table', 100);
+
+    const row = page.locator('#wizards-table tbody tr[data-row-id]').first();
+    const wizardName = ((await row.locator('td').first().textContent()) ?? '').trim();
+    assert.notEqual(wizardName, '', 'la primera fila pinta el nombre del wizard');
+
+    /* Misma identidad que la acción del catálogo ------------------- */
+    await row.locator('[data-action="menu"]').click();
+    assert.equal(
+      await row.locator('[data-action="log"]').textContent(),
+      'Historial',
+      'la opción se llama «Historial», como en el catálogo',
+    );
+    assert.equal(
+      await row.locator('[data-action="log"] use').getAttribute('href'),
+      '#icon-list',
+      'y lleva el mismo icono list',
+    );
+    assert.equal(await row.locator('[data-action="view-record"]').count(), 0, 'view-record queda reservado al historial');
+    assert.equal(await row.locator('[data-action="install"]').textContent(), 'Instalar…');
+
+    /* El clic abre el cajón del log, como en el catálogo ----------- */
+    await row.locator('[data-action="log"]').click();
+    await page.locator('#log-drawer').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#wizards').isHidden(), true, 'abrir el historial cierra el cajón de wizards');
+    assert.equal(
+      (await page.locator('#log-plugin').textContent())?.trim(),
+      wizardName,
+      'el cajón muestra el plugin que representa el wizard',
+    );
+    // Sin escaneo no hay log: el estado vacío estándar de la tabla.
+    await waitForText(page, '#log-table', /todavía no ha escrito nada en su log/);
+
+    assert.deepEqual(
+      pageErrors,
+      [],
+      `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+    );
+  } catch (error) {
+    await mkdir(ARTIFACTS, { recursive: true });
+    await page.screenshot({
+      path: path.join(ARTIFACTS, 'e2e-wizards-log-action-failure.png'),
+      fullPage: true,
+    });
+    console.error(`Servidor:\n${logs.join('')}`);
+    throw error;
+  }
+});
+
+/**
  * Cada eje del filtro es un menú de tres estados: positivo, negativo y «todos».
  * El chip anuncia si filtra (`aria-pressed`), si su menú está abierto
  * (`aria-expanded`) y el tono que aplica (`data-tone`); las opciones viajan con
