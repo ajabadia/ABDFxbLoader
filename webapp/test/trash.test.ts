@@ -82,10 +82,13 @@ async function leerRutaIndice(indice: string): Promise<string | null> {
 /**
  * Retira de la Papelera real las entradas cuya ruta original empieza por
  * `prefijo`: solo los archivos que acaba de mandar este test (un temporal
- * propio y fresco). Lo demás queda intacto. Devuelve cuántas retiró.
+ * propio y fresco). Lo demás queda intacto. Devuelve cuántas retiró, o `null`
+ * si no se pudo inspeccionar la papelera (sin acceso a `$Recycle.Bin`, como en
+ * un runner de CI): ahí no hay nada que comprobar y la papelera es efímera,
+ * así que un permiso del entorno no puede convertirse en un fallo del código.
  */
-async function purgarEntradasPropias(prefijo: string): Promise<number> {
-  if (process.platform !== 'win32') return 0;
+async function purgarEntradasPropias(prefijo: string): Promise<number | null> {
+  if (process.platform !== 'win32') return null;
   const bin = path.join(path.parse(prefijo).root, '$Recycle.Bin');
   let sids: string[] = [];
   try {
@@ -93,9 +96,10 @@ async function purgarEntradasPropias(prefijo: string): Promise<number> {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {
-    return 0;
+    return null;
   }
   let retiradas = 0;
+  let carpetasLegibles = 0;
   for (const sid of sids) {
     const carpeta = path.join(bin, sid);
     let ficheros: string[];
@@ -104,6 +108,7 @@ async function purgarEntradasPropias(prefijo: string): Promise<number> {
     } catch {
       continue; // carpeta de sistema u otro usuario: acceso denegado
     }
+    carpetasLegibles += 1;
     for (const nombre of ficheros) {
       if (!nombre.startsWith('$I') || nombre.length <= 2) continue;
       const original = await leerRutaIndice(path.join(carpeta, nombre));
@@ -113,7 +118,9 @@ async function purgarEntradasPropias(prefijo: string): Promise<number> {
       retiradas += 1;
     }
   }
-  return retiradas;
+  // Ninguna carpeta legible: se pudo listar `$Recycle.Bin` pero no entrar en
+  // ninguna (permisos del runner), así que no se puede asegurar nada.
+  return carpetasLegibles === 0 ? null : retiradas;
 }
 
 test(
@@ -123,11 +130,9 @@ test(
     const dir = await tempDir(t, 'fxb-trash-');
     // Lo que esta prueba mande a la Papelera real se retira al terminar.
     t.after(async () => {
-      assert.equal(
-        await purgarEntradasPropias(dir),
-        1,
-        'la entrada de este test debe salir de la Papelera real',
-      );
+      const retiradas = await purgarEntradasPropias(dir);
+      if (retiradas === null) return; // sin acceso a la papelera (CI): nada que comprobar
+      assert.equal(retiradas, 1, 'la entrada de este test debe salir de la Papelera real');
     });
     const target = path.join(dir, 'Rhodes.fxb.orig');
     await writeFile(target, 'respaldo');
@@ -161,11 +166,9 @@ test(
 
     // Las dos entradas de este test se retiran de la Papelera real al terminar.
     t.after(async () => {
-      assert.equal(
-        await purgarEntradasPropias(dir),
-        2,
-        'las dos entradas de este test deben salir de la Papelera real',
-      );
+      const retiradas = await purgarEntradasPropias(dir);
+      if (retiradas === null) return; // sin acceso a la papelera (CI): nada que comprobar
+      assert.equal(retiradas, 2, 'las dos entradas de este test deben salir de la Papelera real');
     });
 
     await moveToTrash(first);
