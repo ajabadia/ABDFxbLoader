@@ -49,6 +49,31 @@ function safePluginFolderName(name: string): string {
   return cleaned === '' || cleaned === '.' || cleaned === '..' ? 'plugin' : cleaned;
 }
 
+/** Raíz común de rutas absolutas, con la forma de la primera. */
+function commonAbsoluteRoot(paths: string[]): string {
+  if (paths.length === 0) return '';
+  const common = commonDirectory(paths);
+  return splitRelative(paths[0]!).slice(0, common.length).join(path.sep);
+}
+
+/** `child` está dentro de `parent` (`false` si es el propio `parent`). */
+function isInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent.toLowerCase(), child.toLowerCase());
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+/**
+ * ¿El archivo pertenece al plugin por su tallo? `P8.dll`, `P8.ini`, `P8 Data\x`
+ * sí; `P80.dll` no. Evita arrastrar los demás plugins de la misma carpeta.
+ */
+function belongsToStem(segment: string, stem: string): boolean {
+  const lower = segment.toLowerCase();
+  const target = stem.toLowerCase();
+  if (!lower.startsWith(target)) return false;
+  const next = lower.charAt(target.length);
+  return next === '' || '._- (['.includes(next);
+}
+
 /** Abreviatura de pantalla LCD: la primera palabra útil, en mayúsculas. */
 function abbreviation(name: string): string {
   const firstWord = name.split(/[^0-9A-Za-z]+/).filter(Boolean)[0] ?? name;
@@ -742,6 +767,11 @@ export class CaptureService implements OnModuleInit {
     vendor?: string;
     generateBank?: boolean;
     generateWizard?: boolean;
+    /**
+     * Sumar al paquete los archivos que ya existían al iniciar la captura.
+     * Ausente equivale a `true`: es el comportamiento histórico del flujo.
+     */
+    includePreExisting?: boolean;
     outputDir?: string;
   }): Promise<{ bankDir?: string; wizardPath?: string; warnings: string[] }> {
     const diff = this.diffs.get(diffId);
@@ -765,23 +795,122 @@ export class CaptureService implements OnModuleInit {
     // recorta al directorio común para que los archivos queden dentro de
     // `plugs\<Plugin>\` con la estructura de una librería real.
     const baseSegments = commonDirectory(payload);
-    const entries = payload.map((file) => ({
-      source: file,
+    interface PackageEntry {
+      absolute: string;
+      relative: string;
+    }
+    const stagingEntries: PackageEntry[] = payload.map((file) => ({
+      absolute: path.join(stagingPath, file),
       relative: splitRelative(file).slice(baseSegments.length).join('/'),
     }));
 
     const folderName = safePluginFolderName(options.pluginName);
     const pluginDir = path.join(outputDir, 'plugs', folderName);
 
-    const dllEntries = entries.filter((entry) => entry.relative.toLowerCase().endsWith('.dll'));
-    const requestedDll = (options.dllName ?? '').replace(/[\\/]+/g, '/').trim().toLowerCase();
-    const primaryDll =
+    const requestedDll = path
+      .basename((options.dllName ?? '').replace(/[\\/]+/g, '/'))
+      .trim()
+      .toLowerCase();
+    const pickDll = (candidates: PackageEntry[]): PackageEntry | undefined =>
       (requestedDll === ''
         ? undefined
-        : dllEntries.find(
+        : candidates.find(
             (entry) =>
-              path.posix.basename(entry.relative).toLowerCase() === path.posix.basename(requestedDll),
-          )) ?? dllEntries[0];
+              path.posix.basename(entry.relative).toLowerCase() === requestedDll ||
+              path.basename(entry.absolute).toLowerCase() === requestedDll,
+          )) ?? candidates[0];
+
+    // Archivos que ya estaban antes de la captura: el diff solo trae lo que
+    // cambió, así que un DLL o una carpeta de presets preexistente se quedaría
+    // fuera del paquete. Se toman del snapshot inicial, acotados al plugin (el
+    // tallo del DLL y las carpetas donde la captura puso archivos) para no
+    // arrastrar los demás plugins que conviven en `VstPlugins`. El cliente
+    // puede optar por no incluirlos (`includePreExisting: false`), p. ej. para
+    // montar el plugin solo con los archivos que tocó la instalación.
+    const capturedFiles = [
+      ...diff.addedFiles,
+      ...diff.modifiedFiles.map((entry) => entry.after),
+    ].filter((file) => !file.isDir);
+    const capturedPaths = new Set(capturedFiles.map((file) => file.path.toLowerCase()));
+    const removedPaths = new Set(diff.removedFiles.map((file) => file.path.toLowerCase()));
+    const packageRoot = commonAbsoluteRoot(capturedFiles.map((file) => file.path));
+    const rootSegments = splitRelative(packageRoot).length;
+    const before = this.snapshots.get(diff.snapshotIdBefore);
+    const beforeFiles = (before?.files ?? []).filter((file) => !file.isDir);
+
+    // El DLL manda sobre el resto: el paquete y `dll_name` se organizan a su
+    // alrededor. Si la captura no lo incluyó, tiene que ser uno preexistente.
+    const stagedDll = pickDll(
+      stagingEntries.filter((entry) => entry.relative.toLowerCase().endsWith('.dll')),
+    );
+    let primaryAbsolute = stagedDll
+      ? capturedFiles.find(
+          (file) =>
+            path.basename(file.path).toLowerCase() ===
+            path.posix.basename(stagedDll.relative).toLowerCase(),
+        )?.path ?? null
+      : null;
+    if (stagedDll === undefined && packageRoot !== '') {
+      const beforeDlls = beforeFiles.filter(
+        (file) =>
+          file.path.toLowerCase().endsWith('.dll') &&
+          isInside(packageRoot, file.path) &&
+          !removedPaths.has(file.path.toLowerCase()),
+      );
+      const capturedStems = new Set(capturedFiles.map((file) => path.parse(file.path).name.toLowerCase()));
+      const chosen =
+        (requestedDll === ''
+          ? undefined
+          : beforeDlls.find((file) => path.basename(file.path).toLowerCase() === requestedDll)) ??
+        beforeDlls.find((file) => capturedStems.has(path.parse(file.path).name.toLowerCase())) ??
+        beforeDlls[0];
+      if (chosen) primaryAbsolute = chosen.path;
+    }
+
+    const preExisting: PackageEntry[] = [];
+    if (before === undefined) {
+      warnings.push(
+        'No se pudo recuperar el snapshot inicial: el paquete puede omitir archivos del plugin que ya existían antes de la captura.',
+      );
+    } else if (
+      options.includePreExisting !== false &&
+      packageRoot !== '' &&
+      primaryAbsolute !== null
+    ) {
+      const dllDir = path.dirname(primaryAbsolute);
+      const dllStem = path.parse(primaryAbsolute).name;
+      // Las carpetas donde la captura escribió, salvo la del propio DLL: ahí
+      // conviven los demás plugins instalados y no se pueden arrastrar.
+      const capturedDirs = capturedFiles
+        .map((file) => path.dirname(file.path))
+        .filter((dir) => dir.toLowerCase() !== dllDir.toLowerCase());
+      for (const file of beforeFiles) {
+        const key = file.path.toLowerCase();
+        if (capturedPaths.has(key) || removedPaths.has(key)) continue;
+        if (!isInside(packageRoot, file.path)) continue;
+        const relative = splitRelative(file.path).slice(rootSegments).join('/');
+        if (relative === '') continue;
+        const firstSegment = relative.split('/')[0] ?? '';
+        const ownedByDll = isInside(dllDir, file.path) && belongsToStem(firstSegment, dllStem);
+        const insideCapturedDir = capturedDirs.some(
+          (dir) => isInside(dir, file.path) || dir.toLowerCase() === path.dirname(file.path).toLowerCase(),
+        );
+        if (!ownedByDll && !insideCapturedDir) continue;
+        if (!existsSync(file.path)) continue;
+        preExisting.push({ absolute: file.path, relative });
+      }
+    }
+
+    const entries: PackageEntry[] = [...stagingEntries];
+    const knownRelatives = new Set(entries.map((entry) => entry.relative.toLowerCase()));
+    for (const entry of preExisting) {
+      if (knownRelatives.has(entry.relative.toLowerCase())) continue;
+      knownRelatives.add(entry.relative.toLowerCase());
+      entries.push(entry);
+    }
+
+    const dllEntries = entries.filter((entry) => entry.relative.toLowerCase().endsWith('.dll'));
+    const primaryDll = pickDll(dllEntries);
     // `dll_name` es relativo a la carpeta del plugin, igual que en la librería.
     const dllRelative = primaryDll?.relative ?? `${folderName}/${folderName}.dll`;
     const extraDlls = dllEntries
@@ -800,9 +929,9 @@ export class CaptureService implements OnModuleInit {
         const destination = path.join(pluginDir, ...entry.relative.split('/'));
         try {
           await fs.mkdir(path.dirname(destination), { recursive: true });
-          await fs.copyFile(path.join(stagingPath, entry.source), destination);
+          await fs.copyFile(entry.absolute, destination);
         } catch (err) {
-          warnings.push(`No se pudo copiar ${entry.source}: ${(err as Error).message}`);
+          warnings.push(`No se pudo copiar ${entry.relative}: ${(err as Error).message}`);
         }
       }
 

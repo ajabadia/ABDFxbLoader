@@ -80,6 +80,7 @@ export const CAPTURE_VMACHINE_REQUEST_EXAMPLE = {
   vendor: 'SuperWave',
   generateBank: true,
   generateWizard: true,
+  includePreExisting: true,
 };
 
 export class StartSnapshotDto {
@@ -183,6 +184,16 @@ export class VMachineRequestDto {
     example: true,
   })
   generateBank?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Sumar al paquete los archivos del plugin que ya existían antes de iniciar la captura ' +
+      '(se leen del snapshot inicial), acotados al tallo del DLL y a las carpetas donde la ' +
+      'captura puso archivos. Por defecto `true`; con `false` el paquete se queda solo con lo ' +
+      'que cambió durante la captura.',
+    example: true,
+  })
+  includePreExisting?: boolean;
 
   @ApiPropertyOptional({ description: 'Generar el wizard para el software original', example: true })
   generateWizard?: boolean;

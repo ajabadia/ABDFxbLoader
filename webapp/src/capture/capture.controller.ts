@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   Post,
@@ -62,6 +64,7 @@ export class CaptureController {
   constructor(private readonly service: CaptureService) {}
 
   @Post('start')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Iniciar snapshot del sistema (archivos y registro)',
     description:
@@ -106,6 +109,7 @@ export class CaptureController {
   }
 
   @Post('tasks/:taskId/cancel')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Detener una captura en curso',
     description: 'Marca la tarea como `cancelling`; no se guarda un snapshot parcial.',
@@ -128,6 +132,7 @@ export class CaptureController {
   }
 
   @Post('finish')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Finalizar captura: tomar snapshot y calcular diferencias',
     description:
@@ -197,6 +202,7 @@ export class CaptureController {
   }
 
   @Post('package')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Copiar diff a zona de staging para revisar/editar',
     description:
@@ -291,6 +297,7 @@ export class CaptureController {
   }
 
   @Post('finalize')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Finalizar y copiar staging al destino final',
     description: 'Copia el staging revisado a la carpeta de destino indicada.',
@@ -313,13 +320,18 @@ export class CaptureController {
   }
 
   @Post('vmachine/:diffId')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Generar paquete de plugin para v-machine y/o wizard reutilizable',
     description:
       'Construye `plugs\\<pluginName>\\` a partir del staging de `/capture/package`: recorta la ruta ' +
       'relativa a la unidad, deja el DLL en la raíz del plugin, escribe `vfxinfo.txt` con un `dll_name` ' +
       'relativo y crea `presets\\`, de modo que la carpeta se puede escanear e importar como una librería ' +
-      'real. Opcionalmente escribe el `.vfxwizard` junto al paquete. Los avisos no abortan la generación.',
+      'real. Con `includePreExisting` (por defecto `true`) suma además los archivos del plugin que ya ' +
+      'existían antes de la captura, tomados del snapshot inicial y acotados al tallo del DLL y a las ' +
+      'carpetas donde la captura puso archivos para no arrastrar otros plugins de la misma carpeta; con ' +
+      '`false` el paquete se queda solo con lo que cambió. Opcionalmente escribe el `.vfxwizard` junto ' +
+      'al paquete. Los avisos no abortan la generación.',
   })
   @ApiParam({ name: 'diffId', description: 'ID del diff empaquetado.', example: CAPTURE_DIFF_EXAMPLE.diffId })
   @ApiBody({ type: VMachineRequestDto, examples: { estandar: { value: CAPTURE_VMACHINE_REQUEST_EXAMPLE } } })
