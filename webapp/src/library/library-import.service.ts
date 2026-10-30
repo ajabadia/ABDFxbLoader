@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { AssociationAuditService } from '../association-audit/association-audit.service';
 import { PluginLogService } from '../plugin-log/plugin-log.service';
-import { WizardService } from '../wizard/wizard.service';
+import { normalizeName, normalizeWizardPath, WizardService } from '../wizard/wizard.service';
 import {
   ImportPackageInput,
   ImportPackageResult,
@@ -64,6 +64,74 @@ async function calculateDirStats(dir: string): Promise<{ fileCount: number; tota
 
   await walk(dir);
   return { fileCount, totalSizeBytes };
+}
+
+async function findWizardSource(
+  root: string,
+  relativePath: string,
+  expectDirectory: boolean,
+): Promise<string | null> {
+  const safeRelativePath = normalizeWizardPath(relativePath);
+  if (!safeRelativePath) return null;
+  const wanted = safeRelativePath.replace(/\\/g, '/').toLowerCase();
+  const matches: string[] = [];
+  const visit = async (current: string, depth: number): Promise<void> => {
+    if (depth > 12 || matches.length > 1) return;
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const full = path.join(current, entry.name);
+      const isDirectory = entry.isDirectory();
+      const rel = path.relative(root, full).replace(/\\/g, '/').toLowerCase();
+      if (isDirectory === expectDirectory && (rel === wanted || rel.endsWith(`/${wanted}`))) {
+        matches.push(full);
+        if (matches.length > 1) return;
+        continue;
+      }
+      if (isDirectory) await visit(full, depth + 1);
+    }
+  };
+  await visit(root, 0);
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function isSafeWizardSourcePath(value: string): boolean {
+  const portable = value.trim().replace(/\\/g, '/');
+  if (!portable || portable.startsWith('//') || /^[a-z]:/i.test(portable)) return false;
+  if (portable.split('/').includes('..')) return false;
+  const normalized = normalizeWizardPath(portable);
+  return normalized !== null && !normalized.split('/').includes('..');
+}
+
+async function copyWizardDependency(
+  root: string,
+  destinationRoot: string,
+  relativePath: string,
+  expectDirectory: boolean,
+): Promise<boolean> {
+  if (!isSafeWizardSourcePath(relativePath)) return false;
+  const normalized = normalizeWizardPath(relativePath)!;
+  const destination = path.resolve(destinationRoot, normalized);
+  const relativeDestination = path.relative(destinationRoot, destination);
+  if (relativeDestination.startsWith('..') || path.isAbsolute(relativeDestination)) return false;
+  const source = await findWizardSource(root, normalized, expectDirectory);
+  if (!source) return false;
+  const stat = await fs.stat(source);
+  if (expectDirectory && !stat.isDirectory()) return false;
+  if (!expectDirectory && !stat.isFile() && !stat.isDirectory()) return false;
+  if (await fileExists(destination) || await directoryExists(destination)) return true;
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  if (stat.isDirectory()) {
+    await fs.cp(source, destination, { recursive: true, force: false, errorOnExist: true });
+  } else {
+    await fs.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+  }
+  return true;
 }
 
 function parseQuickVfxinfo(content: string): { id: number | null; name: string | null } {
@@ -180,21 +248,105 @@ export class LibraryImportService {
       }
 
       const name = defaultName;
-      let matchedWizard: PackagePluginSummary['matchedWizard'] = null;
-      if (this.wizardService) {
-        const rec = this.wizardService.match({
-          id: vfxinfoId !== null ? vfxinfoId.toString() : undefined,
-          name,
-          dllName: dllEntry ? dllEntry.name : undefined,
-        });
-        if (rec) {
-          matchedWizard = {
-            id: rec.id,
-            name: rec.name,
-            vendor: rec.vendor,
-            isSynth: rec.isSynth,
-          };
+      const allWizards = this.wizardService?.getAll() ?? [];
+      const idMatch = vfxinfoId !== null ? this.wizardService?.getById(String(vfxinfoId)) ?? null : null;
+      const dllMatches = dllEntry
+        ? allWizards.filter((candidate) => normalizeName(path.basename(candidate.dllName)) === normalizeName(dllEntry.name))
+        : [];
+      const nameMatches = allWizards.filter(
+        (candidate) => normalizeName(candidate.name) === normalizeName(vfxinfoName || name),
+      );
+      const strongMatches = [
+        ...(idMatch ? [{ record: idMatch, reason: 'id' as const }] : []),
+        ...dllMatches.map((record) => ({ record, reason: 'dll' as const })),
+        ...nameMatches.map((record) => ({ record, reason: 'name' as const })),
+      ].filter((match, index, matches) => matches.findIndex((other) => other.record.id === match.record.id) === index);
+      const hasConflictingMatches = new Set(strongMatches.map((match) => match.record.id)).size > 1;
+      const fuzzyMatch = this.wizardService?.match({
+        name: vfxinfoName || name,
+        dllName: dllEntry?.name,
+      }) ?? null;
+      const selectedMatch = hasConflictingMatches
+        ? null
+        : strongMatches[0] ?? (fuzzyMatch ? { record: fuzzyMatch, reason: 'suggestion' as const } : null);
+
+      const summarizeWizard = async (
+        wizard: NonNullable<typeof fuzzyMatch>,
+        matchReason: NonNullable<PackagePluginSummary['matchedWizard']>['matchReason'],
+      ): Promise<NonNullable<PackagePluginSummary['matchedWizard']>> => {
+        const filesToCopy = wizard.filesToCopy.map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const dirsToCopy = wizard.dirsToCopy.map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const filesToCreate = Object.keys(wizard.filesToCreate ?? {}).map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const missingFilesToCopy: string[] = [];
+        const missingDirsToCopy: string[] = [];
+        const missingFilesToCreate: string[] = [];
+
+        for (const item of filesToCopy) {
+          if (
+            !isSafeWizardSourcePath(item) ||
+            (!(await fileExists(path.join(pluginDir, item))) && !(await findWizardSource(input.packagePath, item, false)))
+          ) {
+            missingFilesToCopy.push(item);
+          }
         }
+        for (const item of dirsToCopy) {
+          if (
+            !isSafeWizardSourcePath(item) ||
+            (!(await directoryExists(path.join(pluginDir, item))) && !(await findWizardSource(input.packagePath, item, true)))
+          ) {
+            missingDirsToCopy.push(item);
+          }
+        }
+        for (const item of filesToCreate) {
+          if (!(await fileExists(path.join(pluginDir, item)))) missingFilesToCreate.push(item);
+        }
+
+        return {
+          id: wizard.id,
+          name: wizard.name,
+          vendor: wizard.vendor,
+          isSynth: wizard.isSynth,
+          matchReason,
+          dllName: wizard.dllName,
+          filesToCopy,
+          missingFilesToCopy,
+          dirsToCopy,
+          missingDirsToCopy,
+          filesToCreate,
+          missingFilesToCreate,
+          hasRegistryKeys: wizard.registryKeys.trim().length > 0,
+          registryFilePresent: await fileExists(path.join(pluginDir, 'registry_keys.reg')),
+          hasReadme: Boolean(wizard.readme?.trim()),
+          readme: wizard.readme?.trim() || null,
+          notes: [wizard.notes, wizard.vendorNotes].filter((value) => value.trim()).join('\n\n'),
+          symlinks: wizard.symlinks,
+          registryKeys: wizard.registryKeys,
+        };
+      };
+
+      let matchedWizard: PackagePluginSummary['matchedWizard'] = null;
+      let wizardCandidates: NonNullable<PackagePluginSummary['wizardCandidates']> = [];
+      if (selectedMatch) {
+        matchedWizard = await summarizeWizard(selectedMatch.record, selectedMatch.reason);
+      }
+      if (this.wizardService && (hasConflictingMatches || !selectedMatch || selectedMatch.reason === 'suggestion')) {
+        const related = allWizards.filter((candidate) => {
+          const candidateName = normalizeName(candidate.name);
+          const candidateDll = normalizeName(path.basename(candidate.dllName));
+          const detectedName = normalizeName(vfxinfoName || name);
+          const detectedDll = normalizeName(dllEntry?.name ?? '');
+          return candidate.id !== selectedMatch?.record.id && (
+            (detectedName.length >= 4 && (candidateName.includes(detectedName) || detectedName.includes(candidateName))) ||
+            (detectedDll.length >= 4 && (candidateDll.includes(detectedDll) || detectedDll.includes(candidateDll)))
+          );
+        });
+        const selectedIds = new Set(strongMatches.map((match) => match.record.id));
+        const candidateRecords = hasConflictingMatches
+          ? strongMatches.map((match) => match.record)
+          : [...(selectedMatch ? [selectedMatch.record] : []), ...related.filter((candidate) => !selectedIds.has(candidate.id)).slice(0, 10)];
+        wizardCandidates = await Promise.all(
+          candidateRecords.map((candidate) => summarizeWizard(candidate, 'suggestion')),
+        );
       }
 
       const stats = await calculateDirStats(pluginDir);
@@ -212,6 +364,7 @@ export class LibraryImportService {
         totalSizeBytes: stats.totalSizeBytes,
         alreadyExistsInTarget: alreadyExists,
         matchedWizard,
+        wizardCandidates,
       });
     };
 
@@ -413,6 +566,66 @@ export class LibraryImportService {
       packagePath: input.packagePath,
       targetLibraryRoot: input.targetLibraryRoot,
     });
+    if (input.selectedWizards) {
+      for (const plugin of inspection.plugins) {
+        const selectedId = input.selectedWizards[plugin.sourceDir] ?? input.selectedWizards[plugin.name];
+        if (selectedId === undefined) continue;
+        if (!this.wizardService) throw new LibraryOperationError('El catálogo de wizards no está disponible para confirmar la selección.');
+        if (selectedId === '') {
+          plugin.matchedWizard = null;
+          continue;
+        }
+        const wizard = this.wizardService.getById(selectedId);
+        if (!wizard) throw new LibraryOperationError(`Wizard seleccionado no encontrado: ${selectedId}`);
+        const offeredWizardIds = new Set([
+          plugin.matchedWizard?.id,
+          ...(plugin.wizardCandidates ?? []).map((candidate) => candidate.id),
+        ].filter((id): id is string => Boolean(id)));
+        if (!offeredWizardIds.has(selectedId)) {
+          throw new LibraryOperationError(`El wizard ${selectedId} no pertenece a los candidatos inspeccionados para ${plugin.name}.`);
+        }
+        const requiredFiles = wizard.filesToCopy.map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const requiredDirs = wizard.dirsToCopy.map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const filesToCreate = Object.keys(wizard.filesToCreate ?? {}).map(normalizeWizardPath).filter((item): item is string => item !== null);
+        const missingFilesToCopy: string[] = [];
+        const missingDirsToCopy: string[] = [];
+        const missingFilesToCreate: string[] = [];
+        for (const item of requiredFiles) {
+          const inPlugin = await fileExists(path.join(plugin.sourceDir, item));
+          const packaged = inPlugin ? null : await findWizardSource(input.packagePath, item, false);
+          if (!inPlugin && !packaged) missingFilesToCopy.push(item);
+        }
+        for (const item of requiredDirs) {
+          const inPlugin = await directoryExists(path.join(plugin.sourceDir, item));
+          const packaged = inPlugin ? null : await findWizardSource(input.packagePath, item, true);
+          if (!inPlugin && !packaged) missingDirsToCopy.push(item);
+        }
+        for (const item of filesToCreate) {
+          if (!(await fileExists(path.join(plugin.sourceDir, item)))) missingFilesToCreate.push(item);
+        }
+        plugin.matchedWizard = {
+          id: wizard.id,
+          name: wizard.name,
+          vendor: wizard.vendor,
+          isSynth: wizard.isSynth,
+          matchReason: 'selected',
+          dllName: wizard.dllName,
+          filesToCopy: requiredFiles,
+          missingFilesToCopy,
+          dirsToCopy: requiredDirs,
+          missingDirsToCopy,
+          filesToCreate,
+          missingFilesToCreate,
+          hasRegistryKeys: wizard.registryKeys.trim().length > 0,
+          registryFilePresent: await fileExists(path.join(plugin.sourceDir, 'registry_keys.reg')),
+          hasReadme: Boolean(wizard.readme?.trim()),
+          readme: wizard.readme?.trim() || null,
+          notes: [wizard.notes, wizard.vendorNotes].filter((value) => value.trim()).join('\n\n'),
+          symlinks: wizard.symlinks,
+          registryKeys: wizard.registryKeys,
+        };
+      }
+    }
 
     const targetPlugs = path.join(input.targetLibraryRoot, 'plugs');
     const targetBanks = path.join(input.targetLibraryRoot, 'banks');
@@ -440,6 +653,8 @@ export class LibraryImportService {
     const importedBanks: string[] = [];
     const skippedBanks: { name: string; reason: string }[] = [];
     const repairedBanks: string[] = [];
+    const preparedPlugins: string[] = [];
+    const wizardWarnings: { plugin: string; message: string }[] = [];
     const associationChanges: { plugin: string; previousValue: string | null }[] = [];
     let totalCopiedBytes = 0;
     let overwritten = false;
@@ -475,6 +690,76 @@ export class LibraryImportService {
       await fs.cp(plugin.sourceDir, destDir, { recursive: true, force: true });
       totalCopiedBytes += plugin.totalSizeBytes;
       importedPlugins.push(plugin.name);
+
+      // Aplicar solo una coincidencia inequívoca. El catálogo aporta vfxinfo,
+      // metadatos y .reg; dependencias adicionales se buscan en el paquete y
+      // se copian únicamente con una ruta segura y coincidencia única.
+      const wizardMatch = plugin.matchedWizard;
+      if (wizardMatch && this.wizardService) {
+        const wizard = this.wizardService.getById(wizardMatch.id);
+        const missing: string[] = [];
+        try {
+          if (wizard) {
+            for (const item of wizardMatch.filesToCopy) {
+              try {
+                if (!(await copyWizardDependency(input.packagePath, destDir, item, false))) {
+                  missing.push(`archivo ${item}`);
+                }
+              } catch (error) {
+                missing.push(`archivo ${item}: ${(error as Error).message}`);
+              }
+            }
+            for (const item of wizardMatch.dirsToCopy) {
+              try {
+                if (!(await copyWizardDependency(input.packagePath, destDir, item, true))) {
+                  missing.push(`carpeta ${item}`);
+                }
+              } catch (error) {
+                missing.push(`carpeta ${item}: ${(error as Error).message}`);
+              }
+            }
+            for (const [filename, content] of Object.entries(wizard.filesToCreate ?? {})) {
+              const safePath = isSafeWizardSourcePath(filename) ? normalizeWizardPath(filename) : null;
+              if (!safePath) {
+                missing.push(`ruta insegura para archivo generado: ${filename}`);
+                continue;
+              }
+              const destination = path.resolve(destDir, safePath);
+              const relDest = path.relative(destDir, destination);
+              if (relDest.startsWith('..') || path.isAbsolute(relDest)) {
+                missing.push(`ruta insegura para archivo generado: ${filename}`);
+                continue;
+              }
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.writeFile(destination, Buffer.from(content, 'latin1'), { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+                if (error.code !== 'EEXIST') throw error;
+              });
+            }
+            if (!plugin.hasVfxinfo) {
+              await this.wizardService.createVfxinfo({ pluginDir: destDir, wizardId: wizard.id });
+            }
+            const meta = await this.wizardService.getPluginMetaService().read(destDir);
+            if (!meta.exists) await this.wizardService.applyToMeta({ pluginDir: destDir, wizardId: wizard.id });
+            preparedPlugins.push(plugin.name);
+            const registryPath = path.join(destDir, 'registry_keys.reg');
+            if (wizard.registryKeys.trim() && !(await fileExists(registryPath))) {
+              await fs.writeFile(registryPath, `${wizard.registryKeys.trim()}\r\n`, { flag: 'wx' });
+            }
+            if (wizardMatch.hasRegistryKeys) {
+              wizardWarnings.push({ plugin: plugin.name, message: `Claves de Registro disponibles en ${registryPath}. Revísalas; no se aplicaron al Registro.` });
+            }
+            if (missing.length) wizardWarnings.push({ plugin: plugin.name, message: `Requisitos sin resolver: ${missing.join(', ')}.` });
+            if (wizard.symlinks.length > 0) wizardWarnings.push({ plugin: plugin.name, message: `El wizard declara enlaces simbólicos para V-Machine; revisa manualmente: ${wizard.symlinks.join(', ')}.` });
+            if (wizard.readme?.trim()) await fs.writeFile(path.join(destDir, 'wizard_readme.txt'), `${wizard.readme.trim()}\r\n`, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+              if (error.code !== 'EEXIST') throw error;
+            });
+          }
+        } catch (error) {
+          wizardWarnings.push({ plugin: plugin.name, message: `No se pudo completar la preparación del wizard: ${(error as Error).message}` });
+        }
+      } else if (wizardMatch) {
+        wizardWarnings.push({ plugin: plugin.name, message: `Wizard detectado (${wizardMatch.vendor} ${wizardMatch.name}), pero el catálogo no está disponible para completar la preparación.` });
+      }
 
       // Registrar en log del plugin
       if (this.pluginLogService) {
@@ -597,6 +882,8 @@ export class LibraryImportService {
       importedBanks,
       skippedBanks,
       repairedBanks,
+      preparedPlugins,
+      wizardWarnings,
       totalCopiedBytes,
     };
   }

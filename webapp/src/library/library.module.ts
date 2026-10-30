@@ -4,6 +4,7 @@ import { FxbConfigModule } from '../fxb-config/fxb-config.module';
 import { PluginLogModule } from '../plugin-log/plugin-log.module';
 import { PluginMetaModule } from '../plugin-meta/plugin-meta.module';
 import { WizardModule } from '../wizard/wizard.module';
+import { LibraryAuditService } from './library-audit.service';
 import { LibraryImportService } from './library-import.service';
 import { LibraryController } from './library.controller';
 import { LibraryService } from './library.service';
@@ -11,8 +12,8 @@ import { LibraryService } from './library.service';
 @Module({
   imports: [FxbConfigModule, AssociationAuditModule, PluginLogModule, WizardModule, PluginMetaModule],
   controllers: [LibraryController],
-  providers: [LibraryService, LibraryImportService],
-  exports: [LibraryService, LibraryImportService],
+  providers: [LibraryService, LibraryImportService, LibraryAuditService],
+  exports: [LibraryService, LibraryImportService, LibraryAuditService],
 })
 export class LibraryModule {}
 

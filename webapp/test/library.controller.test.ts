@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { FxbConfigService } from '../src/fxb-config/fxb-config.service';
+import { LibraryAuditService } from '../src/library/library-audit.service';
 import { LibraryImportService } from '../src/library/library-import.service';
 import { LibraryController } from '../src/library/library.controller';
 import { LibraryService } from '../src/library/library.service';
@@ -18,6 +19,7 @@ import { pe32Dll } from './helpers/pe';
 const controller = new LibraryController(
   new LibraryService(new FxbConfigService()),
   new LibraryImportService(),
+  new LibraryAuditService(),
 );
 
 interface Fixture {
@@ -90,6 +92,19 @@ test('loader/remove traduce sin cargador a 409', async (t) => {
     controller.removeLoader({ libraryRoot: root, plugin: 'Synth' }),
     ConflictException,
   );
+});
+
+test('audit exige libraryRoot y devuelve el detalle por plugin', async (t) => {
+  const { root } = await fixture(t);
+
+  await assert.rejects(controller.audit({}), BadRequestException);
+  await assert.rejects(controller.audit({ libraryRoot: 'relative' }), BadRequestException);
+  await assert.rejects(controller.audit([]), BadRequestException);
+
+  const result = await controller.audit({ libraryRoot: root });
+  assert.equal(result.total, 1);
+  assert.equal(result.plugins[0]?.name, 'Synth');
+  assert.equal(result.incomplete, 1, 'sin fxbLoader.meta.json el plugin queda incompleto');
 });
 
 test('scan exige libraryRoot y devuelve el listado', async (t) => {

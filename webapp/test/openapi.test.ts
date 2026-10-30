@@ -48,6 +48,10 @@ import {
   PLUGIN_META_SNAPSHOT_EXAMPLE,
   PLUGIN_META_VALIDATION_ERROR_EXAMPLE,
 } from '../src/plugin-meta/plugin-meta.dto';
+import {
+  CAPTURE_NOT_FOUND_STAGING_EXAMPLE,
+  CAPTURE_NOT_FOUND_STAGING_FILE_EXAMPLE,
+} from '../src/capture/capture.dto';
 import { SYSTEM_PATHS_MIXED_EXAMPLE } from '../src/system/paths.dto';
 import { MAX_PLUGINS_PER_BATCH } from '../src/client/batch-stream';
 import { MAX_BANKS_PER_REQUEST } from '../src/library/library.service';
@@ -67,7 +71,7 @@ after(async () => {
   await app?.close();
 });
 
-function responses(route: string, method: 'get' | 'post' | 'put') {
+function responses(route: string, method: 'get' | 'post' | 'put' | 'delete') {
   const operation = document.paths[route]?.[method];
   assert.ok(operation, `falta ${method.toUpperCase()} ${route}`);
   return operation.responses;
@@ -87,10 +91,22 @@ test('el documento expone los endpoints de fxb-config', () => {
   const routes = Object.keys(document.paths).sort();
   assert.ok(routes.length === new Set(routes).size, 'rutas duplicadas en el documento');
   assert.deepStrictEqual(routes, [
+    '/capture/diff/{id}',
+    '/capture/finalize',
+    '/capture/finish',
+    '/capture/package',
+    '/capture/snapshots/{id}',
+    '/capture/staging/{diffId}',
+    '/capture/staging/{diffId}/clean',
+    '/capture/start',
+    '/capture/tasks/{taskId}',
+    '/capture/tasks/{taskId}/cancel',
+    '/capture/vmachine/{diffId}',
     '/fxb-config',
     '/fxb-config/read',
     '/library/association-audit/list',
     '/library/association-audit/stream',
+    '/library/audit',
     '/library/banks/convert',
     '/library/banks/create',
     '/library/banks/discard-backup',
@@ -116,12 +132,52 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/system/pick',
     '/wizards',
     '/wizards/apply-meta',
+    '/wizards/create-from-plugin',
     '/wizards/create-vfxinfo',
     '/wizards/install',
     '/wizards/match',
     '/wizards/{id}',
   ]);
   assert.equal(document.paths['/fxb-config/read']?.post?.tags?.[0], 'fxb-config');
+});
+
+test('el staging de /capture documenta su 404 y el 400 sin `path`', () => {
+  const list = responses('/capture/staging/{diffId}', 'get');
+  assert.deepEqual(Object.keys(list).sort(), ['200', '404']);
+  const listMissing = jsonBody(list['404']);
+  assert.equal(
+    (listMissing['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CaptureErrorDto',
+  );
+  assert.deepEqual(listMissing['example'], CAPTURE_NOT_FOUND_STAGING_EXAMPLE);
+
+  const remove = responses('/capture/staging/{diffId}', 'delete');
+  assert.deepEqual(Object.keys(remove).sort(), ['200', '400', '404']);
+  const removeMissing = jsonBody(remove['404']);
+  assert.equal(
+    (removeMissing['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CaptureErrorDto',
+  );
+  const examples = removeMissing['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(examples).sort(), ['sinArchivo', 'sinStaging']);
+  assert.deepEqual(examples['sinStaging']!.value, CAPTURE_NOT_FOUND_STAGING_EXAMPLE);
+  assert.deepEqual(examples['sinArchivo']!.value, CAPTURE_NOT_FOUND_STAGING_FILE_EXAMPLE);
+  assert.deepEqual(jsonBody(remove['400'])['example'], { message: 'path requerido' });
+
+  const clean = responses('/capture/staging/{diffId}/clean', 'delete');
+  assert.deepEqual(Object.keys(clean).sort(), ['200', '404']);
+  assert.deepEqual(jsonBody(clean['404'])['example'], CAPTURE_NOT_FOUND_STAGING_EXAMPLE);
+
+  // `finalize` y `vmachine` leen el staging después de resolver el diff: el
+  // contrato dice que un staging limpiado también es un 404.
+  for (const [route, method] of [
+    ['/capture/finalize', 'post'],
+    ['/capture/vmachine/{diffId}', 'post'],
+  ] as const) {
+    const notFound = responses(route, method)['404'] as { description?: string };
+    assert.ok(notFound, `${method.toUpperCase()} ${route} no documenta el 404`);
+    assert.match(notFound.description ?? '', /staging/, `${route}: el 404 no menciona el staging`);
+  }
 });
 
 test('POST /system/paths documenta cuerpo, 200 y 400 con ejemplos', () => {
@@ -1024,7 +1080,7 @@ test('POST /library/association-audit/list documenta su cuerpo con DTO cerrado y
   assert.deepEqual(schema.required, ['libraryRoot'], 'solo libraryRoot es obligatorio');
   assert.deepEqual(
     Object.keys(schema.properties ?? {}).sort(),
-    ['from', 'kind', 'libraryRoot', 'limit', 'plugin', 'to'],
+    ['from', 'kind', 'libraryRoot', 'limit', 'plugin', 'q', 'to'],
   );
   assert.equal(schema.additionalProperties, false, 'el cuerpo se publica cerrado');
   assert.deepEqual(schema.properties?.['kind']?.enum, [

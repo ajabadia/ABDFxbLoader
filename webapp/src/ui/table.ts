@@ -86,6 +86,8 @@ export interface TableView<T> {
   tbodyId?: string;
   /** Aviso de que el usuario quiere cambiar el orden (para tablas que resuelven el orden en el servidor y recargan). */
   onSortChange?: (sort: { columnId: string; direction: TableDirection }) => void;
+  /** Aviso de que cambió el texto de búsqueda (para tablas que resuelven la búsqueda en el servidor y recargan). */
+  onSearchChange?: (query: string) => void;
   /** Se llama tras cada render con el resultado procesado (recuentos de la vista). */
   onProcessed?: (info: TableProcessInfo<T>) => void;
 }
@@ -256,7 +258,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     search = document.createElement('input'); search.type = 'search'; search.className = 'table-search';
     if (view.searchId) search.id = view.searchId;
     search.setAttribute('aria-label', 'Buscar en la tabla'); search.placeholder = 'Buscar…';
-    listen(search, 'input', () => { state.query = search!.value; state.page = 1; render(); }); toolbar.append(search);
+    listen(search, 'input', () => { state.query = search!.value; state.page = 1; view.onSearchChange?.(state.query); render(); }); toolbar.append(search);
   }
   /** Chips de tres estados: se agrupan en su barra y se repintan en cada render. */
   const chipPaints: Array<() => void> = [];

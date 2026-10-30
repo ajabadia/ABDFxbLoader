@@ -114,7 +114,28 @@ export class AssociationAuditService {
     const auditPath = this.auditPath(libraryRoot);
     const { lines, size, exists } = await this.readRaw(auditPath);
 
+    // Búsqueda `q`: subcadena insensible a mayúsculas sobre los mismos textos
+    // por columna que recorre la búsqueda de la tabla del visor, para que el
+    // servidor devuelva exactamente las filas que el cliente mostraría y la
+    // recarga por búsqueda no cambie lo que se ve en pantalla.
+    const needle = (filter.q ?? '').trim().toLocaleLowerCase();
+    const searchTexts = (entry: AssociationAuditEntry): string[] => [
+      entry.ts,
+      entry.kind,
+      entry.plugin ?? '',
+      [entry.field, entry.previousValue, entry.newValue].filter(Boolean).join(' '),
+      entry.packageSource ?? '',
+      [
+        entry.collisionPolicy !== undefined ? `Política ${entry.collisionPolicy}` : '',
+        ...(entry.collisionNames ?? []),
+        ...(entry.repairedBanks ?? []),
+      ].filter(Boolean).join(' '),
+    ];
+
     const filtered = lines.filter((entry) => {
+      if (needle !== '' && !searchTexts(entry).some((text) => text.toLocaleLowerCase().includes(needle))) {
+        return false;
+      }
       if (filter.plugin !== undefined && entry.plugin !== filter.plugin) return false;
       if (filter.kind !== undefined && entry.kind !== filter.kind) return false;
       if (filter.from !== undefined && entry.ts < filter.from) return false;

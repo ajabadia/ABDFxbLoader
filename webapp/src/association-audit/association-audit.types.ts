@@ -46,6 +46,8 @@ export interface AssociationAuditSnapshot {
 
 export interface AssociationAuditFilter {
   plugin?: string;
+  /** Texto libre: subcadena insensible a mayúsculas sobre los textos por columna de la tabla del visor. */
+  q?: string;
   kind?: AssociationAuditKind;
   /** ISO-8601 inclusive. */
   from?: string;

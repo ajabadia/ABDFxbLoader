@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { BadRequestFilter } from './common/bad-request.filter';
 import { AssociationAuditModule } from './association-audit/association-audit.module';
+import { CaptureModule } from './capture/capture.module';
 import { FxbConfigModule } from './fxb-config/fxb-config.module';
 import { LibraryModule } from './library/library.module';
 import { PluginLogModule } from './plugin-log/plugin-log.module';
@@ -12,6 +13,7 @@ import { WizardModule } from './wizard/wizard.module';
 @Module({
   imports: [
     AssociationAuditModule,
+    CaptureModule,
     FxbConfigModule,
     LibraryModule,
     PluginLogModule,

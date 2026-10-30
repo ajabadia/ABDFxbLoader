@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { WizardInstallPluginInput, WizardInstallPluginResult } from './wizard.types';
+import type {
+  WizardInstallPluginInput,
+  WizardInstallPluginResult,
+  WizardRecord,
+} from './wizard.types';
 
 export class WizardErrorDto {
   @ApiProperty({
@@ -197,6 +201,42 @@ export class WizardCreateVfxinfoResultDto {
   backedUp!: boolean;
 }
 
+export class WizardCreateFromPluginDto {
+  @ApiProperty({
+    description:
+      'Directorio absoluto del plugin en la librería (la carpeta que contiene `vfxinfo.txt`). El DLL se busca dentro de ella.',
+    example: 'D:\\_banks\\storage\\plugs\\FSynthz-15',
+  })
+  pluginDir!: string;
+
+  @ApiPropertyOptional({
+    description: 'Si es true y el `.vfxwizard` ya existe en el catálogo local, lo sobrescribe',
+    example: false,
+  })
+  overwrite?: boolean;
+}
+
+export class WizardCreateFromPluginResultDto {
+  @ApiProperty({ description: 'Indica si el wizard se escribió en el catálogo local', example: true })
+  created!: boolean;
+
+  @ApiProperty({
+    description: 'Ruta absoluta del archivo .vfxwizard generado',
+    example: 'D:\\_banks\\wizards\\custom\\15 - SynthEdit.vfxwizard',
+  })
+  wizardPath!: string;
+
+  @ApiProperty({ description: 'Registro indexado a partir de la carpeta del plugin', type: WizardRecordDto })
+  record!: WizardRecord;
+
+  @ApiProperty({
+    description: 'Avisos sobre el DLL (arquitectura, entrypoint VST) o datos incompletos',
+    type: [String],
+    example: [],
+  })
+  warnings!: string[];
+}
+
 export class WizardInstallPluginDto implements WizardInstallPluginInput {
   @ApiProperty({ description: 'ID VST del wizard oficial a instalar', example: '1398231096' })
   wizardId!: string;
@@ -226,6 +266,17 @@ export class WizardInstallPluginDto implements WizardInstallPluginInput {
     example: true,
   })
   initializeBank?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Carpeta con archivos extra para copiar según filesToCopy/dirsToCopy',
+  })
+  sourceFilesRoot?: string;
+
+  @ApiPropertyOptional({
+    description: 'Importar automáticamente el .reg generado (Windows)',
+    default: false,
+  })
+  autoImportRegistry?: boolean;
 }
 
 export class WizardInstallPluginResponseDto implements WizardInstallPluginResult {
@@ -340,6 +391,30 @@ export const WIZARD_CREATE_VFXINFO_RESULT_EXAMPLE: WizardCreateVfxinfoResultDto 
   path: 'C:\\VFX\\plugs\\SuperWave P8\\vfxinfo.txt',
   created: true,
   backedUp: false,
+};
+
+export const WIZARD_CREATE_FROM_PLUGIN_EXAMPLE: WizardCreateFromPluginDto = {
+  pluginDir: 'D:\\_banks\\storage\\plugs\\FSynthz-15',
+  overwrite: false,
+};
+
+export const WIZARD_CREATE_FROM_PLUGIN_RESPONSE_EXAMPLE: WizardCreateFromPluginResultDto = {
+  created: true,
+  wizardPath: 'D:\\_banks\\wizards\\custom\\15 - SynthEdit.vfxwizard',
+  record: {
+    ...WIZARD_RECORD_EXAMPLE,
+    id: '1177630041',
+    name: '15 - SynthEdit',
+    nameAbbreviation: '15',
+    dllName: '15.dll',
+    vendor: 'SynthEdit',
+    genre: 'Synth',
+    parameterCount: 16,
+    editorWidth: 273,
+    editorHeight: 167,
+    sourcePath: 'custom\\15 - SynthEdit.vfxwizard',
+  },
+  warnings: [],
 };
 
 export const WIZARD_INSTALL_PLUGIN_EXAMPLE: WizardInstallPluginDto = {

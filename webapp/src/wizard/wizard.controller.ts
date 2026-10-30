@@ -4,6 +4,8 @@ import {
   ConflictException,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   Post,
@@ -27,6 +29,8 @@ import {
 import type { PluginMetaSnapshot } from '../plugin-meta/plugin-meta.types';
 import {
   WIZARD_APPLY_META_EXAMPLE,
+  WIZARD_CREATE_FROM_PLUGIN_EXAMPLE,
+  WIZARD_CREATE_FROM_PLUGIN_RESPONSE_EXAMPLE,
   WIZARD_CREATE_VFXINFO_EXAMPLE,
   WIZARD_CREATE_VFXINFO_RESULT_EXAMPLE,
   WIZARD_ERROR_EXAMPLE,
@@ -35,6 +39,8 @@ import {
   WIZARD_LIST_RESPONSE_EXAMPLE,
   WIZARD_RECORD_EXAMPLE,
   WizardApplyMetaDto,
+  WizardCreateFromPluginDto,
+  WizardCreateFromPluginResultDto,
   WizardCreateVfxinfoDto,
   WizardCreateVfxinfoResultDto,
   WizardErrorDto,
@@ -206,6 +212,58 @@ export class WizardController {
       return await this.wizardService.createVfxinfo(body);
     } catch (err) {
       throw new BadRequestException({ message: (err as Error).message });
+    }
+  }
+
+  @Post('create-from-plugin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Crear un wizard a partir de un plugin ya instalado en la librería',
+    description:
+      'Genera un `.vfxwizard` en el catálogo local a partir del `vfxinfo.txt` y el `fxbLoader.meta.json` ' +
+      'del plugin. El DLL se localiza dentro de la carpeta del plugin (no en carpetas VST canónicas) y solo ' +
+      'se inspecciona para avisar de arquitectura o de un entrypoint VST2 ausente. El wizard queda indexado ' +
+      'de inmediato, así que `GET /wizards/match` lo devuelve para ese plugin.',
+  })
+  @ApiBody({
+    type: WizardCreateFromPluginDto,
+    examples: {
+      ejemplo: {
+        summary: 'Crear wizard para un plugin sin wizard certificado',
+        value: WIZARD_CREATE_FROM_PLUGIN_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Wizard creado y ruta del archivo generado',
+    type: WizardCreateFromPluginResultDto,
+    example: WIZARD_CREATE_FROM_PLUGIN_RESPONSE_EXAMPLE,
+  })
+  @ApiNotFoundResponse({
+    description: 'La carpeta del plugin no existe o no contiene vfxinfo.txt',
+    type: WizardErrorDto,
+    example: { message: 'No existe la carpeta del plugin: D:\\_banks\\storage\\plugs\\FSynthz-15' },
+  })
+  @ApiConflictResponse({
+    description: 'Ya existe un wizard con ese nombre y no se pidió overwrite',
+    type: WizardErrorDto,
+    example: { message: 'Ya existe el wizard "15 - SynthEdit.vfxwizard" en el catálogo local; usa overwrite para rehacerlo' },
+  })
+  async createFromPlugin(
+    @Body() body: WizardCreateFromPluginDto,
+  ): Promise<WizardCreateFromPluginResultDto> {
+    try {
+      return await this.wizardService.createFromPlugin(body);
+    } catch (err) {
+      const msg = (err as Error).message;
+      const lower = msg.toLowerCase();
+      if (lower.includes('ya existe')) {
+        throw new ConflictException({ message: msg });
+      }
+      if (lower.includes('no existe') || lower.includes('no tiene')) {
+        throw new NotFoundException({ message: msg });
+      }
+      throw new BadRequestException({ message: msg });
     }
   }
 

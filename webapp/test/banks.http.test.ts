@@ -12,6 +12,11 @@ import { parseFxbBank } from '../src/library/fxb-bank';
 import { buildBank } from './helpers/fxb-bank';
 import { writePluginDll } from './helpers/vfx-plugin';
 
+// Los descartes de esta suite borran directo a disco: no se debe llenar la
+// Papelera real con cada corrida. El mensaje real lo cubre `trash.test.ts`,
+// que sí usa la papelera del sistema.
+process.env['FXB_TRASH_MODE'] = 'direct';
+
 let app: INestApplication;
 
 before(async () => {

@@ -51,6 +51,8 @@ export type ErrorBody<
 export type LibraryScanResponse = SuccessBody<'/library/scan', 'post'>;
 export type LibraryLoaderAddResponse = SuccessBody<'/library/loader/add', 'post'>;
 export type LibraryLoaderRemoveResponse = SuccessBody<'/library/loader/remove', 'post'>;
+/** Huecos de datos por plugin y valores que se pueden rellenar. */
+export type LibraryAuditResponse = SuccessBody<'/library/audit', 'post'>;
 export type LibraryBatchResponse = SuccessBody<'/library/batch', 'post'>;
 export type LibraryBanksListResponse = SuccessBody<'/library/banks/list', 'post'>;
 export type LibraryBanksImportResponse = SuccessBody<'/library/banks/import', 'post'>;
@@ -75,9 +77,11 @@ export type PluginMetaWriteResponse = SuccessBody<'/plugins/{id}/meta', 'post'>;
 export type PluginLogSnapshotResponse = SuccessBody<'/plugins/{id}/log', 'get'>;
 export type WizardListResponse = SuccessBody<'/wizards', 'get'>;
 export type WizardRecordResponse = SuccessBody<'/wizards/{id}', 'get'>;
+export type WizardSummaryResponse = WizardListResponse['items'][number];
 export type WizardMatchResponse = SuccessBody<'/wizards/match', 'get'>;
 export type WizardApplyMetaResponse = SuccessBody<'/wizards/apply-meta', 'post'>;
 export type WizardCreateVfxinfoResponse = SuccessBody<'/wizards/create-vfxinfo', 'post'>;
+export type WizardCreateFromPluginResponse = SuccessBody<'/wizards/create-from-plugin', 'post'>;
 export type WizardInstallPluginResponse = SuccessBody<'/wizards/install', 'post'>;
 export type AssociationAuditSnapshotResponse = SuccessBody<
   '/library/association-audit/list',
@@ -145,6 +149,14 @@ export interface FxbClient {
     removeLoader(
       body: RequestBody<'/library/loader/remove', 'post'>,
     ): Promise<SuccessBody<'/library/loader/remove', 'post'>>;
+    /**
+     * Auditoría de datos en modo lectura: por plugin, qué falta en
+     * `vfxinfo.txt` y en `fxbLoader.meta.json`, el estado del DLL y qué
+     * valores se pueden rellenar desde esos orígenes.
+     */
+    audit(
+      body: RequestBody<'/library/audit', 'post'>,
+    ): Promise<SuccessBody<'/library/audit', 'post'>>;
     /** Instala o desinstala varios plugins en una llamada, con resultado por plugin. */
     batch(
       body: RequestBody<'/library/batch', 'post'>,
@@ -310,8 +322,11 @@ export interface FxbClient {
       sort?: string;
       dir?: 'asc' | 'desc' | string;
     }): Promise<WizardListResponse>;
-    /** Busca un wizard coincidente por ID VST, nombre o nombre de DLL. */
-    match(query: { id?: string; name?: string; dllName?: string }): Promise<WizardMatchResponse>;
+    /**
+     * Busca un wizard coincidente por ID VST, nombre o nombre de DLL.
+     * Devuelve `null` cuando no hay ninguno: el servidor responde 200 sin cuerpo.
+     */
+    match(query: { id?: string; name?: string; dllName?: string }): Promise<WizardMatchResponse | null>;
     /** Detalles completos de un wizard específico por su ID. */
     getById(id: string): Promise<WizardRecordResponse>;
     /** Aplica metadatos del wizard a fxbLoader.meta.json del plugin. */
@@ -322,6 +337,10 @@ export interface FxbClient {
     createVfxinfo(
       body: RequestBody<'/wizards/create-vfxinfo', 'post'>,
     ): Promise<WizardCreateVfxinfoResponse>;
+    /** Crea un wizard en el catálogo local desde un plugin ya instalado en la librería. */
+    createFromPlugin(
+      body: RequestBody<'/wizards/create-from-plugin', 'post'>,
+    ): Promise<WizardCreateFromPluginResponse>;
     /** Instala un nuevo plugin en la librería activa desde un Wizard certificado. */
     install(
       body: RequestBody<'/wizards/install', 'post'>,
@@ -554,6 +573,10 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/loader/remove', body) as Promise<
           SuccessBody<'/library/loader/remove', 'post'>
         >,
+      audit: (body) =>
+        request('POST', '/library/audit', body) as Promise<
+          SuccessBody<'/library/audit', 'post'>
+        >,
       batch: (body) =>
         request('POST', '/library/batch', body) as Promise<
           SuccessBody<'/library/batch', 'post'>
@@ -663,13 +686,16 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         const qs = params.toString();
         return request('GET', `/wizards${qs ? `?${qs}` : ''}`) as Promise<WizardListResponse>;
       },
-      match: (query) => {
+      match: async (query) => {
         const params = new URLSearchParams();
         if (query.id) params.set('id', query.id);
         if (query.name) params.set('name', query.name);
         if (query.dllName) params.set('dllName', query.dllName);
         const qs = params.toString();
-        return request('GET', `/wizards/match${qs ? `?${qs}` : ''}`) as Promise<WizardMatchResponse>;
+        const result = await request('GET', `/wizards/match${qs ? `?${qs}` : ''}`);
+        // Sin coincidencia el servidor responde 200 sin cuerpo; el cliente lo
+        // normaliza a `null` para que la UI no distinga "vacío" de "sin wizard".
+        return (result ?? null) as WizardMatchResponse | null;
       },
       getById: (id) =>
         request('GET', `/wizards/${encodeURIComponent(id)}`) as Promise<WizardRecordResponse>,
@@ -677,6 +703,8 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/wizards/apply-meta', body) as Promise<WizardApplyMetaResponse>,
       createVfxinfo: (body) =>
         request('POST', '/wizards/create-vfxinfo', body) as Promise<WizardCreateVfxinfoResponse>,
+      createFromPlugin: (body) =>
+        request('POST', '/wizards/create-from-plugin', body) as Promise<WizardCreateFromPluginResponse>,
       install: (body) =>
         request('POST', '/wizards/install', body) as Promise<WizardInstallPluginResponse>,
     },

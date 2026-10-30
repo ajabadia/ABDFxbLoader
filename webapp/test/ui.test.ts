@@ -154,13 +154,9 @@ test('sirve la UI y carga el módulo tipado', async () => {
   );
   assert.match(response.text, /id="audit-table"/);
   assert.match(response.text, /id="audit-refresh"/);
-  // El filtro por plugin del visor es un campo del propio cajón: el snapshot
-  // se estrecha en el servidor, no en el navegador.
-  assert.match(response.text, /id="audit-plugin-filter"/);
-  assert.match(
-    response.text,
-    /for="audit-plugin-filter"[^>]*>[\s\S]{0,80}<input\s+id="audit-plugin-filter"/,
-  );
+  // El cajón no trae campo de búsqueda propio: la única búsqueda del visor
+  // es la que monta el sistema de tablas dentro de #audit-table.
+  assert.doesNotMatch(response.text, /audit-plugin-filter/);
   assert.doesNotMatch(response.text, /id="audit-rows"/);
   assert.match(response.text, /id="log-rotated"/);
   // Igual que «Catálogo»: la acción de fila «Historial» la monta la tabla.
@@ -301,9 +297,10 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
   assert.match(main.text, /associationAuditTableView/);
   assert.match(main.text, /client\.associationAudit\.list/);
-  // El campo del cajón manda el filtro por plugin al servidor con rebote.
-  assert.match(main.text, /auditPluginFilter/);
-  assert.match(main.text, /\{ plugin \}/);
+  // El visor no manda filtros al servidor: pide el snapshot y lo estrecha en
+  // el navegador con la búsqueda y los filtros del componente de tabla.
+  assert.doesNotMatch(main.text, /auditPluginFilter/);
+  assert.doesNotMatch(main.text, /\{ plugin \}/);
   // Y con el cajón abierto el visor se recarga solo cuando crece el almacén.
   assert.match(main.text, /pollAssociationAudit/);
   assert.match(main.text, /startAuditPolling/);

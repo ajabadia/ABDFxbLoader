@@ -482,4 +482,132 @@ describe('WizardService', () => {
       }
     });
   });
+
+  describe('createFromPlugin', () => {
+    async function makePlugin(
+      root: string,
+      options: { name?: string; withVfxinfo?: boolean; dllInSubdir?: boolean } = {},
+    ): Promise<string> {
+      const folder = options.name ?? 'FSynthz-15';
+      const pluginDir = path.join(root, 'plugs', folder);
+      await fs.mkdir(pluginDir, { recursive: true });
+      if (options.withVfxinfo !== false) {
+        const lines = [
+          'id: 1177630041',
+          `dll_name: ${folder}/15.dll`,
+          'name: 15 - SynthEdit',
+          'is_synth: 1',
+          'parameter_count: 16',
+          'program_count: 16',
+          'has_editor: 1',
+          'editor_width: 273',
+          'editor_height: 167',
+          '',
+        ];
+        await fs.writeFile(path.join(pluginDir, 'vfxinfo.txt'), lines.join('\r\n'), 'latin1');
+      }
+      const binaryDir = options.dllInSubdir === false ? pluginDir : path.join(pluginDir, folder);
+      await fs.mkdir(binaryDir, { recursive: true });
+      await fs.writeFile(path.join(binaryDir, '15.dll'), pe32Dll());
+      return pluginDir;
+    }
+
+    it('genera el .vfxwizard desde vfxinfo, meta y el DLL que vive en la carpeta del plugin', async () => {
+      const tempWizards = await fs.mkdtemp(path.join(tmpdir(), 'vfx-wizards-'));
+      const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-plugin-'));
+      const service = new WizardService(metaService);
+      try {
+        // Catálogo local aislado: no se toca `_banks/wizards`.
+        await service.initIndex(tempWizards);
+        const pluginDir = await makePlugin(tempLib);
+        await metaService.write({
+          pluginDir,
+          expectedMtimeMs: null,
+          common: { vendor: 'SynthEdit', genre: 'Synth', notes: 'Creado a mano' },
+          extended: {},
+        });
+
+        const result = await service.createFromPlugin({ pluginDir });
+
+        assert.equal(result.created, true);
+        assert.equal(path.dirname(result.wizardPath), path.join(tempWizards, 'custom'));
+        assert.equal(path.basename(result.wizardPath), '15 - SynthEdit.vfxwizard');
+        assert.ok(existsSync(result.wizardPath));
+
+        // El DLL se localiza dentro del plugin (`<plugin>/<plugin>/15.dll`).
+        assert.equal(result.record.dllName, 'FSynthz-15/15.dll');
+        // Fabricante, género y notas llegan desde fxbLoader.meta.json.
+        assert.equal(result.record.vendor, 'SynthEdit');
+        assert.equal(result.record.genre, 'Synth');
+        assert.equal(result.record.notes, 'Creado a mano');
+
+        const written = parseWizardText(await fs.readFile(result.wizardPath, 'latin1'));
+        assert.equal(written.id, '1177630041');
+        assert.equal(written.name, '15 - SynthEdit');
+        assert.equal(written.dllName, 'FSynthz-15/15.dll');
+        assert.equal(written.parameterCount, 16);
+        assert.equal(written.editorWidth, 273);
+
+        // Queda indexado de inmediato: `match` lo resuelve por nombre de DLL.
+        assert.equal(service.match({ dllName: '15.dll' })?.id, '1177630041');
+
+        // El stub PE32 no declara exportaciones VST: se avisa sin fallar.
+        assert.ok(result.warnings.some((w) => w.includes('VSTPluginMain')));
+      } finally {
+        await fs.rm(tempWizards, { recursive: true, force: true });
+        await fs.rm(tempLib, { recursive: true, force: true });
+      }
+    });
+
+    it('encuentra el DLL aunque esté en una subcarpeta y avisa si es de 64 bits', async () => {
+      const tempWizards = await fs.mkdtemp(path.join(tmpdir(), 'vfx-wizards-'));
+      const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-plugin-'));
+      const service = new WizardService(metaService);
+      try {
+        await service.initIndex(tempWizards);
+        const pluginDir = await makePlugin(tempLib, { dllInSubdir: false });
+        // Sustituye el stub de 32 bits por uno de 64 para provocar el aviso.
+        await fs.writeFile(path.join(pluginDir, '15.dll'), pe64Dll());
+
+        const result = await service.createFromPlugin({ pluginDir });
+        assert.equal(result.record.dllName, '15.dll');
+        assert.ok(result.warnings.some((w) => w.includes('64 bits')));
+      } finally {
+        await fs.rm(tempWizards, { recursive: true, force: true });
+        await fs.rm(tempLib, { recursive: true, force: true });
+      }
+    });
+
+    it('rechaza un plugin sin vfxinfo.txt y no sobrescribe un wizard existente sin overwrite', async () => {
+      const tempWizards = await fs.mkdtemp(path.join(tmpdir(), 'vfx-wizards-'));
+      const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-plugin-'));
+      const service = new WizardService(metaService);
+      try {
+        await service.initIndex(tempWizards);
+
+        const sinVfxinfo = await makePlugin(tempLib, { name: 'Sin vfxinfo', withVfxinfo: false });
+        await assert.rejects(
+          async () => {
+            await service.createFromPlugin({ pluginDir: sinVfxinfo });
+          },
+          (err: Error) => err.message.includes('no tiene vfxinfo.txt'),
+        );
+
+        const pluginDir = await makePlugin(tempLib);
+        await service.createFromPlugin({ pluginDir });
+        await assert.rejects(
+          async () => {
+            await service.createFromPlugin({ pluginDir });
+          },
+          (err: Error) => err.message.includes('Ya existe el wizard'),
+        );
+
+        const overwritten = await service.createFromPlugin({ pluginDir, overwrite: true });
+        assert.equal(overwritten.created, true);
+      } finally {
+        await fs.rm(tempWizards, { recursive: true, force: true });
+        await fs.rm(tempLib, { recursive: true, force: true });
+      }
+    });
+  });
 });

@@ -14,6 +14,11 @@ import {
 import { buildBank, FXB_HEADER } from './helpers/fxb-bank';
 import { writePluginDll } from './helpers/vfx-plugin';
 
+// Los descartes de esta suite borran directo a disco: no se debe llenar la
+// Papelera real con cada corrida. El mensaje real lo cubre `trash.test.ts`,
+// que sí usa la papelera del sistema.
+process.env['FXB_TRASH_MODE'] = 'direct';
+
 const configService = new FxbConfigService();
 const service = new LibraryService(configService);
 
@@ -697,14 +702,11 @@ test('descarta el .orig del banco por defecto sin tocar el banco', async (t) => 
     size: original.length,
     sha256: converted.source.sha256,
   });
-  // El respaldo no se destruye: queda en la papelera del sistema.
+  // La respuesta arrastra la información de papelera con su mensaje de recuperación.
   assert.notEqual(result.trash.label, '');
   assert.match(result.trash.hint, /recuperarlo|Restaurar|Volver a poner/);
-  if (process.platform === 'win32') {
-    assert.equal(result.trash.path, null, 'Windows no expone una ruta a su Papelera de reciclaje');
-  } else {
-    assert.equal(typeof result.trash.path, 'string');
-  }
+  // En modo directo no hay carpeta de papelera en ningún sistema.
+  assert.equal(result.trash.path, null);
 
   // Se borró el respaldo correcto; el banco sigue convertido, byte a byte.
   assert.deepEqual((await readdir(fixtureData.presetsDir)).sort(), [

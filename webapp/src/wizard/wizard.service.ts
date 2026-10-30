@@ -2,14 +2,18 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { spawn } from 'node:child_process';
 import { copyFileAtomic, writeFileAtomic } from '../common/atomic-file';
 import { inspectPeFile } from '../library/pe';
+import { inspectPeExports } from '../library/pe-exports';
 import { PluginLogService } from '../plugin-log/plugin-log.service';
 import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
 import type { PluginMetaSnapshot } from '../plugin-meta/plugin-meta.types';
 import { parseWizardText, serializeWizardToVfxinfo, toWizardSummary } from './wizard-parser';
 import type {
   WizardApplyMetaInput,
+  WizardCreateFromPluginInput,
+  WizardCreateFromPluginResult,
   WizardCreateVfxinfoInput,
   WizardInstallPluginInput,
   WizardInstallPluginResult,
@@ -92,6 +96,14 @@ export function extractDllBase(dllPath: string): string {
   const clean = dllPath.replace(/\\/g, '/');
   const filename = path.basename(clean);
   return filename.replace(/\.dll$/i, '').toLowerCase();
+}
+
+/** Convierte una ruta de wizard en una subruta portable y rechaza escapes. */
+export function normalizeWizardPath(value: string): string | null {
+  const withoutDrive = value.trim().replace(/\\/g, '/').replace(/^[a-z]:/i, '').replace(/^\/+/, '');
+  const normalized = path.posix.normalize(withoutDrive);
+  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) return null;
+  return normalized;
 }
 
 /** Limpia las notas para el campo común (sin saltos de línea ni caracteres de control, máx 250 car.). */
@@ -440,6 +452,10 @@ export class WizardService implements OnModuleInit {
   /**
    * Genera el archivo `vfxinfo.txt` en la carpeta del plugin a partir de un wizard.
    */
+  getPluginMetaService(): PluginMetaService {
+    return this.pluginMetaService;
+  }
+
   async createVfxinfo(
     input: WizardCreateVfxinfoInput,
   ): Promise<{ path: string; created: boolean; backedUp: boolean }> {
@@ -478,6 +494,168 @@ export class WizardService implements OnModuleInit {
     await writeFileAtomic(vfxinfoPath, Buffer.from(content, 'latin1'));
 
     return { path: vfxinfoPath, created: true, backedUp };
+  }
+
+  /**
+   * Crea un `.vfxwizard` en el catálogo local a partir de un plugin que ya está
+   * en la librería. La fuente de verdad es su `vfxinfo.txt`, enriquecido con
+   * `fxbLoader.meta.json`; el DLL se busca **dentro de la carpeta del plugin**
+   * (o en su subcarpeta), nunca en carpetas VST canónicas, y solo se usa para
+   * avisar de arquitectura o de un binario que no exporta un entrypoint VST2.
+   */
+  async createFromPlugin(
+    input: WizardCreateFromPluginInput,
+  ): Promise<WizardCreateFromPluginResult> {
+    const rawDir = typeof input?.pluginDir === 'string' ? input.pluginDir.trim() : '';
+    if (rawDir === '') throw new Error('pluginDir es obligatorio');
+    if (!path.isAbsolute(rawDir)) {
+      throw new Error(`pluginDir debe ser una ruta absoluta: "${rawDir}"`);
+    }
+
+    const pluginDir = path.resolve(rawDir);
+    const stats = await fs.stat(pluginDir).catch(() => null);
+    if (stats === null || !stats.isDirectory()) {
+      throw new Error(`No existe la carpeta del plugin: ${pluginDir}`);
+    }
+
+    const vfxinfoPath = path.join(pluginDir, VFXINFO_FILENAME);
+    const rawVfxinfo = await fs.readFile(vfxinfoPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    const folderName = path.basename(pluginDir);
+    if (rawVfxinfo === null) {
+      throw new Error(
+        `El plugin "${folderName}" no tiene ${VFXINFO_FILENAME}; sin identidad VST no se puede generar un wizard`,
+      );
+    }
+
+    const record = parseWizardText(rawVfxinfo.toString('latin1'));
+    const warnings: string[] = [];
+
+    // El meta manda en fabricante, género y notas: el vfxinfo no los guarda.
+    const meta = await this.pluginMetaService.read(pluginDir).catch(() => null);
+    if (meta !== null) {
+      if (!record.name.trim() && meta.common.name.trim()) record.name = meta.common.name;
+      if (!record.vendor.trim() && meta.common.vendor.trim()) record.vendor = meta.common.vendor;
+      if (!record.vendorUrl.trim() && meta.common.vendor_url.trim()) record.vendorUrl = meta.common.vendor_url;
+      if (!record.genre.trim() && meta.common.genre.trim()) record.genre = meta.common.genre;
+      if (!record.nameAbbreviation.trim() && meta.common.name_abbreviation.trim()) {
+        record.nameAbbreviation = meta.common.name_abbreviation;
+      }
+      if (!record.created.trim() && meta.common.created.trim()) record.created = meta.common.created;
+      if (!record.notes.trim() && meta.common.notes.trim()) record.notes = meta.common.notes;
+    }
+
+    const dllPath = await this.resolvePluginDll(pluginDir, record.dllName);
+    if (dllPath === null) {
+      warnings.push(
+        `No se encontró ningún DLL dentro de "${folderName}"; el wizard se crea solo con los datos de ${VFXINFO_FILENAME}`,
+      );
+    } else {
+      // Ruta relativa a la carpeta del plugin, que es lo que espera el host.
+      record.dllName = path.relative(pluginDir, dllPath).split(path.sep).join('/');
+      try {
+        const pe = await inspectPeFile(dllPath);
+        if (!pe.valid) {
+          warnings.push(`El DLL no tiene una cabecera PE válida: ${pe.issues.join('; ')}`);
+        } else if (pe.bitness !== 32) {
+          warnings.push(
+            `El DLL es de ${pe.bitness ?? '?'} bits (${pe.machineName ?? 'desconocido'}); el hardware VFX y fxbLoader requieren 32 bits (i386)`,
+          );
+        }
+      } catch (error) {
+        warnings.push(`No se pudo leer la cabecera PE del DLL: ${(error as Error).message}`);
+      }
+      try {
+        const exports = await inspectPeExports(dllPath);
+        if (exports.vstEntrypoint === null) {
+          warnings.push(
+            'El DLL no exporta "VSTPluginMain" ni "main"; puede no responder a la API VST2',
+          );
+        }
+      } catch {
+        // Sin exportaciones legibles no hay más que avisar: el wizard sigue siendo válido.
+      }
+    }
+
+    if (!record.name.trim()) record.name = folderName;
+    if (!record.id.trim()) warnings.push('El plugin no declara un ID VST; complétalo antes de usar el wizard');
+    if (!record.version.trim()) record.version = '1';
+    // Derivados de lo que ya declara el plugin: no inventan identidad, solo el
+    // género que se deduce de `is_synth` y la abreviatura de pantalla LCD.
+    if (!record.genre.trim()) record.genre = record.isSynth ? 'Synth' : 'Effect';
+    if (!record.nameAbbreviation.trim()) {
+      // "15 - SynthEdit" -> "15", "SuperWave P8" -> "SUPE": la primera palabra útil.
+      const firstWord = record.name.split(/[^0-9A-Za-z]+/).filter(Boolean)[0] ?? record.name;
+      record.nameAbbreviation = firstWord.slice(0, 4).toUpperCase();
+    }
+
+    const wizardsDir = path.resolve(this.wizardsDir);
+    const customDir = path.join(wizardsDir, 'custom');
+    await fs.mkdir(customDir, { recursive: true });
+
+    const baseName = (record.name || folderName).replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim() || folderName;
+    const wizardPath = path.join(customDir, `${baseName}.vfxwizard`);
+    if (existsSync(wizardPath) && input.overwrite !== true) {
+      throw new Error(
+        `Ya existe el wizard "${baseName}.vfxwizard" en el catálogo local; usa overwrite para rehacerlo`,
+      );
+    }
+
+    record.sourcePath = path.relative(wizardsDir, wizardPath);
+    const content = serializeWizardToVfxinfo(record);
+    await writeFileAtomic(wizardPath, Buffer.from(content, 'utf8'));
+
+    // Reindexar desde disco para que el nuevo wizard puntúe de inmediato en `match`.
+    await this.initIndex({ customDir: wizardsDir });
+
+    await this.pluginLogService?.append(
+      pluginDir,
+      'create-wizard',
+      `Wizard creado desde la librería: "${record.name}" (ID: ${record.id || 'sin id'}, DLL: ${record.dllName || 'sin DLL'})`,
+    );
+
+    return { created: true, wizardPath, record, warnings };
+  }
+
+  /**
+   * Busca el DLL del plugin dentro de su carpeta: primero el `dll_name`
+   * declarado, después un DLL directo y por último uno en una subcarpeta
+   * (estructura `plugs/<Plugin>/<Plugin>/<dll>`). Ignora el cargador y los
+   * respaldos.
+   */
+  private async resolvePluginDll(pluginDir: string, dllName: string): Promise<string | null> {
+    const declared = dllName.trim();
+    if (declared !== '') {
+      const candidate = path.resolve(pluginDir, declared.replace(/[\\/]+/g, path.sep));
+      const inside = candidate === pluginDir || candidate.startsWith(pluginDir + path.sep);
+      if (inside && existsSync(candidate)) return candidate;
+    }
+
+    const ignored = (name: string): boolean => {
+      const lower = name.toLowerCase();
+      return lower === 'fxbloader.dll' || lower.endsWith('.tx_');
+    };
+
+    const entries = await fs.readdir(pluginDir, { withFileTypes: true }).catch(() => []);
+    const direct = entries.find(
+      (entry) => entry.isFile() && /\.dll$/i.test(entry.name) && !ignored(entry.name),
+    );
+    if (direct) return path.join(pluginDir, direct.name);
+
+    for (const dir of entries) {
+      if (!dir.isDirectory()) continue;
+      const subEntries = await fs
+        .readdir(path.join(pluginDir, dir.name), { withFileTypes: true })
+        .catch(() => []);
+      const nested = subEntries.find(
+        (entry) => entry.isFile() && /\.dll$/i.test(entry.name) && !ignored(entry.name),
+      );
+      if (nested) return path.join(pluginDir, dir.name, nested.name);
+    }
+
+    return null;
   }
 
   /**
@@ -580,21 +758,130 @@ export class WizardService implements OnModuleInit {
     // Volcar claves de registro si el wizard las define
     let registryFileCreated = false;
     let registryFilePath: string | null = null;
+    let registryImported = false;
     if (wizard.registryKeys.trim().length > 0) {
       registryFilePath = path.join(targetPluginDir, 'registry_keys.reg');
       await writeFileAtomic(registryFilePath, Buffer.from(wizard.registryKeys.trim() + '\r\n', 'latin1'));
       registryFileCreated = true;
+      if (input.autoImportRegistry && process.platform === 'win32') {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn('reg', ['import', registryFilePath!], { shell: true, windowsHide: true });
+            child.on('error', reject);
+            child.on('close', (code) => {
+              if (code === 0) resolve();
+              else reject(new Error(`reg import ha devuelto código ${code}`));
+            });
+          });
+          registryImported = true;
+        } catch (err) {
+          warnings.push(
+            `No se pudo importar el .reg automáticamente: ${(err as Error).message}. Impórtalo manualmente con clic derecho > Combinar.`,
+          );
+        }
+      }
     }
 
-    // Volcar archivos complementarios definidos en filesToCreate
+    // Volcar archivos complementarios definidos en filesToCreate, sin pisar contenido existente.
     if (wizard.filesToCreate && Object.keys(wizard.filesToCreate).length > 0) {
       for (const [filename, content] of Object.entries(wizard.filesToCreate)) {
-        const filePath = path.join(targetPluginDir, filename);
+        const relativeFile = normalizeWizardPath(filename);
+        if (!relativeFile) {
+          warnings.push(`Ruta insegura definida por el wizard: ${filename}`);
+          continue;
+        }
+        const filePath = path.resolve(targetPluginDir, relativeFile);
+        const relativeDestination = path.relative(targetPluginDir, filePath);
+        if (relativeDestination.startsWith('..') || path.isAbsolute(relativeDestination)) {
+          warnings.push(`Ruta insegura definida por el wizard: ${filename}`);
+          continue;
+        }
         const fileDir = path.dirname(filePath);
         if (!existsSync(fileDir)) {
           await fs.mkdir(fileDir, { recursive: true });
         }
-        await writeFileAtomic(filePath, Buffer.from(content, 'latin1'));
+        try {
+          await fs.writeFile(filePath, Buffer.from(content, 'latin1'), { flag: 'wx' });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        }
+      }
+    }
+
+    // Copiar archivos/directorios extra si se indica sourceFilesRoot
+    const copiedFiles: string[] = [];
+    const copiedDirs: string[] = [];
+    const sourceFilesRoot = input.sourceFilesRoot?.trim();
+    if (sourceFilesRoot) {
+      const sourceRootResolved = path.resolve(sourceFilesRoot);
+      if (existsSync(sourceRootResolved)) {
+        if (wizard.filesToCopy && wizard.filesToCopy.length > 0) {
+          for (const rel of wizard.filesToCopy) {
+            const safeRel = normalizeWizardPath(rel);
+            if (!safeRel) {
+              warnings.push(`Ruta insegura definida por el wizard: ${rel}`);
+              continue;
+            }
+            const src = path.resolve(sourceRootResolved, safeRel);
+            const dst = path.resolve(targetPluginDir, safeRel);
+            const sourceRelative = path.relative(sourceRootResolved, src);
+            const destinationRelative = path.relative(targetPluginDir, dst);
+            if (sourceRelative.startsWith('..') || path.isAbsolute(sourceRelative) || destinationRelative.startsWith('..') || path.isAbsolute(destinationRelative)) {
+              warnings.push(`Ruta insegura definida por el wizard: ${rel}`);
+              continue;
+            }
+            if (existsSync(dst)) continue;
+            if (!existsSync(src)) {
+              warnings.push(`No se encontró el archivo requerido por el wizard: ${rel}`);
+              continue;
+            }
+            try {
+              const st = await fs.stat(src);
+              const dstDir = path.dirname(dst);
+              if (!existsSync(dstDir)) await fs.mkdir(dstDir, { recursive: true });
+              if (st.isDirectory()) {
+                await fs.cp(src, dst, { recursive: true, force: false, errorOnExist: true });
+                copiedDirs.push(rel);
+              } else {
+                await copyFileAtomic(src, dst);
+                copiedFiles.push(rel);
+              }
+            } catch (err) {
+              warnings.push(`No se pudo copiar ${rel}: ${(err as Error).message}`);
+            }
+          }
+        }
+        if (wizard.dirsToCopy && wizard.dirsToCopy.length > 0) {
+          for (const rel of wizard.dirsToCopy) {
+            const safeRel = normalizeWizardPath(rel);
+            if (!safeRel) {
+              warnings.push(`Ruta insegura definida por el wizard: ${rel}`);
+              continue;
+            }
+            const src = path.resolve(sourceRootResolved, safeRel);
+            const dst = path.resolve(targetPluginDir, safeRel);
+            const sourceRelative = path.relative(sourceRootResolved, src);
+            const destinationRelative = path.relative(targetPluginDir, dst);
+            if (sourceRelative.startsWith('..') || path.isAbsolute(sourceRelative) || destinationRelative.startsWith('..') || path.isAbsolute(destinationRelative)) {
+              warnings.push(`Ruta insegura definida por el wizard: ${rel}`);
+              continue;
+            }
+            if (existsSync(dst)) continue;
+            if (!existsSync(src)) {
+              warnings.push(`No se encontró el directorio requerido por el wizard: ${rel}`);
+              continue;
+            }
+            try {
+              if (!existsSync(dst)) await fs.mkdir(dst, { recursive: true });
+              await fs.cp(src, dst, { recursive: true, force: true });
+              copiedDirs.push(rel);
+            } catch (err) {
+              warnings.push(`No se pudo copiar el directorio ${rel}: ${(err as Error).message}`);
+            }
+          }
+        }
+      } else {
+        warnings.push(`sourceFilesRoot no existe: ${sourceFilesRoot}`);
       }
     }
 
@@ -632,8 +919,11 @@ export class WizardService implements OnModuleInit {
       metaCreated: true,
       registryFileCreated,
       registryFilePath,
+      registryImported,
       requiredFiles: [...wizard.filesToCopy],
       requiredDirs: [...wizard.dirsToCopy],
+      copiedFiles,
+      copiedDirs,
       warnings,
       readme: wizard.readme || null,
     };

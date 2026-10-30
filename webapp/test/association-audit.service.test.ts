@@ -154,6 +154,53 @@ test('filtros por plugin, kind y rango temporal con límite', async (t) => {
   );
 });
 
+test('búsqueda q: subcadena insensible a mayúsculas columna a columna', async (t) => {
+  const root = await makeDir(t);
+  const service = app.get(AssociationAuditService);
+
+  await service.append(root, {
+    kind: 'association-change',
+    plugin: 'SynthA',
+    libraryRoot: root,
+    field: 'dll_name',
+    previousValue: null,
+    newValue: 'SynthA/SynthA.dll',
+  });
+  await service.append(root, {
+    kind: 'collision',
+    plugin: 'SynthB',
+    libraryRoot: root,
+    packageSource: 'pack.zip',
+    collisionPolicy: 'skip',
+    collisionNames: ['SynthA'],
+  });
+
+  const byValue = await service.read(root, { q: 'SYNTHA/SYNTH' });
+  assert.equal(byValue.total, 1, 'mayúsculas del texto cambiado sin más');
+  assert.equal(byValue.entries[0]!.plugin, 'SynthA');
+
+  const bySource = await service.read(root, { q: 'pack.zip' });
+  assert.equal(bySource.total, 1);
+  assert.equal(bySource.entries[0]!.kind, 'collision');
+
+  const byDetail = await service.read(root, { q: 'política skip' });
+  assert.equal(byDetail.total, 1, 'el detalle de colisión se busca como lo pinta la tabla');
+
+  const crossColumn = await service.read(root, { q: 'SynthB dll_name' });
+  assert.equal(
+    crossColumn.total,
+    0,
+    'la búsqueda no cruza columnas, igual que la de la tabla',
+  );
+
+  const none = await service.read(root, { q: 'no-existe' });
+  assert.equal(none.total, 0);
+  assert.deepEqual(none.entries, []);
+
+  const blank = await service.read(root, { q: '' });
+  assert.equal(blank.total, 2, 'q vacío no filtra');
+});
+
 test('tombstone de desinstalación: newValue null se conserva', async (t) => {
   const root = await makeDir(t);
   const service = app.get(AssociationAuditService);

@@ -14,6 +14,11 @@ import { parseFxbBank } from '../../src/library/fxb-bank';
 import { pe32Dll, peWithExportsDll } from '../helpers/pe';
 import { MAX_RECENTS } from '../../src/ui/recents';
 
+// Los servidores hijo heredan esta variable (todos los spawns pasan
+// `...process.env`): el descarte del e2e no debe dejar entradas en la Papelera
+// real. El mensaje real lo cubre `trash.test.ts`.
+process.env['FXB_TRASH_MODE'] = 'direct';
+
 /**
  * Prueba de navegador contra el servidor real (`dist/main.js`), no contra la app
  * montada en el proceso de test: arranca el binario compilado en un puerto
@@ -108,6 +113,16 @@ function pluginRow(page: Page): Locator {
   return page.locator('#plugins-table tbody tr').filter({ hasText: PLUGIN });
 }
 
+/**
+ * La carpeta de la librería y el DLL del cargador viven en la pestaña
+ * deslizante de Ajustes: hay que abrirla antes de tocar sus campos.
+ */
+async function openSettings(page: Page): Promise<void> {
+  if (await page.locator('#settings-drawer').isVisible()) return;
+  await page.click('#settings-nav-btn');
+  await page.locator('#settings-drawer').waitFor({ state: 'visible' });
+}
+
 /** Despliega el menú «···» de la fila y pulsa la opción elegida. */
 async function clickRowAction(
   row: Locator,
@@ -199,7 +214,7 @@ test(
     try {
       /* 1. Escaneo ------------------------------------------------------ */
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
 
@@ -231,6 +246,7 @@ test(
       // Se borra el binario que declara el vfxinfo de GrandPiano: el escaneo
       // debe marcarlo incompatible y deshabilitar Instalar.
       await rm(path.join(library, 'plugs', 'GrandPiano', 'GrandPiano', 'GrandPiano.dll'));
+      await openSettings(page);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 incompatible/);
 
@@ -436,6 +452,7 @@ test(
       await page.locator('#banks').waitFor({ state: 'hidden' });
       // El escaneo también cuenta los bancos: tras releer la librería la fila
       // sigue diciendo «1 banco», sin abrir el panel.
+      await openSettings(page);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
       assert.equal(await pluginRow(page).locator('[data-field="banks"]').textContent(), '1 banco');
@@ -712,6 +729,7 @@ test(
       /* Un 400 del API se ve con su mensaje ---------------------------- */
       // Al final, para no ensuciar el historial de rutas recientes que ya se
       // comprobó: la vista enseña el mensaje del servidor, no un texto fijo.
+      await openSettings(page);
       await page.fill('#library-root', 'plugs');
       await page.click('#scan-button');
       await waitForText(page, '#status', 'libraryRoot debe ser una ruta absoluta: "plugs"');
@@ -860,7 +878,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', 'C:\\Fake\\Library');
       await page.click('#scan-button');
       await waitForText(page, '#summary-text', `0 de ${total} con el cargador`);
@@ -1064,7 +1082,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', 'C:\\Fake\\Library');
       await page.click('#scan-button');
       await waitForText(page, '#summary-text', `0 de ${names.length} con el cargador`);
@@ -1186,7 +1204,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1329,7 +1347,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1544,7 +1562,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1730,7 +1748,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1856,7 +1874,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
 
       /* 1. Carpeta de la librería: elige y escanea ---------------------- */
       await page.click('#root-browse');
@@ -1865,7 +1883,8 @@ test(
       assert.equal(await page.locator('#plugins-table tbody tr').count(), 3);
 
       /* 2. DLL del cargador: elige y revalida --------------------------- */
-      await page.locator('#scan-form details > summary').click();
+      // Elegir la carpeta cierra Ajustes con la librería ya escaneada.
+      await openSettings(page);
       // Si ya hay una ruta escrita, el diálogo abre en su carpeta.
       await page.fill('#dll-source', 'C:\\Tools\\fxbLoader.dll');
       await page.click('#dll-browse');
@@ -1988,7 +2007,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
 
       // La poda es asíncrona: se espera a que el datalist quede con una sola
       // sugerencia, y esa tiene que ser la carpeta que sigue existiendo.
@@ -2022,7 +2041,6 @@ test(
       );
 
       /* «Vaciar historial de rutas», en Opciones avanzadas ---------------- */
-      await page.locator('#scan-form details > summary').click();
       assert.equal(
         await page.locator('#recents-clear').isDisabled(),
         false,
@@ -2275,6 +2293,7 @@ test(
 
     try {
       await page.goto(url);
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
 
@@ -2593,7 +2612,7 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
 
   try {
     await page.goto(url);
-    await page.waitForSelector('#scan-form');
+    await openSettings(page);
     await page.fill('#library-root', library);
     await page.click('#scan-button');
     await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -2766,6 +2785,7 @@ test(
 
     try {
       await page.goto(url);
+      await openSettings(page);
       await page.fill('#library-root', LIBRARY_SOURCE);
       await page.click('#scan-button');
       await page.waitForSelector('#results:not([hidden])');
@@ -3054,6 +3074,7 @@ test(
 
     try {
       await page.goto(url);
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await page.waitForSelector('#results:not([hidden])');
@@ -3211,7 +3232,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
   try {
     /* Escaneo y visor sin almacén ---------------------------------- */
     await page.goto(url);
-    await page.waitForSelector('#scan-form');
+    await openSettings(page);
     await page.fill('#library-root', library);
     await page.click('#scan-button');
     await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -3263,29 +3284,35 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
     await page.fill('#audit-table input[aria-label="Fecha desde"]', '');
     await waitForText(page, '#audit-table', /Cambio de asociación/);
 
-    /* Filtro por plugin, estrechado en el servidor ------------------ */
-    // El resumen del cajón es lo que prueba que la recarga con filtro terminó:
-    // el texto de «sin eventos» y las opciones del multiselect viven dentro de
-    // `#audit-table` siempre, así que un waitForText sobre la tabla mentiría.
-    await page.fill('#audit-plugin-filter', 'NoExiste');
-    await waitForText(page, '#audit-summary', /filtrado por «NoExiste»/);
+    /* Búsqueda de la tabla, única del cajón ------------------------- */
+    // La caja la monta el sistema de tablas: estrecha el snapshot cargado en
+    // el navegador y, con 300 ms de espera, recarga desde el servidor con `q`
+    // —por eso también baja el total del resumen—. El mensaje de «sin
+    // eventos» vive dentro de #audit-table.
+    await page.fill('#audit-table .table-search', 'NoExiste');
     await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
-    await page.fill('#audit-plugin-filter', PLUGIN);
-    await waitForText(page, '#audit-summary', /filtrado por «OB-Xd»/);
+    // El total del resumen solo baja a 0 si la recarga con `q` llegó al
+    // servidor: con filtro local seguiría en 1.
+    await waitForText(page, '#audit-summary', /0 evento\(s\)/);
+    await page.fill('#audit-table .table-search', PLUGIN);
+    // La recarga con `q` es asíncrona (300 ms de espera + viaje al servidor) y
+    // el snapshot anterior quedó estrechado a cero: esperamos a que la tabla
+    // pinte el evento —`waitForText` no sirve aquí porque el texto del tipo
+    // sigue vivo en el menú oculto—.
+    await waitForRowCount(page, '#audit-table', 1);
     assert.equal(
       await page.locator('#audit-table tbody tr[data-row-id]').count(),
       1,
-      'el filtro por plugin se manda al servidor y devuelve solo ese plugin',
+      'la búsqueda de la tabla estrecha los eventos cargados',
     );
-    // Al vaciarlo vuelve el snapshot completo, con su recuento inicial.
-    await page.fill('#audit-plugin-filter', '');
-    await page.waitForFunction(
-      `!document.getElementById('audit-summary').textContent.includes('filtrado')`,
-    );
+    await waitForText(page, '#audit-summary', /1 evento\(s\)/);
+    // Al vaciarla vuelven todos los eventos del snapshot.
+    await page.fill('#audit-table .table-search', '');
+    await waitForRowCount(page, '#audit-table', 1);
     assert.equal(
       await page.locator('#audit-table tbody tr[data-row-id]').count(),
       1,
-      'sin filtro vuelve el evento a la tabla',
+      'sin búsqueda vuelve el evento a la tabla',
     );
 
     /* Recarga sola: un evento nuevo con el cajón abierto ------------ */
@@ -3418,7 +3445,7 @@ test(
     try {
       /* Escaneo e instalación ----------------------------------------- */
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -3634,6 +3661,24 @@ test(
         'PE de 32 bits: sin advertencia de arquitectura',
       );
 
+      // Las listas migradas al componente de tabla muestran el contenido del
+      // análisis: exports e incidencias.
+      assert.equal(
+        await page.locator('#custom-plugin-exports tbody tr[data-row-id]').count(),
+        2,
+        'la tabla de exports lista los símbolos encontrados',
+      );
+      const exportTexts = await page
+        .locator('#custom-plugin-exports tbody tr[data-row-id]')
+        .allTextContents();
+      assert.match(exportTexts.join(' | '), /VSTPluginMain/);
+      assert.match(exportTexts.join(' | '), /main/);
+      assert.equal(
+        await page.locator('#custom-plugin-issues').isHidden(),
+        true,
+        'sin incidencias la lista queda oculta',
+      );
+
 
       // Crear con los valores sugeridos: sin editor, sin wizard guardado.
       await page.click('#custom-plugin-create-btn');
@@ -3647,6 +3692,25 @@ test(
       assert.match(vfxinfo, /dll_name/i);
       assert.equal(existsSync(path.join(pluginDir, 'presets')), true);
       assert.equal(existsSync(path.join(pluginDir, 'fxbLoader.meta.json')), true);
+      // Las listas de creación (montadas con la misma tabla monocolumna)
+      // muestran las rutas generadas.
+      assert.equal(
+        await page.locator('#custom-plugin-created-paths tbody tr[data-row-id]').count(),
+        4,
+        'la tabla de rutas creadas lista carpeta, DLL, vfxinfo y meta',
+      );
+      const createdPaths = await page
+        .locator('#custom-plugin-created-paths tbody tr[data-row-id]')
+        .allTextContents();
+      assert.match(createdPaths.join(' | '), /Carpeta:/);
+      assert.match(createdPaths.join(' | '), /DLL:/);
+      assert.match(createdPaths.join(' | '), /vfxinfo\.txt:/);
+      assert.match(createdPaths.join(' | '), /fxbLoader\.meta\.json:/);
+      assert.equal(
+        await page.locator('#custom-plugin-created-warnings').isHidden(),
+        true,
+        'sin advertencias la lista queda oculta',
+      );
       // El `dll_name` escrito apunta al binario que se acaba de copiar y la
       // casilla del editor (desmarcada) llega al vfxinfo.
       assert.match(vfxinfo, /^dll_name: DemoSynth\/DemoSynth\.dll\r$/m);
@@ -3694,6 +3758,7 @@ test(
 
       // El plugin recién creado entra en la tabla al escanear la librería:
       // el asistente y el listado hablan del mismo catálogo.
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
@@ -3777,7 +3842,7 @@ test(
     try {
       /* 1. Escanear y poner el cargador --------------------------------- */
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /plugin\(s\) encontrados/);
@@ -3974,7 +4039,7 @@ test(
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#scan-form');
+      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /plugin\(s\) encontrados/);

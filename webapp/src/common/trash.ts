@@ -217,10 +217,29 @@ async function sendToMacTrash(target: string): Promise<TrashInfo> {
  * Mueve `target` a la papelera y describe dónde quedó. Lanza si no se pudo
  * mover; quien llama decide cómo contarlo y deja el archivo intacto.
  */
+/**
+ * `FXB_TRASH_MODE=direct` borra directamente a disco, sin tocar la papelera
+ * del sistema. Lo usa la suite de tests: cada descarte real deja entradas en
+ * la Papelera y cada corrida la engorda. La app real no define esta variable,
+ * así que en producción no cambia nada. El mensaje dice la verdad: no hay
+ * papelera de la que recuperar nada.
+ */
+async function deleteDirectly(target: string): Promise<TrashInfo> {
+  // Sin `force`: un archivo inexistente debe seguir rechazando, igual que en
+  // la rama nativa.
+  await fs.rm(target);
+  return {
+    label: 'Papelera omitida (borrado directo)',
+    path: null,
+    hint: 'Se borró directamente del disco; no hay dónde recuperarlo.',
+  };
+}
+
 export async function moveToTrash(
   target: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<TrashInfo> {
+  if (process.env['FXB_TRASH_MODE'] === 'direct') return await deleteDirectly(target);
   if (platform === 'win32') {
     await sendToWindowsRecycleBin(target);
     return WINDOWS_TRASH;

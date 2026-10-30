@@ -44,6 +44,215 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/capture/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Iniciar snapshot del sistema (archivos y registro)
+         * @description Arranca una tarea en segundo plano y devuelve su estado inicial. El progreso se consulta con `GET /capture/tasks/:taskId` hasta que `status` sea terminal.
+         */
+        post: operations["CaptureController_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consultar estado y progreso de una captura
+         * @description Devuelve el estado vivo de la tarea. Al terminar, `result` resume el snapshot o el diff producidos.
+         */
+        get: operations["CaptureController_getTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/tasks/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detener una captura en curso
+         * @description Marca la tarea como `cancelling`; no se guarda un snapshot parcial.
+         */
+        post: operations["CaptureController_cancelTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalizar captura: tomar snapshot y calcular diferencias
+         * @description Toma un segundo snapshot y lo compara con el de partida. Cuando la tarea termina, `result.diffId` es el que se pasa a `/capture/package`.
+         */
+        post: operations["CaptureController_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtener el contenido completo de un snapshot */
+        get: operations["CaptureController_getSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/diff/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtener diff por ID */
+        get: operations["CaptureController_getDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copiar diff a zona de staging para revisar/editar
+         * @description Prepara los archivos y el registro del diff en una carpeta de staging propia; el destino final no se toca hasta `/capture/finalize`.
+         */
+        post: operations["CaptureController_package"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/staging/{diffId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar archivos en staging */
+        get: operations["CaptureController_listStaging"];
+        put?: never;
+        post?: never;
+        /** Eliminar archivo del staging */
+        delete: operations["CaptureController_removeFromStaging"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/staging/{diffId}/clean": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Limpiar zona de staging */
+        delete: operations["CaptureController_cleanStaging"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalizar y copiar staging al destino final
+         * @description Copia el staging revisado a la carpeta de destino indicada.
+         */
+        post: operations["CaptureController_finalize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/vmachine/{diffId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generar paquete de plugin para v-machine y/o wizard reutilizable
+         * @description Construye `plugs\<pluginName>\` a partir del staging de `/capture/package`: recorta la ruta relativa a la unidad, deja el DLL en la raíz del plugin, escribe `vfxinfo.txt` con un `dll_name` relativo y crea `presets\`, de modo que la carpeta se puede escanear e importar como una librería real. Opcionalmente escribe el `.vfxwizard` junto al paquete. Los avisos no abortan la generación.
+         */
+        post: operations["CaptureController_generateVMachine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fxb-config/read": {
         parameters: {
             query?: never;
@@ -98,6 +307,26 @@ export interface paths {
          * @description Lista los directorios de `plugs\` y marca los que tienen `fxbLoader.config`.
          */
         post: operations["LibraryController_scan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Audita los datos de los plugins de la librería
+         * @description Recorre `plugs\*` en modo lectura y devuelve, por plugin, los campos que faltan en `vfxinfo.txt` y en `fxbLoader.meta.json`, el estado del DLL (arquitectura y entrypoint VST) y qué valores se pueden rellenar automáticamente, indicando si salen del vfxinfo, del meta, del DLL o son derivados. No modifica ningún archivo.
+         */
+        post: operations["LibraryController_audit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -584,6 +813,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wizards/create-from-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crear un wizard a partir de un plugin ya instalado en la librería
+         * @description Genera un `.vfxwizard` en el catálogo local a partir del `vfxinfo.txt` y el `fxbLoader.meta.json` del plugin. El DLL se localiza dentro de la carpeta del plugin (no en carpetas VST canónicas) y solo se inspecciona para avisar de arquitectura o de un entrypoint VST2 ausente. El wizard queda indexado de inmediato, así que `GET /wizards/match` lo devuelve para ese plugin.
+         */
+        post: operations["WizardController_createFromPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/wizards/install": {
         parameters: {
             query?: never;
@@ -683,6 +932,11 @@ export interface components {
              * @example AnalogSynth
              */
             plugin?: string;
+            /**
+             * @description Búsqueda de texto libre: subcadena insensible a mayúsculas sobre los campos del evento (fecha, tipo, plugin, cambio, origen y detalle).
+             * @example dll_name
+             */
+            q?: string;
             /**
              * @description Filtra por tipo de evento.
              * @example association-change
@@ -786,6 +1040,461 @@ export interface components {
              * @example libraryRoot debe ser una ruta absoluta: "rel/ativa"
              */
             message: string;
+        };
+        StartSnapshotDto: {
+            /**
+             * @description Rutas a escanear (por defecto las rutas comunes de plugins)
+             * @example [
+             *       "C:\\Program Files\\VstPlugins"
+             *     ]
+             */
+            scanRoots?: string[];
+            /**
+             * @description Raíces de registro a escanear (por defecto HKCU\Software y HKLM\SOFTWARE)
+             * @example [
+             *       "HKCU\\Software\\VFX"
+             *     ]
+             */
+            registryRoots?: string[];
+            /**
+             * @description Calcular hashes de archivos; es más lento pero detecta cambios de contenido
+             * @default false
+             * @example false
+             */
+            computeHashes: boolean;
+        };
+        CaptureTaskResultDto: {
+            /**
+             * @description Snapshot creado por la tarea.
+             * @example a1b2c3d4-0000-4000-8000-000000000001
+             */
+            snapshotId?: string;
+            /**
+             * @description Diff calculado al terminar.
+             * @example 5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f
+             */
+            diffId?: string;
+            /**
+             * @description Archivos añadidos.
+             * @example 12
+             */
+            filesAdded?: number;
+            /**
+             * @description Archivos modificados.
+             * @example 2
+             */
+            filesModified?: number;
+            /**
+             * @description Archivos eliminados.
+             * @example 0
+             */
+            filesRemoved?: number;
+            /**
+             * @description Valores de registro añadidos.
+             * @example 3
+             */
+            registryAdded?: number;
+            /**
+             * @description Valores de registro modificados.
+             * @example 1
+             */
+            registryModified?: number;
+            /**
+             * @description Valores de registro eliminados.
+             * @example 0
+             */
+            registryRemoved?: number;
+        };
+        CaptureTaskDto: {
+            /**
+             * @description ID con el que se consulta la tarea.
+             * @example 3c2f8a90-5b7e-4f1a-9c3d-2e4f6a8b0c1d
+             */
+            taskId: string;
+            /**
+             * @description Tipo de captura: `start` toma el snapshot, `finish` lo compara.
+             * @example start
+             */
+            kind: string;
+            /**
+             * @description Estado: running, cancelling, completed, cancelled o failed.
+             * @example running
+             */
+            status: string;
+            /**
+             * @description Fase actual de la captura.
+             * @example files
+             */
+            phase: string;
+            /**
+             * @description Mensaje legible del progreso.
+             * @example Recorriendo archivos…
+             */
+            message: string;
+            /**
+             * @description Raíces de archivos a recorrer.
+             * @example 1
+             */
+            rootsTotal: number;
+            /**
+             * @description Raíces ya recorridas.
+             * @example 0
+             */
+            rootsCompleted: number;
+            /**
+             * @description Raíz en curso; null cuando la tarea ya terminó.
+             * @example C:\Program Files\VstPlugins
+             */
+            currentRoot: string | null;
+            /**
+             * @description Ruta en curso; null cuando la tarea ya terminó.
+             * @example C:\Program Files\VstPlugins\P8.dll
+             */
+            currentPath: string | null;
+            /**
+             * @description Entradas visitadas hasta ahora.
+             * @example 1240
+             */
+            entriesVisited: number;
+            /**
+             * @description Archivos encontrados hasta ahora.
+             * @example 812
+             */
+            filesFound: number;
+            /**
+             * @description Raíces de registro a recorrer.
+             * @example 1
+             */
+            registryRootsTotal: number;
+            /**
+             * @description Raíces de registro ya recorridas.
+             * @example 0
+             */
+            registryRootsCompleted: number;
+            /**
+             * @description Raíz de registro en curso; null cuando la tarea ya terminó.
+             * @example HKCU\Software\VFX
+             */
+            currentRegistryRoot: string | null;
+            /**
+             * @description Inicio de la tarea (ISO-8601).
+             * @example 2026-10-30T09:12:40.002Z
+             */
+            startedAt: string;
+            /**
+             * @description Última actualización (ISO-8601).
+             * @example 2026-10-30T09:12:44.120Z
+             */
+            updatedAt: string;
+            /**
+             * @description Motivo del fallo, solo cuando la tarea falla.
+             * @example EPERM: acceso denegado
+             */
+            error?: string;
+            /** @description Resumen del resultado, solo cuando la tarea termina. */
+            result?: components["schemas"]["CaptureTaskResultDto"];
+        };
+        CaptureErrorDto: {
+            /**
+             * @description Descripción legible del recurso ausente, con el ID pedido.
+             * @example No existe el snapshot "6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11".
+             */
+            message: string;
+        };
+        FinishCaptureDto: {
+            /**
+             * @description ID del snapshot inicial devuelto al empezar la captura
+             * @example 6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11
+             */
+            snapshotIdBefore: string;
+            /**
+             * @description Rutas a escanear (por defecto, las del snapshot inicial)
+             * @example [
+             *       "C:\\Program Files\\VstPlugins"
+             *     ]
+             */
+            scanRoots?: string[];
+            /**
+             * @description Raíces de registro a escanear
+             * @example [
+             *       "HKCU\\Software\\VFX"
+             *     ]
+             */
+            registryRoots?: string[];
+            /**
+             * @description Calcular hashes de archivos
+             * @default false
+             * @example false
+             */
+            computeHashes: boolean;
+            /**
+             * @description Filtrar archivos temporales y basura del diff
+             * @default true
+             * @example true
+             */
+            filterJunk: boolean;
+        };
+        CaptureFileEntryDto: {
+            /**
+             * @description Ruta absoluta del archivo o carpeta.
+             * @example C:\Program Files\VstPlugins\P8.dll
+             */
+            path: string;
+            /**
+             * @description Tamaño en bytes.
+             * @example 1548288
+             */
+            size: number;
+            /**
+             * @description Fecha de modificación en milisegundos desde la época.
+             * @example 1730419200000
+             */
+            mtimeMs: number;
+            /**
+             * @description Indica si la entrada es una carpeta.
+             * @example false
+             */
+            isDir: boolean;
+            /**
+             * @description Hash SHA-256 del contenido; solo cuando la captura calcula hashes.
+             * @example 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+             */
+            hash?: string;
+        };
+        CaptureRegistryEntryDto: {
+            /**
+             * @description Clave del registro.
+             * @example HKEY_CURRENT_USER\Software\VFX\P8
+             */
+            key: string;
+            /**
+             * @description Nombre del valor dentro de la clave.
+             * @example InstallPath
+             */
+            valueName: string;
+            /**
+             * @description Tipo del valor (`REG_SZ`, `REG_DWORD`…).
+             * @example REG_SZ
+             */
+            valueType: string;
+            /**
+             * @description Datos del valor tal cual los devuelve el registro.
+             * @example C:\Program Files\VstPlugins
+             */
+            valueData: string;
+        };
+        CaptureSnapshotDto: {
+            /**
+             * @description ID del snapshot.
+             * @example 6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11
+             */
+            id: string;
+            /**
+             * @description Momento en que se tomó el snapshot (ISO-8601).
+             * @example 2026-10-30T09:12:44.120Z
+             */
+            createdAt: string;
+            /**
+             * @description Plataforma donde corrió la captura.
+             * @example win32
+             */
+            platform: string;
+            /** @description Archivos y carpetas encontrados. */
+            files: components["schemas"]["CaptureFileEntryDto"][];
+            /** @description Valores de registro encontrados. */
+            registry: components["schemas"]["CaptureRegistryEntryDto"][];
+            /**
+             * @description Raíces de archivos recorridas.
+             * @example [
+             *       "C:\\Program Files\\VstPlugins"
+             *     ]
+             */
+            scanRoots: string[];
+            /**
+             * @description Raíces de registro recorridas.
+             * @example [
+             *       "HKCU\\Software\\VFX"
+             *     ]
+             */
+            registryRoots: string[];
+        };
+        CaptureFileChangeDto: {
+            /** @description Estado previo de la entrada. */
+            before: components["schemas"]["CaptureFileEntryDto"];
+            /** @description Estado posterior de la entrada. */
+            after: components["schemas"]["CaptureFileEntryDto"];
+        };
+        CaptureRegistryChangeDto: {
+            /** @description Valor previo. */
+            before: components["schemas"]["CaptureRegistryEntryDto"];
+            /** @description Valor posterior. */
+            after: components["schemas"]["CaptureRegistryEntryDto"];
+        };
+        CaptureDiffDto: {
+            /**
+             * @description ID del diff, el que se pasa a `/capture/package`.
+             * @example 5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f
+             */
+            diffId: string;
+            /**
+             * @description Snapshot de partida.
+             * @example 6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11
+             */
+            snapshotIdBefore: string;
+            /**
+             * @description Snapshot final.
+             * @example a1b2c3d4-0000-4000-8000-000000000001
+             */
+            snapshotIdAfter: string;
+            /**
+             * @description Momento del cálculo (ISO-8601).
+             * @example 2026-10-30T09:20:11.480Z
+             */
+            createdAt: string;
+            /** @description Archivos que aparecieron. */
+            addedFiles: components["schemas"]["CaptureFileEntryDto"][];
+            /** @description Archivos que cambiaron. */
+            modifiedFiles: components["schemas"]["CaptureFileChangeDto"][];
+            /** @description Archivos que desaparecieron. */
+            removedFiles: components["schemas"]["CaptureFileEntryDto"][];
+            /** @description Valores de registro que aparecieron. */
+            addedRegistry: components["schemas"]["CaptureRegistryEntryDto"][];
+            /** @description Valores de registro que cambiaron. */
+            modifiedRegistry: components["schemas"]["CaptureRegistryChangeDto"][];
+            /** @description Valores de registro que desaparecieron. */
+            removedRegistry: components["schemas"]["CaptureRegistryEntryDto"][];
+            /**
+             * @description Reservado: el escaneo ya descarta la basura antes del diff, así que normalmente es 0.
+             * @example 0
+             */
+            filteredOut: number;
+        };
+        PackageDiffDto: {
+            /**
+             * @description ID del diff que se quiere empaquetar
+             * @example 5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f
+             */
+            diffId: string;
+            /**
+             * @description Carpeta destino donde crear el paquete
+             * @example D:\_banks\paquetes
+             */
+            targetDir: string;
+            /**
+             * @description Nombre del paquete; si se omite se usa el del diff
+             * @example SuperWave P8
+             */
+            packageName?: string;
+        };
+        CapturePackageResultDto: {
+            /**
+             * @description Carpeta del paquete creado.
+             * @example D:\_banks\paquetes\SuperWave P8
+             */
+            packageDir: string;
+            /**
+             * @description Carpeta de staging donde revisar los archivos.
+             * @example C:\Users\ajaba\.fxbloader\capture\staging\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f
+             */
+            stagingDir: string;
+            /**
+             * @description Archivos copiados al staging.
+             * @example 12
+             */
+            filesCopied: number;
+            /**
+             * @description Valores de registro preparados.
+             * @example 3
+             */
+            registryEntries: number;
+        };
+        CaptureStagingListDto: {
+            /**
+             * @description Carpeta de staging del diff.
+             * @example C:\Users\ajaba\.fxbloader\capture\staging\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f
+             */
+            stagingDir: string;
+            /**
+             * @description Rutas relativas de los archivos en staging.
+             * @example [
+             *       "Program Files\\VstPlugins\\P8.dll",
+             *       "Program Files\\VstPlugins\\P8\\presets\\factory.fxb"
+             *     ]
+             */
+            files: string[];
+        };
+        CaptureOkDto: {
+            /**
+             * @description La operación se aplicó.
+             * @example true
+             */
+            ok: boolean;
+        };
+        CaptureFinalizeResultDto: {
+            /**
+             * @description Carpeta final con el paquete copiado.
+             * @example D:\_banks\paquetes\SuperWave P8
+             */
+            packageDir: string;
+        };
+        VMachineRequestDto: {
+            /**
+             * @description Nombre del plugin tal como debe aparecer en la v-machine
+             * @example SuperWave P8
+             */
+            pluginName: string;
+            /**
+             * @description ID único del plugin de 32 bits
+             * @example 1316377392
+             */
+            uniqueId?: string;
+            /**
+             * @description DLL principal dentro del staging. Se empareja por nombre de archivo, ignorando la carpeta; si se omite se usa el primer DLL capturado.
+             * @example P8.dll
+             */
+            dllName?: string;
+            /**
+             * @description Si el plugin es un sintetizador
+             * @example true
+             */
+            isSynth?: boolean;
+            /**
+             * @description Fabricante del plugin
+             * @example SuperWave
+             */
+            vendor?: string;
+            /**
+             * @description Generar el árbol del plugin (`plugs/<pluginName>/`) con el DLL en la raíz, `vfxinfo.txt` y `presets/`, listo para escanear e importar.
+             * @example true
+             */
+            generateBank?: boolean;
+            /**
+             * @description Generar el wizard para el software original
+             * @example true
+             */
+            generateWizard?: boolean;
+            /**
+             * @description Carpeta de salida; por defecto `<almacén>/vmachine`
+             * @example D:\_banks\paquetes\vmachine
+             */
+            outputDir?: string;
+        };
+        CaptureVMachineResultDto: {
+            /**
+             * @description Carpeta del banco generado.
+             * @example D:\_banks\paquetes\vmachine\plugs\SuperWave P8
+             */
+            bankDir?: string;
+            /**
+             * @description Ruta del wizard generado.
+             * @example D:\_banks\paquetes\vmachine\SuperWave P8.vfxwizard
+             */
+            wizardPath?: string;
+            /**
+             * @description Avisos de la generación; vacío cuando todo salió bien.
+             * @example []
+             */
+            warnings: string[];
         };
         FxbConfigPathErrorDto: {
             /**
@@ -1239,6 +1948,145 @@ export interface components {
             loader: components["schemas"]["LoaderDllDto"];
             /** @description Solo directorios, ordenados por nombre. */
             plugins: components["schemas"]["LibraryScanPluginDto"][];
+        };
+        LibraryAuditRequestDto: {
+            /**
+             * @description Ruta absoluta a la librería VFX activa (la que contiene `plugs\`).
+             * @example D:\_banks\storage
+             */
+            libraryRoot: string;
+        };
+        LibraryAuditDllDto: {
+            /**
+             * @description Valor de `dll_name` en `vfxinfo.txt`; `null` si no lo declara.
+             * @example FSynthz-15/15.dll
+             */
+            declared: string | null;
+            /**
+             * @description DLL localizado en disco, relativo a `plugs\`; `null` si no hay ninguno.
+             * @example FSynthz-15/15.dll
+             */
+            resolved: string | null;
+            /**
+             * @description Arquitectura del DLL inspeccionado (32/64) o `null` si no se pudo leer.
+             * @example 32
+             */
+            bitness: number | null;
+            /**
+             * @description Entrypoint VST2 exportado por el DLL, si lo hay.
+             * @example main
+             */
+            vstEntrypoint: string | null;
+        };
+        LibraryAuditIssueDto: {
+            /**
+             * @description Campo afectado, con prefijo de origen (`vfxinfo.id`, `meta.vendor`, `dll`…).
+             * @example meta
+             */
+            field: string;
+            /**
+             * @description `missing`/`invalid` dejan el plugin incompleto; `note` es informativo.
+             * @example missing
+             * @enum {string}
+             */
+            severity: "missing" | "invalid" | "note";
+            /**
+             * @description Explicación legible del hueco.
+             * @example no existe fxbLoader.meta.json: el catálogo no tiene fabricante, género ni notas
+             */
+            message: string;
+        };
+        LibraryAuditProposalDto: {
+            /**
+             * @description Campo que se rellenaría.
+             * @example meta.genre
+             */
+            field: string;
+            /**
+             * @description Valor propuesto.
+             * @example Synth
+             */
+            value: string;
+            /**
+             * @description Origen del valor: `vfxinfo`, `meta`, `dll` o deducido.
+             * @example derived
+             * @enum {string}
+             */
+            source: "vfxinfo" | "meta" | "dll" | "derived";
+            /** @description Aclaración sobre cómo se obtuvo el valor. */
+            note?: string;
+        };
+        LibraryAuditPluginDto: {
+            /**
+             * @description Carpeta del plugin bajo `plugs\`.
+             * @example FSynthz-15
+             */
+            name: string;
+            /**
+             * @description Ruta absoluta de la carpeta del plugin.
+             * @example D:\_banks\storage\plugs\FSynthz-15
+             */
+            path: string;
+            /**
+             * @description El plugin tiene `vfxinfo.txt`.
+             * @example true
+             */
+            hasVfxinfo: boolean;
+            /**
+             * @description El plugin tiene `fxbLoader.meta.json`.
+             * @example false
+             */
+            hasMeta: boolean;
+            /** @description Estado del DLL declarado y localizado. */
+            dll: components["schemas"]["LibraryAuditDllDto"];
+            /** @description Huecos detectados. */
+            issues: components["schemas"]["LibraryAuditIssueDto"][];
+            /** @description Valores que se pueden rellenar sin intervención. */
+            proposals: components["schemas"]["LibraryAuditProposalDto"][];
+        };
+        LibraryAuditResultDto: {
+            /**
+             * @description Librería analizada.
+             * @example D:\_banks\storage
+             */
+            libraryRoot: string;
+            /**
+             * @description Carpeta `plugs\` recorrida.
+             * @example D:\_banks\storage\plugs
+             */
+            plugsPath: string;
+            /**
+             * @description Momento del análisis (ISO-8601).
+             * @example 2026-10-30T12:00:00.000Z
+             */
+            scannedAt: string;
+            /**
+             * @description Plugins encontrados.
+             * @example 19
+             */
+            total: number;
+            /**
+             * @description Plugins sin huecos `missing`/`invalid`.
+             * @example 4
+             */
+            complete: number;
+            /**
+             * @description Plugins con algún hueco bloqueante.
+             * @example 15
+             */
+            incomplete: number;
+            /**
+             * @description Total de huecos detectados.
+             * @example 42
+             */
+            issueCount: number;
+            /**
+             * @description Total de valores rellenables automáticamente.
+             * @example 61
+             */
+            proposalCount: number;
+            /** @description Detalle por plugin, ordenado por nombre. */
+            plugins: components["schemas"]["LibraryAuditPluginDto"][];
         };
         LibraryDllPreferenceRequestDto: {
             /**
@@ -1974,6 +2822,43 @@ export interface components {
              * @example true
              */
             isSynth: boolean;
+            /**
+             * @description Campo que permitió confirmar el wizard; suggestion indica coincidencia aproximada
+             * @example id
+             * @enum {string}
+             */
+            matchReason: "id" | "dll" | "name" | "suggestion" | "selected";
+            /**
+             * @description Ruta DLL esperada por el wizard
+             * @example V-Station.dll
+             */
+            dllName: string;
+            /** @description Archivos adicionales que requiere el wizard */
+            filesToCopy: string[];
+            /** @description Archivos requeridos que faltan en el plugin importado */
+            missingFilesToCopy: string[];
+            /** @description Directorios adicionales que requiere el wizard */
+            dirsToCopy: string[];
+            /** @description Directorios requeridos que faltan en el plugin importado */
+            missingDirsToCopy: string[];
+            /** @description Archivos que define crear el wizard */
+            filesToCreate: string[];
+            /** @description Archivos definidos por el wizard que faltan en el plugin importado */
+            missingFilesToCreate: string[];
+            /** @description El wizard incluye claves de registro para revisar/importar manualmente */
+            hasRegistryKeys: boolean;
+            /** @description El paquete ya contiene registry_keys.reg */
+            registryFilePresent: boolean;
+            /** @description El wizard aporta instrucciones readme */
+            hasReadme: boolean;
+            /** @description Documentación readme del wizard para revisar antes o después de importar */
+            readme: string | null;
+            /** @description Notas de compatibilidad y documentación del wizard */
+            notes: string;
+            /** @description Enlaces simbólicos definidos por el wizard; requieren acción manual */
+            symlinks: string[];
+            /** @description Claves de Registro del wizard para revisión e importación manual */
+            registryKeys: string;
         };
         PackagePluginSummaryDto: {
             /**
@@ -2028,6 +2913,8 @@ export interface components {
             alreadyExistsInTarget: boolean;
             /** @description Wizard oficial emparejado si existe en el catálogo */
             matchedWizard?: components["schemas"]["PackagePluginMatchedWizardDto"];
+            /** @description Wizards candidatos que requieren confirmación antes de preparar el plugin */
+            wizardCandidates?: components["schemas"]["PackagePluginMatchedWizardDto"][];
         };
         PackageBankSummaryDto: {
             /**
@@ -2134,6 +3021,15 @@ export interface components {
              */
             selectedBanks?: string[];
             /**
+             * @description Wizard confirmado por nombre o ruta absoluta de origen del plugin; una cadena vacía significa importar sin wizard
+             * @example {
+             *       "V-Station Demo": "1316377392"
+             *     }
+             */
+            selectedWizards?: {
+                [key: string]: string;
+            };
+            /**
              * @description Política en caso de que ya exista en destino
              * @default skip
              * @example skip
@@ -2157,6 +3053,12 @@ export interface components {
              * @example Ya existe en destino
              */
             reason: string;
+        };
+        WizardPreparationWarningDto: {
+            /** @description Plugin afectado */
+            plugin: string;
+            /** @description Requisito pendiente o acción manual */
+            message: string;
         };
         ImportPackageResultDto: {
             /**
@@ -2189,6 +3091,10 @@ export interface components {
              *     ]
              */
             repairedBanks?: string[];
+            /** @description Plugins preparados de forma segura con su wizard tras importarlos */
+            preparedPlugins?: string[];
+            /** @description Carencias o pasos manuales de preparación por wizard */
+            wizardWarnings?: components["schemas"]["WizardPreparationWarningDto"][];
             /**
              * @description Total de bytes copiados
              * @example 6287408
@@ -2856,6 +3762,37 @@ export interface components {
              */
             backedUp: boolean;
         };
+        WizardCreateFromPluginDto: {
+            /**
+             * @description Directorio absoluto del plugin en la librería (la carpeta que contiene `vfxinfo.txt`). El DLL se busca dentro de ella.
+             * @example D:\_banks\storage\plugs\FSynthz-15
+             */
+            pluginDir: string;
+            /**
+             * @description Si es true y el `.vfxwizard` ya existe en el catálogo local, lo sobrescribe
+             * @example false
+             */
+            overwrite?: boolean;
+        };
+        WizardCreateFromPluginResultDto: {
+            /**
+             * @description Indica si el wizard se escribió en el catálogo local
+             * @example true
+             */
+            created: boolean;
+            /**
+             * @description Ruta absoluta del archivo .vfxwizard generado
+             * @example D:\_banks\wizards\custom\15 - SynthEdit.vfxwizard
+             */
+            wizardPath: string;
+            /** @description Registro indexado a partir de la carpeta del plugin */
+            record: components["schemas"]["WizardRecordDto"];
+            /**
+             * @description Avisos sobre el DLL (arquitectura, entrypoint VST) o datos incompletos
+             * @example []
+             */
+            warnings: string[];
+        };
         WizardInstallPluginDto: {
             /**
              * @description ID VST del wizard oficial a instalar
@@ -2889,6 +3826,13 @@ export interface components {
              * @example true
              */
             initializeBank: boolean;
+            /** @description Carpeta con archivos extra para copiar según filesToCopy/dirsToCopy */
+            sourceFilesRoot?: string;
+            /**
+             * @description Importar automáticamente el .reg generado (Windows)
+             * @default false
+             */
+            autoImportRegistry: boolean;
         };
         WizardInstallPluginResponseDto: {
             /**
@@ -3197,6 +4141,657 @@ export interface operations {
             };
         };
     };
+    CaptureController_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartSnapshotDto"];
+            };
+        };
+        responses: {
+            /** @description Tarea creada; el snapshot queda disponible cuando la tarea termina. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "taskId": "3c2f8a90-5b7e-4f1a-9c3d-2e4f6a8b0c1d",
+                     *       "kind": "start",
+                     *       "status": "running",
+                     *       "phase": "files",
+                     *       "message": "Recorriendo archivos…",
+                     *       "rootsTotal": 1,
+                     *       "rootsCompleted": 0,
+                     *       "currentRoot": "C:\\Program Files\\VstPlugins",
+                     *       "currentPath": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *       "entriesVisited": 1240,
+                     *       "filesFound": 812,
+                     *       "registryRootsTotal": 1,
+                     *       "registryRootsCompleted": 0,
+                     *       "currentRegistryRoot": "HKCU\\Software\\VFX",
+                     *       "startedAt": "2026-10-30T09:12:40.002Z",
+                     *       "updatedAt": "2026-10-30T09:12:44.120Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureTaskDto"];
+                };
+            };
+        };
+    };
+    CaptureController_getTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID devuelto por `POST /capture/start` o `/capture/finish`. */
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Estado de la tarea. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureTaskDto"];
+                };
+            };
+            /** @description No existe ninguna tarea con ese ID (p. ej. tras reiniciar el servidor). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe la tarea de captura \"6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_cancelTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID de la tarea que se quiere detener. */
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tarea con el estado de cancelación ya aplicado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "taskId": "3c2f8a90-5b7e-4f1a-9c3d-2e4f6a8b0c1d",
+                     *       "kind": "start",
+                     *       "status": "cancelled",
+                     *       "phase": "cancelled",
+                     *       "message": "Captura detenida.",
+                     *       "rootsTotal": 1,
+                     *       "rootsCompleted": 0,
+                     *       "currentRoot": "C:\\Program Files\\VstPlugins",
+                     *       "currentPath": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *       "entriesVisited": 1240,
+                     *       "filesFound": 812,
+                     *       "registryRootsTotal": 1,
+                     *       "registryRootsCompleted": 0,
+                     *       "currentRegistryRoot": "HKCU\\Software\\VFX",
+                     *       "startedAt": "2026-10-30T09:12:40.002Z",
+                     *       "updatedAt": "2026-10-30T09:12:44.120Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureTaskDto"];
+                };
+            };
+            /** @description No existe ninguna tarea con ese ID. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe la tarea de captura \"6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCaptureDto"];
+            };
+        };
+        responses: {
+            /** @description Tarea de cierre creada; el diff aparece en `result` al terminar. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "taskId": "3c2f8a90-5b7e-4f1a-9c3d-2e4f6a8b0c1d",
+                     *       "kind": "finish",
+                     *       "status": "completed",
+                     *       "phase": "completed",
+                     *       "message": "Captura completada.",
+                     *       "rootsTotal": 1,
+                     *       "rootsCompleted": 1,
+                     *       "currentRoot": null,
+                     *       "currentPath": null,
+                     *       "entriesVisited": 1240,
+                     *       "filesFound": 812,
+                     *       "registryRootsTotal": 1,
+                     *       "registryRootsCompleted": 1,
+                     *       "currentRegistryRoot": null,
+                     *       "startedAt": "2026-10-30T09:12:40.002Z",
+                     *       "updatedAt": "2026-10-30T09:12:44.120Z",
+                     *       "result": {
+                     *         "snapshotId": "a1b2c3d4-0000-4000-8000-000000000001",
+                     *         "diffId": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+                     *         "filesAdded": 12,
+                     *         "filesModified": 2,
+                     *         "filesRemoved": 0,
+                     *         "registryAdded": 3,
+                     *         "registryModified": 1,
+                     *         "registryRemoved": 0
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureTaskDto"];
+                };
+            };
+            /** @description El `snapshotIdBefore` no existe, así que no se crea ninguna tarea de cierre. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el snapshot inicial \"6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11\" para cerrar la captura."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_getSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del snapshot. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot con todos los archivos y valores de registro. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11",
+                     *       "createdAt": "2026-10-30T09:12:44.120Z",
+                     *       "platform": "win32",
+                     *       "files": [
+                     *         {
+                     *           "path": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *           "size": 1548288,
+                     *           "mtimeMs": 1730419200000,
+                     *           "isDir": false,
+                     *           "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                     *         }
+                     *       ],
+                     *       "registry": [
+                     *         {
+                     *           "key": "HKEY_CURRENT_USER\\Software\\VFX\\P8",
+                     *           "valueName": "InstallPath",
+                     *           "valueType": "REG_SZ",
+                     *           "valueData": "C:\\Program Files\\VstPlugins"
+                     *         }
+                     *       ],
+                     *       "scanRoots": [
+                     *         "C:\\Program Files\\VstPlugins"
+                     *       ],
+                     *       "registryRoots": [
+                     *         "HKCU\\Software\\VFX"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureSnapshotDto"];
+                };
+            };
+            /** @description No existe ningún snapshot con ese ID. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el snapshot \"6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_getDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del diff calculado al finalizar la captura. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Diff completo entre los dos snapshots. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "diffId": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+                     *       "snapshotIdBefore": "6f1b4c1e-4a1a-4d2b-9f0e-6b3f3f8d9c11",
+                     *       "snapshotIdAfter": "a1b2c3d4-0000-4000-8000-000000000001",
+                     *       "createdAt": "2026-10-30T09:20:11.480Z",
+                     *       "addedFiles": [
+                     *         {
+                     *           "path": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *           "size": 1548288,
+                     *           "mtimeMs": 1730419200000,
+                     *           "isDir": false,
+                     *           "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                     *         }
+                     *       ],
+                     *       "modifiedFiles": [
+                     *         {
+                     *           "before": {
+                     *             "path": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *             "size": 1548288,
+                     *             "mtimeMs": 1730419200000,
+                     *             "isDir": false,
+                     *             "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                     *           },
+                     *           "after": {
+                     *             "path": "C:\\Program Files\\VstPlugins\\P8.dll",
+                     *             "size": 1548288,
+                     *             "mtimeMs": 1730419200000,
+                     *             "isDir": false,
+                     *             "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "removedFiles": [],
+                     *       "addedRegistry": [
+                     *         {
+                     *           "key": "HKEY_CURRENT_USER\\Software\\VFX\\P8",
+                     *           "valueName": "InstallPath",
+                     *           "valueType": "REG_SZ",
+                     *           "valueData": "C:\\Program Files\\VstPlugins"
+                     *         }
+                     *       ],
+                     *       "modifiedRegistry": [
+                     *         {
+                     *           "before": {
+                     *             "key": "HKEY_CURRENT_USER\\Software\\VFX\\P8",
+                     *             "valueName": "InstallPath",
+                     *             "valueType": "REG_SZ",
+                     *             "valueData": "C:\\Program Files\\VstPlugins"
+                     *           },
+                     *           "after": {
+                     *             "key": "HKEY_CURRENT_USER\\Software\\VFX\\P8",
+                     *             "valueName": "InstallPath",
+                     *             "valueType": "REG_SZ",
+                     *             "valueData": "C:\\Program Files\\VstPlugins"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "removedRegistry": [],
+                     *       "filteredOut": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureDiffDto"];
+                };
+            };
+            /** @description No existe ningún diff con ese ID. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_package: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageDiffDto"];
+            };
+        };
+        responses: {
+            /** @description Staging creado, con el recuento de lo preparado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "packageDir": "D:\\_banks\\paquetes\\SuperWave P8",
+                     *       "stagingDir": "C:\\Users\\ajaba\\.fxbloader\\capture\\staging\\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+                     *       "filesCopied": 12,
+                     *       "registryEntries": 3
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CapturePackageResultDto"];
+                };
+            };
+            /** @description No existe ningún diff con ese `diffId` para empaquetar. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_listStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carpeta de staging y rutas relativas de sus archivos. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "stagingDir": "C:\\Users\\ajaba\\.fxbloader\\capture\\staging\\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+                     *       "files": [
+                     *         "Program Files\\VstPlugins\\P8.dll",
+                     *         "Program Files\\VstPlugins\\P8\\presets\\factory.fxb"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureStagingListDto"];
+                };
+            };
+            /** @description No hay staging para ese diff: no se ha empaquetado con `/capture/package` o se limpió con `DELETE /capture/staging/:diffId/clean`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el staging del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\". Ejecuta POST /capture/package para prepararlo."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_removeFromStaging: {
+        parameters: {
+            query: {
+                /** @description Ruta relativa dentro del staging. */
+                path: string;
+            };
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivo retirado del staging. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "ok": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureOkDto"];
+                };
+            };
+            /** @description Falta el parámetro `path`, o la ruta se sale del staging. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "path requerido"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+            /** @description No hay staging para ese diff, o el archivo indicado en `path` ya no está en él. Una ruta inexistente no se responde con 200: no se ha borrado nada. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_cleanStaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Staging vaciado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "ok": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureOkDto"];
+                };
+            };
+            /** @description No hay staging para ese diff, así que no hay nada que limpiar. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el staging del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\". Ejecuta POST /capture/package para prepararlo."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_finalize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageDiffDto"];
+            };
+        };
+        responses: {
+            /** @description Paquete copiado al destino final. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "packageDir": "D:\\_banks\\paquetes\\SuperWave P8"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureFinalizeResultDto"];
+                };
+            };
+            /** @description No existe ningún diff con ese `diffId`, o su staging ya no está en disco (hay que volver a ejecutar `/capture/package`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_generateVMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VMachineRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Rutas generadas y avisos. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "bankDir": "D:\\_banks\\paquetes\\vmachine\\plugs\\SuperWave P8",
+                     *       "wizardPath": "D:\\_banks\\paquetes\\vmachine\\SuperWave P8.vfxwizard",
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureVMachineResultDto"];
+                };
+            };
+            /** @description No existe ningún diff con ese `diffId`, o su staging ya no está en disco (hay que volver a ejecutar `/capture/package`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
     FxbConfigController_read: {
         parameters: {
             query?: never;
@@ -3400,6 +4995,125 @@ export interface operations {
                 };
             };
             /** @description `libraryRoot` ausente, relativo, inexistente o sin carpeta `plugs\`, o `dllSourcePath` no absoluta o inexistente. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_audit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryAuditRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Resumen y detalle por plugin. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "libraryRoot": "D:\\_banks\\storage",
+                     *       "plugsPath": "D:\\_banks\\storage\\plugs",
+                     *       "scannedAt": "2026-10-30T12:00:00.000Z",
+                     *       "total": 2,
+                     *       "complete": 1,
+                     *       "incomplete": 1,
+                     *       "issueCount": 3,
+                     *       "proposalCount": 4,
+                     *       "plugins": [
+                     *         {
+                     *           "name": "FSynthz-15",
+                     *           "path": "D:\\_banks\\storage\\plugs\\FSynthz-15",
+                     *           "hasVfxinfo": true,
+                     *           "hasMeta": false,
+                     *           "dll": {
+                     *             "declared": "FSynthz-15/15.dll",
+                     *             "resolved": "FSynthz-15/15.dll",
+                     *             "bitness": 32,
+                     *             "vstEntrypoint": "main"
+                     *           },
+                     *           "issues": [
+                     *             {
+                     *               "field": "meta",
+                     *               "severity": "missing",
+                     *               "message": "no existe fxbLoader.meta.json: el catálogo no tiene fabricante, género ni notas"
+                     *             },
+                     *             {
+                     *               "field": "meta.vendor",
+                     *               "severity": "missing",
+                     *               "message": "sin fabricante"
+                     *             }
+                     *           ],
+                     *           "proposals": [
+                     *             {
+                     *               "field": "meta.id",
+                     *               "value": "1177630041",
+                     *               "source": "vfxinfo"
+                     *             },
+                     *             {
+                     *               "field": "meta.name",
+                     *               "value": "15 - SynthEdit",
+                     *               "source": "vfxinfo"
+                     *             },
+                     *             {
+                     *               "field": "meta.genre",
+                     *               "value": "Synth",
+                     *               "source": "derived",
+                     *               "note": "deducido de is_synth"
+                     *             },
+                     *             {
+                     *               "field": "meta.name_abbreviation",
+                     *               "value": "15",
+                     *               "source": "derived"
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "name": "StringSynth",
+                     *           "path": "D:\\_banks\\storage\\plugs\\StringSynth",
+                     *           "hasVfxinfo": true,
+                     *           "hasMeta": true,
+                     *           "dll": {
+                     *             "declared": "StringSynth/StringSynth.dll",
+                     *             "resolved": "StringSynth/StringSynth.dll",
+                     *             "bitness": 32,
+                     *             "vstEntrypoint": "main"
+                     *           },
+                     *           "issues": [],
+                     *           "proposals": [
+                     *             {
+                     *               "field": "meta.id",
+                     *               "value": "1398231097",
+                     *               "source": "vfxinfo"
+                     *             },
+                     *             {
+                     *               "field": "meta.name",
+                     *               "value": "StringSynth",
+                     *               "source": "vfxinfo"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryAuditResultDto"];
+                };
+            };
+            /** @description `libraryRoot` ausente, relativo, inexistente o sin carpeta `plugs\`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4698,8 +6412,24 @@ export interface operations {
                      *             "id": "1316377392",
                      *             "name": "V-Station Demo",
                      *             "vendor": "Novation",
-                     *             "isSynth": true
-                     *           }
+                     *             "isSynth": true,
+                     *             "matchReason": "id",
+                     *             "dllName": "V-Station.dll",
+                     *             "filesToCopy": [],
+                     *             "missingFilesToCopy": [],
+                     *             "dirsToCopy": [],
+                     *             "missingDirsToCopy": [],
+                     *             "filesToCreate": [],
+                     *             "missingFilesToCreate": [],
+                     *             "hasRegistryKeys": false,
+                     *             "registryFilePresent": false,
+                     *             "hasReadme": true,
+                     *             "readme": "Copy the V-Station DLL into the plugin folder.",
+                     *             "notes": "Novation V-Station instrument",
+                     *             "symlinks": [],
+                     *             "registryKeys": ""
+                     *           },
+                     *           "wizardCandidates": []
                      *         }
                      *       ],
                      *       "banks": [
@@ -5285,6 +7015,98 @@ export interface operations {
                     /**
                      * @example {
                      *       "message": "Se requiere pluginDir"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WizardErrorDto"];
+                };
+            };
+        };
+    };
+    WizardController_createFromPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WizardCreateFromPluginDto"];
+            };
+        };
+        responses: {
+            /** @description Wizard creado y ruta del archivo generado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "created": true,
+                     *       "wizardPath": "D:\\_banks\\wizards\\custom\\15 - SynthEdit.vfxwizard",
+                     *       "record": {
+                     *         "id": "1177630041",
+                     *         "name": "15 - SynthEdit",
+                     *         "vendor": "SynthEdit",
+                     *         "genre": "Synth",
+                     *         "nameAbbreviation": "15",
+                     *         "isSynth": true,
+                     *         "dllName": "15.dll",
+                     *         "hasRegistryKeys": true,
+                     *         "hasFilesToCopy": false,
+                     *         "hasDirsToCopy": false,
+                     *         "hasReadme": false,
+                     *         "sourcePath": "custom\\15 - SynthEdit.vfxwizard",
+                     *         "version": "1",
+                     *         "dllVersion": "1.6",
+                     *         "hasEditor": true,
+                     *         "parameterCount": 16,
+                     *         "programCount": 64,
+                     *         "editorWidth": 273,
+                     *         "editorHeight": 167,
+                     *         "vendorUrl": "http://www.superwavesynths.co.uk",
+                     *         "vendorType": "Free",
+                     *         "notes": "Known Issues: None",
+                     *         "vendorNotes": "SuperWave P8 synthesizer",
+                     *         "created": "2010-11-12",
+                     *         "filesToCopy": [],
+                     *         "dirsToCopy": [],
+                     *         "filesToCreate": {},
+                     *         "symlinks": [],
+                     *         "registryKeys": "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Software\\Superwave]\r\n",
+                     *         "flags": {},
+                     *         "readme": null
+                     *       },
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WizardCreateFromPluginResultDto"];
+                };
+            };
+            /** @description La carpeta del plugin no existe o no contiene vfxinfo.txt */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe la carpeta del plugin: D:\\_banks\\storage\\plugs\\FSynthz-15"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WizardErrorDto"];
+                };
+            };
+            /** @description Ya existe un wizard con ese nombre y no se pidió overwrite */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "Ya existe el wizard \"15 - SynthEdit.vfxwizard\" en el catálogo local; usa overwrite para rehacerlo"
                      *     }
                      */
                     "application/json": components["schemas"]["WizardErrorDto"];

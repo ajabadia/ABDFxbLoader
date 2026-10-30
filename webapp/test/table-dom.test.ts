@@ -98,3 +98,38 @@ test('mountTable emits search, sortable headers and a default 100-row pager', ()
     (globalThis as { document?: unknown }).document = previous;
   }
 });
+
+test('mountTable avisa de cada cambio de búsqueda con el texto actual', () => {
+  const previous = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = fakeDocument;
+  try {
+    const root = new FakeElement();
+    const seen: string[] = [];
+    const view: TableView<{ name: string }> = {
+      columns: [{ id: 'name', label: 'Nombre', getValue: row => row.name }],
+      getRowId: row => row.name,
+      initialSort: { columnId: 'name', direction: 'asc' },
+      onSearchChange: query => seen.push(query),
+    };
+    const table = mountTable(root as unknown as HTMLElement, view, [{ name: 'uno' }, { name: 'dos' }]);
+    const search = root.children[0]!.find(element => element.className === 'table-search');
+    assert.ok(search, 'la vista monta su caja de búsqueda');
+
+    const type = (value: string): void => {
+      search.value = value;
+      for (const listener of search.listeners['input'] ?? []) listener();
+    };
+    type('ob-');
+    type('ob-xd');
+    type('');
+
+    assert.deepEqual(
+      seen,
+      ['ob-', 'ob-xd', ''],
+      'cada pulsación avisa con el texto completo de la caja',
+    );
+    table.destroy();
+  } finally {
+    (globalThis as { document?: unknown }).document = previous;
+  }
+});

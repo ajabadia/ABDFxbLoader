@@ -89,6 +89,7 @@ export class AssociationAuditController {
 
     return {
       plugin: optionalString(body['plugin'], 'plugin'),
+      q: optionalString(body['q'], 'q'),
       kind: kind as AssociationAuditKind | undefined,
       from: optionalString(body['from'], 'from'),
       to: optionalString(body['to'], 'to'),
@@ -182,6 +183,7 @@ export class AssociationAuditController {
     const libraryRoot = this.buildLibraryRoot(query);
     const filter = this.buildFilter({
       plugin: query['plugin'],
+      q: query['q'],
       kind: query['kind'],
       from: query['from'],
       to: query['to'],

@@ -111,6 +111,13 @@ import {
   LibraryLoaderRemoveRequestDto,
 } from './library.dto';
 import { defaultLoaderDllPath } from './loader-dll';
+import { LibraryAuditService } from './library-audit.service';
+import {
+  LIBRARY_AUDIT_EXAMPLE,
+  LIBRARY_AUDIT_REQUEST_EXAMPLE,
+  LibraryAuditRequestDto,
+  LibraryAuditResultDto,
+} from './library-audit.dto';
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import type { BankImportStreamEvent } from '../client/bank-import-stream';
 import { LibraryService } from './library.service';
@@ -313,6 +320,7 @@ export class LibraryController {
   constructor(
     private readonly service: LibraryService,
     private readonly importService: LibraryImportService,
+    private readonly auditService: LibraryAuditService,
   ) {}
 
   @Post('scan')
@@ -371,6 +379,42 @@ export class LibraryController {
         : defaultLoaderDllPath();
     try {
       return await this.service.scan(requireString(record, 'libraryRoot'), dllSourcePath);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('audit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Audita los datos de los plugins de la librería',
+    description:
+      'Recorre `plugs\\*` en modo lectura y devuelve, por plugin, los campos que faltan en `vfxinfo.txt` ' +
+      'y en `fxbLoader.meta.json`, el estado del DLL (arquitectura y entrypoint VST) y qué valores se ' +
+      'pueden rellenar automáticamente, indicando si salen del vfxinfo, del meta, del DLL o son derivados. ' +
+      'No modifica ningún archivo.',
+  })
+  @ApiBody({
+    type: LibraryAuditRequestDto,
+    examples: { libreria: { summary: 'Auditar la librería activa', value: LIBRARY_AUDIT_REQUEST_EXAMPLE } },
+  })
+  @ApiOkResponse({
+    description: 'Resumen y detalle por plugin.',
+    type: LibraryAuditResultDto,
+    example: LIBRARY_AUDIT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`libraryRoot` ausente, relativo, inexistente o sin carpeta `plugs\\`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      rutaRelativa: { summary: 'Ruta relativa', value: LIBRARY_SCAN_PATH_ERROR_EXAMPLE },
+      sinPlugs: { summary: 'La carpeta existe pero no tiene plugs\\', value: LIBRARY_LIBRARY_MISSING_ERROR_EXAMPLE },
+    },
+  })
+  async audit(@Body() body: unknown) {
+    const record = asRecord(body);
+    try {
+      return await this.auditService.audit(requireString(record, 'libraryRoot'));
     } catch (error) {
       mapDomainError(error);
     }

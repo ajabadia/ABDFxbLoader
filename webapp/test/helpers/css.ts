@@ -199,6 +199,10 @@ export function selectorNames(selector: string): string[] {
   return [...names];
 }
 
+/** `dataset.tone` y `dataset['tone']`: atributos `data-*` que escribe la vista. */
+const DATASET_ACCESS =
+  /\bdataset\s*(?:\.\s*([A-Za-z][\w]*)|\[\s*'((?:[^'\\]|\\.)*)'\s*\]|\[\s*"((?:[^"\\]|\\.)*)"\s*\])/g;
+
 /** Nombres que existen en el HTML: etiquetas, clases, ids, atributos y valores. */
 export function htmlNames(root: HtmlNode): Set<string> {
   const names = new Set<string>();
@@ -223,17 +227,79 @@ export function htmlNames(root: HtmlNode): Set<string> {
 }
 
 /**
+ * Quita los comentarios sin tocar los literales: `'http://x'` no es un
+ * comentario. Se hace antes de emparejar comillas porque un apóstrofo suelto en
+ * un comentario (o un `//` dentro de una plantilla) descuadra el emparejado y
+ * esconde los literales que vienen detrás: con `main.ts` pasaba, y la clase
+ * `capture-log-entry` que la vista escribe se daba por muerta.
+ */
+export function stripComments(source: string): string {
+  let out = '';
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index]!;
+    const next = source[index + 1];
+
+    if (char === '/' && next === '/') {
+      const end = source.indexOf('\n', index);
+      index = end === -1 ? source.length : end;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      const end = source.indexOf('*/', index + 2);
+      index = end === -1 ? source.length : end + 2;
+      out += ' ';
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      const quote = char;
+      out += char;
+      index += 1;
+      while (index < source.length) {
+        const current = source[index]!;
+        out += current;
+        index += 1;
+        if (current === '\\') {
+          out += source[index] ?? '';
+          index += 1;
+          continue;
+        }
+        if (current === quote) break;
+      }
+      continue;
+    }
+
+    out += char;
+    index += 1;
+  }
+
+  return out;
+}
+
+/**
  * Nombres que puede crear la vista: clases y valores escritos en un literal de
  * `src/ui`. Los literales con interpolación también aportan sus trozos
- * (`status ${kind}` → `status`), que es lo que se busca aquí.
+ * (`status ${kind}` → `status`), que es lo que se busca aquí. Los comentarios no
+ * cuentan: no pintan nada y descolocan el emparejado de comillas.
  */
 export function sourceNames(sources: Iterable<string>): Set<string> {
   const names = new Set<string>();
 
-  for (const source of sources) {
+  for (const original of sources) {
+    const source = stripComments(original);
     for (const match of source.matchAll(/'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) {
       const value = match[1] ?? match[2] ?? match[3] ?? '';
       for (const token of value.match(/[A-Za-z][\w-]*/g) ?? []) names.add(token);
+    }
+    // `dataset.tone` y `dataset['tone']` escriben `data-tone`, que el CSS puede
+    // seleccionar; sin esto el atributo solo sería visible si se nombrara en un
+    // literal, y las reglas de tono quedarían como muertas.
+    for (const match of source.matchAll(DATASET_ACCESS)) {
+      const attribute = match[1] ?? match[2] ?? match[3] ?? '';
+      if (attribute !== '') names.add(`data-${attribute}`);
     }
   }
 

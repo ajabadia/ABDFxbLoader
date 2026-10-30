@@ -154,6 +154,15 @@ export class AssociationAuditListInputDto {
   plugin?: string;
 
   @ApiProperty({
+    description:
+      'Búsqueda de texto libre: subcadena insensible a mayúsculas sobre los ' +
+      'campos del evento (fecha, tipo, plugin, cambio, origen y detalle).',
+    required: false,
+    example: 'dll_name',
+  })
+  q?: string;
+
+  @ApiProperty({
     description: "Filtro por tipo de evento.",
     required: false,
     example: 'association-change',
@@ -229,6 +238,14 @@ export class AssociationAuditListRequestDto {
     example: 'AnalogSynth',
   })
   plugin?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Búsqueda de texto libre: subcadena insensible a mayúsculas sobre los ' +
+      'campos del evento (fecha, tipo, plugin, cambio, origen y detalle).',
+    example: 'dll_name',
+  })
+  q?: string;
 
   @ApiPropertyOptional({
     description: 'Filtra por tipo de evento.',

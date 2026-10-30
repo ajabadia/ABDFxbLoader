@@ -209,6 +209,8 @@ export function serializeWizardToVfxinfo(record: WizardRecord): string {
 
   if (record.id) parts.push(`id: ${record.id}`);
   if (record.name) parts.push(`name: ${record.name}`);
+  if (record.version) parts.push(`version: ${record.version}`);
+  if (record.dllVersion) parts.push(`dll_version: ${record.dllVersion}`);
   if (record.nameAbbreviation) parts.push(`name_abbreviation: ${record.nameAbbreviation}`);
   if (record.dllName) parts.push(`dll_name: ${record.dllName}`);
   parts.push(`parameter_count: ${record.parameterCount}`);
@@ -217,6 +219,12 @@ export function serializeWizardToVfxinfo(record: WizardRecord): string {
   parts.push(`has_editor: ${record.hasEditor ? '1' : '0'}`);
   if (record.editorWidth > 0) parts.push(`editor_width: ${record.editorWidth}`);
   if (record.editorHeight > 0) parts.push(`editor_height: ${record.editorHeight}`);
+  if (record.vendor) parts.push(`vendor: ${record.vendor}`);
+  if (record.vendorUrl) parts.push(`vendor_url: ${record.vendorUrl}`);
+  if (record.vendorType) parts.push(`vendor_type: ${record.vendorType}`);
+  if (record.genre) parts.push(`genre: ${record.genre}`);
+  if ((record.flags as any)?.licence_required !== undefined) parts.push(`licence_required: ${(record.flags as any).licence_required}`);
+  if ((record.flags as any)?.mac !== undefined) parts.push(`mac: ${(record.flags as any).mac}`);
 
   if (record.filesToCopy.length > 0) {
     parts.push('');
@@ -234,6 +242,32 @@ export function serializeWizardToVfxinfo(record: WizardRecord): string {
     parts.push('...');
   }
 
+  if ((record.flags as any)?.license_sequence) {
+    parts.push('');
+    parts.push('license_sequence:');
+    parts.push('...');
+    parts.push((record.flags as any).license_sequence);
+    parts.push('...');
+  }
+
+  if (record.notes && record.notes.trim()) {
+    parts.push('');
+    parts.push('notes:');
+    parts.push('...');
+    parts.push(record.notes.trim());
+    parts.push('');
+    parts.push('...');
+  }
+
+  if (record.vendorNotes && record.vendorNotes.trim()) {
+    parts.push('');
+    parts.push('vendor_notes:');
+    parts.push('...');
+    parts.push(record.vendorNotes.trim());
+    parts.push('');
+    parts.push('...');
+  }
+
   if (record.symlinks.length > 0) {
     parts.push('');
     parts.push('symlinks:');
@@ -242,11 +276,22 @@ export function serializeWizardToVfxinfo(record: WizardRecord): string {
     parts.push('...');
   }
 
-  if (record.registryKeys.trim().length > 0) {
+  if (record.registryKeys && record.registryKeys.trim().length > 0) {
     parts.push('');
     parts.push('registry_keys:');
     parts.push('...');
     parts.push(record.registryKeys.trim());
+    parts.push('...');
+  }
+
+  // Añadir archivos a crear si existen
+  for (const [k, v] of Object.entries(record.filesToCreate || {})) {
+    if (!v || !v.trim()) continue;
+    parts.push('');
+    parts.push(`${k}:`);
+    parts.push('...');
+    parts.push(v.trim());
+    parts.push('');
     parts.push('...');
   }
 

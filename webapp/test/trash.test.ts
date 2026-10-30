@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { test } from 'node:test';
+import { after, before, test } from 'node:test';
 import { moveToTrash } from '../src/common/trash';
 
 /**
@@ -12,6 +12,28 @@ import { moveToTrash } from '../src/common/trash';
  * desde la papelera y qué le cuentan a la vista para encontrarlo.
  */
 
+/**
+ * Este fichero es el único que debe usar la papelera REAL: esa integración es
+ * lo que prueba. Se fuerza el modo real aunque el entorno pida lo contrario y
+ * se retira lo que se mete (ver `purgarEntradasPropias`), para que ninguna
+ * corrida engorde la Papelera. Además, en Linux/macOS la rama por defecto
+ * escribiría en la papelera del usuario: se apunta a un temporal que se borra
+ * al terminar (en Windows la rama nativa no la lee).
+ */
+delete process.env['FXB_TRASH_MODE'];
+
+let papeleraTemporal: string | undefined;
+before(async () => {
+  if (process.platform === 'win32') return;
+  papeleraTemporal = await mkdtemp(path.join(tmpdir(), 'fxb-xdg-home-'));
+  process.env['XDG_DATA_HOME'] = papeleraTemporal;
+});
+after(async () => {
+  if (papeleraTemporal === undefined) return;
+  delete process.env['XDG_DATA_HOME'];
+  await rm(papeleraTemporal, { recursive: true, force: true });
+});
+
 async function tempDir(t: { after: (fn: () => Promise<void>) => void }, prefix: string) {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   t.after(async () => {
@@ -20,8 +42,82 @@ async function tempDir(t: { after: (fn: () => Promise<void>) => void }, prefix: 
   return dir;
 }
 
+/**
+ * Los índices `C:\$Recycle.Bin\<SID>\$I<aleatorio>` guardan, en UTF-16LE, la
+ * ruta original junto a su dato `$R` (mismo sufijo). Este lector devuelve la
+ * ruta de un índice, o `null` si el formato no se entiende.
+ */
+async function leerRutaIndice(indice: string): Promise<string | null> {
+  let b: Buffer;
+  try {
+    b = await readFile(indice);
+  } catch {
+    return null;
+  }
+  if (b.length < 20) return null;
+  const version = b.readUInt32LE(0);
+  let length: number;
+  let offset: number;
+  if (version === 1) {
+    length = b.readUInt32LE(16);
+    offset = 20;
+  } else if (version === 2 && b.readUInt32LE(4) === 0) {
+    length = b.readUInt32LE(24);
+    offset = 28;
+  } else {
+    return null;
+  }
+  if (offset + length * 2 > b.length) return null;
+  return b.subarray(offset, offset + length * 2).toString('utf16le');
+}
+
+/**
+ * Retira de la Papelera real las entradas cuya ruta original empieza por
+ * `prefijo`: solo los archivos que acaba de mandar este test (un temporal
+ * propio y fresco). Lo demás queda intacto. Devuelve cuántas retiró.
+ */
+async function purgarEntradasPropias(prefijo: string): Promise<number> {
+  if (process.platform !== 'win32') return 0;
+  const bin = path.join(path.parse(prefijo).root, '$Recycle.Bin');
+  let sids: string[] = [];
+  try {
+    sids = (await readdir(bin, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return 0;
+  }
+  let retiradas = 0;
+  for (const sid of sids) {
+    const carpeta = path.join(bin, sid);
+    let ficheros: string[];
+    try {
+      ficheros = await readdir(carpeta);
+    } catch {
+      continue; // carpeta de sistema u otro usuario: acceso denegado
+    }
+    for (const nombre of ficheros) {
+      if (!nombre.startsWith('$I') || nombre.length <= 2) continue;
+      const original = await leerRutaIndice(path.join(carpeta, nombre));
+      if (original === null || !original.toLowerCase().startsWith(prefijo.toLowerCase())) continue;
+      await rm(path.join(carpeta, nombre), { force: true });
+      await rm(path.join(carpeta, '$R' + nombre.slice(2)), { force: true, recursive: true });
+      retiradas += 1;
+    }
+  }
+  return retiradas;
+}
+
 test('mueve el archivo a la papelera del sistema y dice dónde recuperarlo', async (t) => {
   const dir = await tempDir(t, 'fxb-trash-');
+  // Lo que esta prueba mande a la Papelera real se retira al terminar.
+  t.after(async () => {
+    assert.equal(
+      await purgarEntradasPropias(dir),
+      1,
+      'la entrada de este test debe salir de la Papelera real',
+    );
+  });
   const target = path.join(dir, 'Rhodes.fxb.orig');
   await writeFile(target, 'respaldo');
 
@@ -47,6 +143,15 @@ test('acepta dos respaldos con el mismo nombre sin pisarse', async (t) => {
   await mkdir(path.dirname(second), { recursive: true });
   await writeFile(first, 'uno');
   await writeFile(second, 'dos');
+
+  // Las dos entradas de este test se retiran de la Papelera real al terminar.
+  t.after(async () => {
+    assert.equal(
+      await purgarEntradasPropias(dir),
+      2,
+      'las dos entradas de este test deben salir de la Papelera real',
+    );
+  });
 
   await moveToTrash(first);
   await moveToTrash(second);

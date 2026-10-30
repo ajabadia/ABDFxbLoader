@@ -464,15 +464,18 @@ El documento describe **todos** los endpoints:
   `LibraryBankExportRequestDto`, `LibraryBankConvertRequestDto`,
   `LibraryBankRestoreRequestDto`, `LibraryBankInspectRequestDto`,
   `LibraryDllPreferenceRequestDto`, `LibraryInspectPackageRequestDto`,
-  `LibraryImportPackageRequestDto`, `LibraryInspectDllDto` y `LibraryCreateCustomPluginDto`; respuestas
+  `LibraryImportPackageRequestDto`, `LibraryInspectDllDto`, `LibraryCreateCustomPluginDto`
+  y `LibraryAuditRequestDto`; respuestas
   `LibraryScanResponseDto`, `LibraryOperationResponseDto`,
   `LibraryBatchResponseDto` (con `LibraryBatchPluginResultDto` por plugin),
   `LibraryBanksListResponseDto`, `LibraryBanksImportResponseDto`,
   `LibraryBankExportResponseDto`, `LibraryBankConvertResponseDto`,
   `LibraryBankRestoreResponseDto`, `LibraryBankInspectResponseDto`,
   `LibraryDllPreferenceResponseDto`, `LibraryInspectPackageResponseDto`,
-  `LibraryImportPackageResponseDto`, `LibraryInspectDllResponseDto` y
-  `LibraryCreateCustomPluginResponseDto`; banco
+  `LibraryImportPackageResponseDto`, `LibraryInspectDllResponseDto`,
+  `LibraryCreateCustomPluginResponseDto` y `LibraryAuditResultDto` (con
+  `LibraryAuditPluginDto`, `LibraryAuditIssueDto`, `LibraryAuditProposalDto` y
+  `LibraryAuditDllDto`); banco
   (`BankInfoDto`, `BankReferenceDto`, `BankImportResultDto`, `PluginBankDto`,
   `BankExportFileDto`, `BankBackupFileDto`, `BankBackupSummaryDto`) y
   errores (`LibraryErrorDto`, `LibraryConflictErrorDto`,
@@ -702,6 +705,76 @@ cabecera), si el cargador no es PE32 i386 **o si el archivo del `dll_name` no
 existe** (el host no tendría nada que cargar); `null` solo si el DLL está pero no
 se pudo leer. Los motivos van en `compatibilityIssues`. No se carga el DLL
 entero: solo se leen las cabeceras DOS/PE.
+
+### `POST /library/audit`
+
+```json
+{
+  "libraryRoot": "C:\\VFX\\Library"
+}
+```
+
+Audita los datos de la librería en **modo lectura**: recorre `plugs\\*`, lee
+`vfxinfo.txt` y `fxbLoader.meta.json`, inspecciona el DLL (arquitectura y
+exports) y devuelve, por plugin, qué falta (`issues`) y qué se puede rellenar
+desde lo que ya hay en disco (`proposals`). No escribe ningún archivo: la UI lo
+usa para el cajón «Datos» y la decisión de aplicar queda para quien la lea.
+
+```json
+{
+  "libraryRoot": "C:\\VFX\\Library",
+  "plugsPath": "C:\\VFX\\Library\\plugs",
+  "scannedAt": "2026-10-30T12:00:00.000Z",
+  "total": 19,
+  "complete": 1,
+  "incomplete": 18,
+  "issueCount": 89,
+  "proposalCount": 89,
+  "plugins": [
+    {
+      "name": "SuperWave P8",
+      "path": "C:\\VFX\\Library\\plugs\\SuperWave P8",
+      "hasVfxinfo": true,
+      "hasMeta": false,
+      "dll": {
+        "declared": "SuperWave P8/P8.dll",
+        "resolved": "SuperWave P8/P8.dll",
+        "bitness": 32,
+        "vstEntrypoint": "main"
+      },
+      "issues": [
+        {
+          "field": "meta",
+          "severity": "missing",
+          "message": "no existe fxbLoader.meta.json: el catálogo no tiene fabricante, género ni notas"
+        }
+      ],
+      "proposals": [
+        { "field": "meta.id", "value": "1398231096", "source": "vfxinfo" },
+        { "field": "meta.genre", "value": "Synth", "source": "derived", "note": "deducido de is_synth" }
+      ]
+    }
+  ]
+}
+```
+
+`severity` separa lo que bloquea de lo informativo: `missing` e `invalid` dejan
+el plugin incompleto (y son lo único que cuenta en `incomplete`), mientras que
+`note` no —una versión sin declarar o unas notas vacías no rompen nada—. El
+campo lleva prefijo de origen: `vfxinfo.*`, `meta.*`, `dll` y `dll.bitness`/
+`dll.vst`.
+
+`source` dice de dónde sale cada valor propuesto: `vfxinfo` (la identidad ya
+declarada, p. ej. `meta.id`), `meta` (lo que el catálogo ya tenía y falta en el
+vfxinfo), `dll` (la ruta real del binario que `dll_name` debería nombrar) o
+`derived` (género deducido de `is_synth`, abreviatura del nombre, versión por
+defecto). Solo se propone lo que falta: un `meta.id` ya escrito no vuelve a
+aparecer como rellenable.
+
+Los campos que el binario calcula al cargar (`is_synth`, `parameter_count`,
+`program_count`, `has_editor`, `editor_width`, `editor_height`) se marcan como
+`missing` cuando faltan, pero **no llevan propuesta**: el análisis estático no
+puede inventarlos sin cargar el DLL.
 
 ### `POST /library/loader/add`
 
@@ -1556,24 +1629,27 @@ El botón **Auditoría** de la cabecera abre el cajón modal «Auditoría durabl
 asociaciones» (`#audit-drawer`), que monta este mismo snapshot sobre
 `mountTable`: orden por `ts` (más reciente arriba por defecto), filtros nativos
 de tipo (`multi-select` por `kind`) y de rango de fechas, paginación y estado
-vacío semántico. El **filtro por plugin** es un campo del propio cajón que se
-manda al servidor (`plugin` del listado): el snapshot trae los últimos 200
-eventos del fichero completo, así que estrecharlo en el navegador solo vería
-esa cola y no el histórico. El resumen del cajón marca «filtrado por X» cuando
-el filtro está activo y se limpia al abrir o cerrar el cajón.
+vacío semántico. La única búsqueda es la que monta el sistema de tablas dentro
+del cajón: estrecha en el navegador el snapshot que el visor pide al servidor
+(hasta `AUDIT_SNAPSHOT_LIMIT` eventos, sin tope práctico para el historial) y,
+con 300 ms de espera, dispara `onSearchChange` para que la vista recargue con
+`q` en el cuerpo —el servidor estrecha allí mismo el mismo texto por columna—.
+Así buscar alcanza todo el histórico del fichero sin descargar el almacén
+entero en cada tecla.
 
 Con el cajón abierto el visor **se recarga solo** cuando el almacén crece: cada
-2 s compara la huella `size:total` del snapshot con la última pintada y, si
-cambia, recarga en silencio —sin el estado «leyendo» ni vaciar la tabla ante un
-fallo puntual—, conservando el orden, los filtros y la página elegidos. Al
+2 s compara la huella `size:total:length` del snapshot con la última pintada y,
+si cambia, recarga en silencio —sin el estado «leyendo» ni vaciar la tabla ante
+un fallo puntual—, conservando el orden, los filtros y la página elegidos. Al
 cerrar el cajón el sondeo se detiene.
 
 Lo cubren [test/ui.test.ts](test/ui.test.ts) (marcado y módulo),
 [test/client.test.ts](test/client.test.ts) (`associationAudit.list` con el
 filtro por plugin en el cuerpo) y el e2e del visor en
 [test/e2e/browser.test.ts](test/e2e/browser.test.ts): snapshot vacío, evento
-real de instalación, filtros por tipo y fecha, filtro por plugin y recarga sola
-al entrar un evento nuevo sin pulsar «Actualizar».
+real de instalación, filtros por tipo y fecha, búsqueda de la tabla con su
+recarga por `q` en el servidor y recarga sola al entrar un evento nuevo sin
+pulsar «Actualizar».
 
 ## Diálogo nativo
 
@@ -1747,6 +1823,9 @@ src/library/
   library-import.service.ts    inspección recursiva e importación selectiva de paquetes
   library-import.dto.ts        esquemas y ejemplos OpenAPI de paquetes
   library.types.ts             modelo, peticiones y errores
+  library-audit.types.ts       huecos y propuestas de datos por plugin
+  library-audit.service.ts     auditoría de solo lectura de vfxinfo, meta y DLL
+  library-audit.dto.ts         esquemas y ejemplos OpenAPI de la auditoría
   library.service.ts           scan / install / uninstall / importBanks / inspectDll / createCustomPlugin
   library.controller.ts        REST + decoradores OpenAPI
   library.dto.ts               esquemas y ejemplos de Swagger

@@ -66,6 +66,12 @@ export class PackagePluginSummaryDto implements PackagePluginSummary {
     type: () => PackagePluginMatchedWizardDto,
   })
   matchedWizard?: PackagePluginMatchedWizardDto | null;
+
+  @ApiPropertyOptional({
+    description: 'Wizards candidatos que requieren confirmación antes de preparar el plugin',
+    type: () => [PackagePluginMatchedWizardDto],
+  })
+  wizardCandidates?: PackagePluginMatchedWizardDto[];
 }
 
 export class PackagePluginMatchedWizardDto {
@@ -80,6 +86,59 @@ export class PackagePluginMatchedWizardDto {
 
   @ApiProperty({ description: 'Indica si es un instrumento sintetizador', example: true })
   isSynth!: boolean;
+
+  @ApiProperty({ description: 'Campo que permitió confirmar el wizard; suggestion indica coincidencia aproximada', enum: ['id', 'dll', 'name', 'suggestion', 'selected'], example: 'id' })
+  matchReason!: 'id' | 'dll' | 'name' | 'suggestion' | 'selected';
+
+  @ApiProperty({ description: 'Ruta DLL esperada por el wizard', example: 'V-Station.dll' })
+  dllName!: string;
+
+  @ApiProperty({ type: [String], description: 'Archivos adicionales que requiere el wizard' })
+  filesToCopy!: string[];
+
+  @ApiProperty({ type: [String], description: 'Archivos requeridos que faltan en el plugin importado' })
+  missingFilesToCopy!: string[];
+
+  @ApiProperty({ type: [String], description: 'Directorios adicionales que requiere el wizard' })
+  dirsToCopy!: string[];
+
+  @ApiProperty({ type: [String], description: 'Directorios requeridos que faltan en el plugin importado' })
+  missingDirsToCopy!: string[];
+
+  @ApiProperty({ type: [String], description: 'Archivos que define crear el wizard' })
+  filesToCreate!: string[];
+
+  @ApiProperty({ type: [String], description: 'Archivos definidos por el wizard que faltan en el plugin importado' })
+  missingFilesToCreate!: string[];
+
+  @ApiProperty({ description: 'El wizard incluye claves de registro para revisar/importar manualmente' })
+  hasRegistryKeys!: boolean;
+
+  @ApiProperty({ description: 'El paquete ya contiene registry_keys.reg' })
+  registryFilePresent!: boolean;
+
+  @ApiProperty({ description: 'El wizard aporta instrucciones readme' })
+  hasReadme!: boolean;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Documentación readme del wizard para revisar antes o después de importar' })
+  readme!: string | null;
+
+  @ApiProperty({ description: 'Notas de compatibilidad y documentación del wizard' })
+  notes!: string;
+
+  @ApiProperty({ type: [String], description: 'Enlaces simbólicos definidos por el wizard; requieren acción manual' })
+  symlinks!: string[];
+
+  @ApiProperty({ type: String, description: 'Claves de Registro del wizard para revisión e importación manual' })
+  registryKeys!: string;
+}
+
+export class WizardPreparationWarningDto {
+  @ApiProperty({ description: 'Plugin afectado' })
+  plugin!: string;
+
+  @ApiProperty({ description: 'Requisito pendiente o acción manual' })
+  message!: string;
 }
 
 export class PackageBankSummaryDto implements PackageBankSummary {
@@ -209,6 +268,14 @@ export class ImportPackageDto implements ImportPackageInput {
   selectedBanks?: string[];
 
   @ApiPropertyOptional({
+    description: 'Wizard confirmado por nombre o ruta absoluta de origen del plugin; una cadena vacía significa importar sin wizard',
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { 'V-Station Demo': '1316377392' },
+  })
+  selectedWizards?: Record<string, string>;
+
+  @ApiPropertyOptional({
     description: 'Política en caso de que ya exista en destino',
     enum: ['skip', 'overwrite'],
     default: 'skip',
@@ -271,6 +338,12 @@ export class ImportPackageResultDto implements ImportPackageResult {
   })
   repairedBanks?: string[];
 
+  @ApiPropertyOptional({ type: [String], description: 'Plugins preparados de forma segura con su wizard tras importarlos' })
+  preparedPlugins?: string[];
+
+  @ApiPropertyOptional({ type: [WizardPreparationWarningDto], description: 'Carencias o pasos manuales de preparación por wizard' })
+  wizardWarnings?: WizardPreparationWarningDto[];
+
   @ApiProperty({ description: 'Total de bytes copiados', example: 6287408 })
   totalCopiedBytes!: number;
 }
@@ -299,7 +372,23 @@ export const INSPECT_PACKAGE_RESULT_EXAMPLE: InspectPackageResultDto = {
         name: 'V-Station Demo',
         vendor: 'Novation',
         isSynth: true,
+        matchReason: 'id',
+        dllName: 'V-Station.dll',
+        filesToCopy: [],
+        missingFilesToCopy: [],
+        dirsToCopy: [],
+        missingDirsToCopy: [],
+        filesToCreate: [],
+        missingFilesToCreate: [],
+        hasRegistryKeys: false,
+        registryFilePresent: false,
+        hasReadme: true,
+        readme: 'Copy the V-Station DLL into the plugin folder.',
+        notes: 'Novation V-Station instrument',
+        symlinks: [],
+        registryKeys: '',
       },
+      wizardCandidates: [],
     },
   ],
   banks: [
@@ -324,6 +413,7 @@ export const IMPORT_PACKAGE_EXAMPLE: ImportPackageDto = {
   targetLibraryRoot: 'D:\\desarrollos\\ABDSynths\\ABDfxbloader\\_banks\\storage',
   selectedPlugins: ['V-Station Demo'],
   selectedBanks: ['000_Novation V-Station demo.vfxbank'],
+  selectedWizards: { 'V-Station Demo': '1316377392' },
   collisionPolicy: 'skip',
   repairBanks: true,
 };

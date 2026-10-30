@@ -104,6 +104,23 @@ export interface WizardCreateVfxinfoInput {
   force?: boolean;
 }
 
+export interface WizardCreateFromPluginInput {
+  /** Carpeta del plugin en la librería (la que contiene `vfxinfo.txt`). */
+  pluginDir: string;
+  /** Sobrescribe el `.vfxwizard` si ya existe en el catálogo local. */
+  overwrite?: boolean;
+}
+
+export interface WizardCreateFromPluginResult {
+  created: boolean;
+  /** Ruta absoluta del `.vfxwizard` escrito en el catálogo local. */
+  wizardPath: string;
+  /** Registro indexado a partir de la carpeta del plugin. */
+  record: WizardRecord;
+  /** Avisos sobre DLL, arquitectura o datos incompletos. */
+  warnings: string[];
+}
+
 export interface WizardInstallPluginInput {
   wizardId: string;
   libraryRoot: string;
@@ -111,6 +128,10 @@ export interface WizardInstallPluginInput {
   pluginFolderName?: string;
   overwrite?: boolean;
   initializeBank?: boolean;
+  /** Carpeta con archivos extra que el wizard necesita (para copiar filesToCopy/dirsToCopy). */
+  sourceFilesRoot?: string;
+  /** Importar automáticamente el .reg generado en el Registro de Windows (solo HKCU). */
+  autoImportRegistry?: boolean;
 }
 
 export interface WizardInstallPluginResult {
@@ -123,8 +144,12 @@ export interface WizardInstallPluginResult {
   metaCreated: boolean;
   registryFileCreated: boolean;
   registryFilePath: string | null;
+  /** Si se ha importado automáticamente el .reg (solo cuando autoImportRegistry=true). */
+  registryImported?: boolean;
   requiredFiles: string[];
   requiredDirs: string[];
+  copiedFiles?: string[];
+  copiedDirs?: string[];
   warnings: string[];
   readme: string | null;
 }

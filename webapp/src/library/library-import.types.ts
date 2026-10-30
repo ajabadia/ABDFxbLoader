@@ -3,6 +3,28 @@
  * carpetas de plugins con sus bancos) hacia la librería VFX activa.
  */
 
+export interface PackageWizardSummary {
+  id: string;
+  name: string;
+  vendor: string;
+  isSynth: boolean;
+  matchReason: 'id' | 'dll' | 'name' | 'suggestion' | 'selected';
+  dllName: string;
+  filesToCopy: string[];
+  missingFilesToCopy: string[];
+  dirsToCopy: string[];
+  missingDirsToCopy: string[];
+  filesToCreate: string[];
+  missingFilesToCreate: string[];
+  hasRegistryKeys: boolean;
+  registryFilePresent: boolean;
+  hasReadme: boolean;
+  readme: string | null;
+  notes: string;
+  symlinks: string[];
+  registryKeys: string;
+}
+
 export interface PackagePluginSummary {
   /** Nombre de la carpeta del plugin (ej. "V-Station Demo"). */
   name: string;
@@ -25,12 +47,9 @@ export interface PackagePluginSummary {
   /** Ya existe una carpeta homónima en `<targetLibraryRoot>/plugs/<name>`. */
   alreadyExistsInTarget: boolean;
   /** Wizard oficial de SM Pro Audio / VFX que coincide con este plugin, si existe. */
-  matchedWizard?: {
-    id: string;
-    name: string;
-    vendor: string;
-    isSynth: boolean;
-  } | null;
+  matchedWizard?: PackageWizardSummary | null;
+  /** Opciones candidatas para confirmar una coincidencia dudosa. */
+  wizardCandidates?: PackageWizardSummary[];
 }
 
 export interface PackageBankSummary {
@@ -89,6 +108,8 @@ export interface ImportPackageInput {
   selectedPlugins?: string[];
   /** Lista opcional de nombres de bancos a importar. Si se omite, importa todos. */
   selectedBanks?: string[];
+  /** Wizard confirmado por el usuario para cada plugin, indexado por nombre o sourceDir. */
+  selectedWizards?: Record<string, string>;
   /** Política si la carpeta ya existe en destino: 'skip' (omite) o 'overwrite' (sobrescribe). */
   collisionPolicy?: ImportCollisionPolicy;
   /** Si es true, repara y sincroniza automáticamente los IDs y descriptores del banco con el plugin destino al importar. */
@@ -112,6 +133,10 @@ export interface ImportPackageResult {
   skippedBanks: ImportPackageSkippedItem[];
   /** Bancos que fueron reparados durante la importación. */
   repairedBanks?: string[];
+  /** Plugins cuyo wizard se aplicó de forma segura tras importar. */
+  preparedPlugins?: string[];
+  /** Requisitos de wizard que siguen faltando o necesitan atención manual. */
+  wizardWarnings?: { plugin: string; message: string }[];
   /** Total de bytes copiados durante la importación. */
   totalCopiedBytes: number;
 }

@@ -28,6 +28,11 @@ import type { BankImportStreamEvent } from '../src/client/bank-import-stream';
 import type { BatchStreamEvent } from '../src/client/batch-stream';
 import { buildBank } from './helpers/fxb-bank';
 
+// Los descartes de esta suite borran directo a disco: no se debe llenar la
+// Papelera real con cada corrida. El mensaje real lo cubre `trash.test.ts`,
+// que sí usa la papelera del sistema.
+process.env['FXB_TRASH_MODE'] = 'direct';
+
 /**
  * Comprobaciones en tiempo de compilación: si los tipos generados dejan de
  * derivarse del contrato (o alguien relaja los métodos a `any`), `tsc` falla

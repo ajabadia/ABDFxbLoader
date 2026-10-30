@@ -32,7 +32,13 @@ import {
   LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE,
   LIBRARY_INSPECT_DLL_RESPONSE_EXAMPLE,
 } from '../src/library/library.dto';
+import { LIBRARY_AUDIT_EXAMPLE } from '../src/library/library-audit.dto';
 import { buildBank } from './helpers/fxb-bank';
+
+// Los descartes de esta suite borran directo a disco: no se debe llenar la
+// Papelera real con cada corrida. El mensaje real lo cubre `trash.test.ts`,
+// que sí usa la papelera del sistema.
+process.env['FXB_TRASH_MODE'] = 'direct';
 
 /**
  * Los ejemplos de Swagger no son decoración: se ejecutan contra la API real y
@@ -98,6 +104,30 @@ test('los ejemplos de /library coinciden con las respuestas reales', async (t) =
   const scan = await http().post('/library/scan').send({ libraryRoot: data.root }).expect(200);
   assertSameKeys(scan.body, LIBRARY_SCAN_EXAMPLE, 'scan 200');
   assertSameKeys(scan.body.plugins[0], LIBRARY_SCAN_EXAMPLE.plugins[0]!, 'scan 200: plugin');
+
+  const audited = await http().post('/library/audit').send({ libraryRoot: data.root }).expect(200);
+  assertSameKeys(audited.body, LIBRARY_AUDIT_EXAMPLE, 'audit 200');
+  assertSameKeys(audited.body.plugins[0], LIBRARY_AUDIT_EXAMPLE.plugins[0]!, 'audit 200: plugin');
+  assertSameKeys(
+    audited.body.plugins[0].dll,
+    LIBRARY_AUDIT_EXAMPLE.plugins[0]!.dll,
+    'audit 200: DLL',
+  );
+  assertSameKeys(
+    audited.body.plugins[0].issues[0],
+    LIBRARY_AUDIT_EXAMPLE.plugins[0]!.issues[0]!,
+    'audit 200: hueco',
+  );
+  assertSameKeys(
+    audited.body.plugins[0].proposals[0],
+    LIBRARY_AUDIT_EXAMPLE.plugins[0]!.proposals[0]!,
+    'audit 200: propuesta',
+  );
+  const auditRelative = await http()
+    .post('/library/audit')
+    .send({ libraryRoot: 'libreria' })
+    .expect(400);
+  assertSameKeys(auditRelative.body, LIBRARY_SCAN_PATH_ERROR_EXAMPLE, 'audit 400');
 
   const dry = await http()
     .post('/library/loader/add')

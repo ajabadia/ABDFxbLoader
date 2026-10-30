@@ -9,12 +9,12 @@
  */
 import type {
   AssociationAuditSnapshotResponse,
+  LibraryAuditResponse,
   LibraryBanksImportResponse,
   LibraryBanksListResponse,
   LibraryCreateCustomPluginResponse,
   LibraryInspectDllResponse,
   LibraryInspectPackageResponse,
-  LibraryImportPackageResponse,
   LibraryScanResponse,
   PluginLogSnapshotResponse,
   PluginMetaSnapshotResponse,
@@ -56,13 +56,8 @@ import {
   rememberRecent,
   rememberRecentPaths,
 } from '../recents.js';
-import type {
-  BankImportStreamEvent,
-  BankImportStreamResult,
-} from '../../client/bank-import-stream.js';
-import type { BatchStreamEvent, BatchStreamResult } from '../../client/batch-stream.js';
 import { client, describeError, isFxbApiError } from './api.js';
-import { byId, cell, cloneRow, query } from './dom.js';
+import { byId } from './dom.js';
 import { mountTable, closeAllRowMenus, type TableController, type TableView } from '../table.js';
 
 const STORAGE_ROOT = 'fxbLoader.libraryRoot';
@@ -70,9 +65,11 @@ const STORAGE_DLL = 'fxbLoader.dllSource';
 const STORAGE_RECENT_ROOTS = 'fxbLoader.recentLibraryRoots';
 const STORAGE_RECENT_DLLS = 'fxbLoader.recentDlls';
 const STORAGE_RECENT_BANKS = 'fxbLoader.recentBanks';
+const STORAGE_CAPTURE_TASK = 'fxbLoader.captureTask';
 
 type ScanPlugin = LibraryScanResponse['plugins'][number];
 type ImportResults = LibraryBanksImportResponse['results'];
+type ImportResult = ImportResults[number];
 type ConfigSnapshot = LibraryBanksListResponse['config'];
 type ExportOrder = RequestBody<'/library/banks/export', 'post'>['endianness'];
 
@@ -94,10 +91,14 @@ const els = {
   form: byId<HTMLFormElement>('scan-form'),
   root: byId<HTMLInputElement>('library-root'),
   rootRecents: byId<HTMLDataListElement>('library-root-recents'),
+  rootRecentWrap: byId<HTMLElement>('library-root-recent-wrap'),
+  rootRecentSelect: byId<HTMLSelectElement>('library-root-recent-select'),
   rootWarning: byId<HTMLParagraphElement>('root-warning'),
   rootBrowse: byId<HTMLButtonElement>('root-browse'),
   dll: byId<HTMLInputElement>('dll-source'),
   dllRecents: byId<HTMLDataListElement>('dll-source-recents'),
+  dllRecentWrap: byId<HTMLElement>('dll-source-recent-wrap'),
+  dllRecentSelect: byId<HTMLSelectElement>('dll-source-recent-select'),
   dllBrowse: byId<HTMLButtonElement>('dll-browse'),
   recentsClear: byId<HTMLButtonElement>('recents-clear'),
   scanButton: byId<HTMLButtonElement>('scan-button'),
@@ -119,7 +120,7 @@ const els = {
   batchClock: byId<HTMLParagraphElement>('batch-clock'),
   batchErrors: byId<HTMLDetailsElement>('batch-errors'),
   batchErrorsLabel: byId<HTMLElement>('batch-errors-label'),
-  batchErrorList: byId<HTMLUListElement>('batch-error-list'),
+  batchErrorList: byId<HTMLElement>('batch-error-list'),
   banks: byId<HTMLElement>('banks'),
   banksTitle: byId<HTMLElement>('banks-plugin'),
   banksClose: byId<HTMLButtonElement>('banks-close'),
@@ -140,7 +141,7 @@ const els = {
   importButton: byId<HTMLButtonElement>('import-button'),
   importCancel: byId<HTMLButtonElement>('import-cancel'),
   importProgress: byId<HTMLProgressElement>('import-progress'),
-  importResults: byId<HTMLUListElement>('import-results'),
+  importResults: byId<HTMLElement>('import-results'),
   exportBank: byId<HTMLSelectElement>('export-bank'),
   exportOrder: byId<HTMLSelectElement>('export-order'),
   exportOverwrite: byId<HTMLInputElement>('export-overwrite'),
@@ -194,6 +195,8 @@ const els = {
   pluginWizardPlugin: byId<HTMLElement>('plugin-wizard-plugin'),
   pluginWizardClose: byId<HTMLButtonElement>('plugin-wizard-close'),
   pluginWizardEmpty: byId<HTMLElement>('plugin-wizard-empty'),
+  pluginWizardCreateWrap: byId<HTMLElement>('plugin-wizard-create-wrap'),
+  pluginWizardCreateBtn: byId<HTMLButtonElement>('plugin-wizard-create-btn'),
   pluginWizardContent: byId<HTMLElement>('plugin-wizard-content'),
   pluginWizardName: byId<HTMLElement>('plugin-wizard-name'),
   pluginWizardSource: byId<HTMLElement>('plugin-wizard-source'),
@@ -237,6 +240,9 @@ const els = {
   wizardsCount: byId<HTMLElement>('wizards-count'),
   wizardsTable: byId<HTMLDivElement>('wizards-table'),
   wizardsStatus: byId<HTMLParagraphElement>('wizards-status'),
+  settingsNavBtn: byId<HTMLButtonElement>('settings-nav-btn'),
+  settingsDrawer: byId<HTMLElement>('settings-drawer'),
+  settingsClose: byId<HTMLButtonElement>('settings-close'),
   importPkgNavBtn: byId<HTMLButtonElement>('import-pkg-nav-btn'),
   importPackageDrawer: byId<HTMLElement>('import-package-drawer'),
   importPackageClose: byId<HTMLButtonElement>('import-package-close'),
@@ -260,7 +266,6 @@ const els = {
   auditDrawer: byId<HTMLElement>('audit-drawer'),
   auditClose: byId<HTMLButtonElement>('audit-close'),
   auditRefresh: byId<HTMLButtonElement>('audit-refresh'),
-  auditPluginFilter: byId<HTMLInputElement>('audit-plugin-filter'),
   auditPath: byId<HTMLElement>('audit-path'),
   auditSummary: byId<HTMLElement>('audit-summary'),
   auditTable: byId<HTMLElement>('audit-table'),
@@ -269,6 +274,20 @@ const els = {
   auditDetailTitle: byId<HTMLElement>('audit-record-detail-title'),
   auditDetailFields: byId<HTMLElement>('audit-record-detail-fields'),
   auditDetailClose: byId<HTMLButtonElement>('audit-record-detail-close'),
+  dataAuditNavBtn: byId<HTMLButtonElement>('data-audit-nav-btn'),
+  dataAuditDrawer: byId<HTMLElement>('data-audit-drawer'),
+  dataAuditClose: byId<HTMLButtonElement>('data-audit-close'),
+  dataAuditRefresh: byId<HTMLButtonElement>('data-audit-refresh'),
+  dataAuditPath: byId<HTMLElement>('data-audit-path'),
+  dataAuditSummary: byId<HTMLElement>('data-audit-summary'),
+  dataAuditTable: byId<HTMLElement>('data-audit-table'),
+  dataAuditStatus: byId<HTMLParagraphElement>('data-audit-status'),
+  dataAuditDetail: byId<HTMLElement>('data-audit-detail'),
+  dataAuditDetailTitle: byId<HTMLElement>('data-audit-detail-title'),
+  dataAuditDetailFields: byId<HTMLElement>('data-audit-detail-fields'),
+  dataAuditDetailGaps: byId<HTMLElement>('data-audit-detail-gaps'),
+  dataAuditDetailProposals: byId<HTMLElement>('data-audit-detail-proposals'),
+  dataAuditDetailClose: byId<HTMLButtonElement>('data-audit-detail-close'),
   customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
   customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
   customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
@@ -304,6 +323,53 @@ const els = {
   customPluginCreatedPaths: byId<HTMLElement>('custom-plugin-created-paths'),
   customPluginCreatedWarnings: byId<HTMLElement>('custom-plugin-created-warnings'),
   customPluginStatus: byId<HTMLParagraphElement>('custom-plugin-status'),
+  // Capture
+  captureNavBtn: byId<HTMLButtonElement>('capture-nav-btn'),
+  captureDrawer: byId<HTMLElement>('capture-drawer'),
+  captureClose: byId<HTMLButtonElement>('capture-close'),
+  captureStartBtn: byId<HTMLButtonElement>('capture-start-btn'),
+  captureStopBtn: byId<HTMLButtonElement>('capture-stop-btn'),
+  captureLiveIndicator: byId<HTMLElement>('capture-live-indicator'),
+  captureLiveMessage: byId<HTMLElement>('capture-live-message'),
+  captureProgressWrap: byId<HTMLElement>('capture-progress-wrap'),
+  captureProgressBar: byId<HTMLElement>('capture-progress-bar'),
+  captureProgressCount: byId<HTMLElement>('capture-progress-count'),
+  captureProgressRoot: byId<HTMLElement>('capture-progress-root'),
+  captureProgressNative: byId<HTMLProgressElement>('capture-progress-native'),
+  captureLogState: byId<HTMLElement>('capture-log-state'),
+  captureFinishBtn: byId<HTMLButtonElement>('capture-finish-btn'),
+  capturePackageBtn: byId<HTMLButtonElement>('capture-package-btn'),
+  captureVmachineBtn: byId<HTMLButtonElement>('capture-vmachine-btn'),
+  captureRefreshStagingBtn: byId<HTMLButtonElement>('capture-refresh-staging-btn'),
+  captureStep1Status: byId<HTMLElement>('capture-step1-status'),
+  captureStep2Status: byId<HTMLElement>('capture-step2-status'),
+  captureStep3Status: byId<HTMLElement>('capture-step3-status'),
+  captureStep4Status: byId<HTMLElement>('capture-step4-status'),
+  captureStartInfo: byId<HTMLElement>('capture-start-info'),
+  captureSnapshotBefore: byId<HTMLElement>('capture-snapshot-before'),
+  captureSnapshotSummary: byId<HTMLElement>('capture-snapshot-summary'),
+  captureViewSnapshotBtn: byId<HTMLButtonElement>('capture-view-snapshot-btn'),
+  captureDownloadSnapshotBtn: byId<HTMLButtonElement>('capture-download-snapshot-btn'),
+  captureSnapshotDialog: byId<HTMLDialogElement>('capture-snapshot-dialog'),
+  captureSnapshotDialogClose: byId<HTMLButtonElement>('capture-snapshot-dialog-close'),
+  captureSnapshotDialogSummary: byId<HTMLElement>('capture-snapshot-dialog-summary'),
+  captureSnapshotContent: byId<HTMLPreElement>('capture-snapshot-content'),
+  captureFinishInfo: byId<HTMLElement>('capture-finish-info'),
+  captureDiffId: byId<HTMLElement>('capture-diff-id'),
+  captureFilesAdded: byId<HTMLElement>('capture-files-added'),
+  captureFilesModified: byId<HTMLElement>('capture-files-modified'),
+  captureFilesDeleted: byId<HTMLElement>('capture-files-deleted'),
+  captureRegistryCount: byId<HTMLElement>('capture-registry-count'),
+  captureStagingInfo: byId<HTMLElement>('capture-staging-info'),
+  captureStagingCount: byId<HTMLElement>('capture-staging-count'),
+  captureStagingList: byId<HTMLElement>('capture-staging-list'),
+  capturePluginName: byId<HTMLInputElement>('capture-plugin-name'),
+  capturePluginVendor: byId<HTMLInputElement>('capture-plugin-vendor'),
+  captureVmachineInfo: byId<HTMLElement>('capture-vmachine-info'),
+  captureVmachinePath: byId<HTMLElement>('capture-vmachine-path'),
+  captureWizardPath: byId<HTMLElement>('capture-wizard-path'),
+  captureLog: byId<HTMLElement>('capture-log'),
+  captureStatus: byId<HTMLParagraphElement>('capture-status'),
 };
 
 interface BanksState {
@@ -366,6 +432,8 @@ let banksBusy = false;
 let scanData: LibraryScanResponse | null = null;
 /** Fallos del último lote, con su reintento individual. */
 let batchFailures: BatchFailure[] = [];
+/** Tabla de los fallos del lote, montada sobre `mountTable`. */
+let batchErrorsTableController: TableController<BatchFailure> | null = null;
 /**
  * Plugins del último lote que quedaron sin confirmar (cancelado o cortado),
  * con la acción que había que aplicarles. Alimenta el botón «Reanudar».
@@ -384,6 +452,8 @@ let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
 let banksTableController: TableController<LibraryBanksListResponse['banks'][number]> | null = null;
+/** Tabla de los resultados de importación, montada sobre `mountTable`. */
+let importResultsTableController: TableController<ImportResult> | null = null;
 let metaState: MetaState | null = null;
 let logTableController: TableController<PluginLogSnapshotResponse['entries'][number]> | null = null;
 let logDetailOpener: HTMLButtonElement | null = null;
@@ -394,6 +464,21 @@ let wizardsTableController: TableController<WizardListResponse['items'][number]>
 let wizardsSort: { columnId: string; direction: 'asc' | 'desc' } = { columnId: 'name', direction: 'asc' };
 /** Última búsqueda enviada al servidor; el reordenar sobre ella lanza una recarga. */
 let wizardsQuery = '';
+
+// Capture state
+let captureSnapshotBeforeId: string | null = null;
+let captureDiffId: string | null = null;
+let captureTaskId: string | null = readStorage(STORAGE_CAPTURE_TASK) || null;
+let captureTaskPoll: ReturnType<typeof setInterval> | null = null;
+let capturePollInFlight = false;
+let captureLastProgressLogAt = 0;
+let captureLastProgressMessage = '';
+let captureLastProgressEntries = -1;
+let captureLastPollErrorAt = 0;
+let captureTaskKind: 'start' | 'finish' | null = null;
+let captureSessionInitialized = false;
+let captureSnapshotText = '';
+let captureStagingLoaded = false;
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
@@ -436,6 +521,37 @@ function renderDatalist(list: HTMLDataListElement, values: readonly string[]): v
       return option;
     }),
   );
+}
+
+/**
+ * Desplegable de rutas usadas: la alternativa de selección al campo de texto.
+ * Sin historial no se enseña nada, y la opción de cabecera deja el campo como
+ * esté: elegir una ruta del historial la escribe en el campo y la usa.
+ */
+function renderRecentSelect(
+  wrap: HTMLElement,
+  select: HTMLSelectElement,
+  values: readonly string[],
+  current: string,
+  placeholder: string,
+): void {
+  wrap.hidden = values.length === 0;
+  select.replaceChildren();
+  if (values.length === 0) return;
+
+  const head = document.createElement('option');
+  head.value = '';
+  head.textContent = placeholder;
+  select.append(head);
+
+  for (const value of values) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  }
+
+  select.value = values.includes(current) ? current : '';
 }
 
 /**
@@ -538,6 +654,20 @@ function clearRecentBanks(): void {
 function renderRecents(): void {
   renderDatalist(els.rootRecents, recentRoots);
   renderDatalist(els.dllRecents, recentDlls);
+  renderRecentSelect(
+    els.rootRecentWrap,
+    els.rootRecentSelect,
+    recentRoots,
+    els.root.value.trim(),
+    'Elegir una carpeta usada…',
+  );
+  renderRecentSelect(
+    els.dllRecentWrap,
+    els.dllRecentSelect,
+    recentDlls,
+    els.dll.value.trim(),
+    'Elegir una DLL usada…',
+  );
   renderRecentBanks();
   els.recentsClear.disabled = recentRoots.length + recentDlls.length + recentBanks.length === 0;
 }
@@ -788,6 +918,93 @@ function setButtonLabel(button: HTMLButtonElement, text: string): void {
   label.textContent = text;
 }
 
+function captureLog(message: string, kind: 'info' | 'ok' | 'error' | 'busy' = 'info'): void {
+  const entry = document.createElement('div');
+  entry.className = `capture-log-entry ${kind}`;
+  const time = document.createElement('span');
+  time.className = 'capture-log-time';
+  time.textContent = new Date().toLocaleTimeString();
+  const text = document.createElement('span');
+  text.textContent = message;
+  entry.append(time, text);
+  if (els.captureLogState) {
+    els.captureLogState.textContent = kind === 'busy' ? 'En curso' : kind === 'error' ? 'Requiere atención' : kind === 'ok' ? 'Actualizado' : 'Actividad';
+    els.captureLogState.className = `capture-log-state ${kind}`;
+  }
+  if (els.captureLog) {
+    els.captureLog.prepend(entry);
+    // El registro es una consola viva: conservar más contexto en escaneos largos.
+    while (els.captureLog.children.length > 120) {
+      els.captureLog.removeChild(els.captureLog.lastChild!);
+    }
+  }
+}
+
+function setCaptureStatus(message: string, kind = 'info'): void {
+  if (els.captureStatus) {
+    els.captureStatus.textContent = message;
+    els.captureStatus.className = `status ${kind}`;
+  }
+}
+
+function setCaptureBusy(message: string, busy: boolean, stopping = false): void {
+  if (els.captureLiveMessage) els.captureLiveMessage.textContent = message;
+  if (els.captureLiveIndicator) els.captureLiveIndicator.hidden = !busy;
+  if (els.captureStopBtn) els.captureStopBtn.hidden = !busy;
+  if (els.captureStartBtn) els.captureStartBtn.disabled = busy;
+  if (els.captureFinishBtn) els.captureFinishBtn.disabled = busy || captureSnapshotBeforeId === null || captureDiffId !== null;
+  if (els.captureStopBtn) els.captureStopBtn.disabled = !busy || stopping || captureTaskId === null;
+}
+
+function stopCaptureTaskPolling(hideProgress = true): void {
+  if (captureTaskPoll !== null) clearInterval(captureTaskPoll);
+  captureTaskPoll = null;
+  capturePollInFlight = false;
+  if (hideProgress && els.captureProgressWrap) els.captureProgressWrap.hidden = true;
+  if (hideProgress && els.captureProgressNative) els.captureProgressNative.removeAttribute('value');
+}
+
+function renderCaptureTask(task: {
+  status: string; phase: string; message: string; rootsTotal: number; rootsCompleted: number;
+  currentRoot: string | null; currentPath: string | null; entriesVisited: number; filesFound: number;
+  registryRootsTotal: number; registryRootsCompleted: number; currentRegistryRoot: string | null;
+}): void {
+  const isBusy = task.status === 'running' || task.status === 'cancelling';
+  setCaptureBusy(task.status === 'cancelling' ? 'Deteniendo…' : task.message, isBusy, task.status === 'cancelling');
+  if (els.captureProgressWrap) {
+    els.captureProgressWrap.hidden = false;
+    els.captureProgressWrap.setAttribute('aria-valuemin', '0');
+  }
+  if (els.captureProgressCount) {
+    els.captureProgressCount.textContent = task.phase === 'registry'
+      ? `Registro ${task.registryRootsCompleted}/${task.registryRootsTotal} · ${task.message}`
+      : `${task.filesFound.toLocaleString()} archivos · ${task.entriesVisited.toLocaleString()} elementos revisados`;
+  }
+  if (els.captureProgressRoot) {
+    const path = task.phase === 'registry' ? task.currentRegistryRoot : (task.currentPath || task.currentRoot);
+    els.captureProgressRoot.textContent = path || '';
+    els.captureProgressRoot.title = path || '';
+  }
+  if (els.captureProgressBar) {
+    const total = task.phase === 'registry' ? task.registryRootsTotal : task.rootsTotal;
+    const done = task.phase === 'registry' ? task.registryRootsCompleted : task.rootsCompleted;
+    const ratio = total > 0 ? Math.min(100, Math.round(done * 100 / total)) : 0;
+    const finished = task.status === 'completed';
+    const isIndeterminate = isBusy && (task.phase === 'registry' || total === 0);
+    els.captureProgressBar.classList.toggle('indeterminate', isIndeterminate);
+    els.captureProgressBar.style.width = isIndeterminate ? '35%' : finished ? '100%' : `${Math.max(4, ratio)}%`;
+    els.captureProgressWrap?.setAttribute('aria-valuemax', String(Math.max(total, 1)));
+    els.captureProgressWrap?.setAttribute('aria-valuenow', String(finished ? Math.max(total, 1) : done));
+    els.captureProgressWrap?.setAttribute('aria-busy', String(isBusy));
+  }
+  if (els.captureProgressNative) {
+    const total = task.phase === 'registry' ? task.registryRootsTotal : task.rootsTotal;
+    const done = task.phase === 'registry' ? task.registryRootsCompleted : task.rootsCompleted;
+    els.captureProgressNative.max = Math.max(total, 1);
+    els.captureProgressNative.value = task.status === 'completed' ? Math.max(total, 1) : done;
+  }
+}
+
 /** Fila de la tabla para ese plugin, si sigue visible. */
 function rowForPlugin(name: string): HTMLTableRowElement | null {
   for (const row of catalogRows()) {
@@ -833,6 +1050,8 @@ function pendingResume(): { action: BatchAction; plugins: string[] } | null {
 function clearBatchErrors(): void {
   batchFailures = [];
   batchPending = null;
+  batchErrorsTableController?.destroy();
+  batchErrorsTableController = null;
   els.batchErrorList.replaceChildren();
   els.batchErrors.hidden = true;
   els.batchErrors.open = false;
@@ -1289,13 +1508,13 @@ async function fetchPlugins(): Promise<LibraryScanResponse> {
   return client.library.scan(scanBody());
 }
 
-async function scan(): Promise<void> {
-  if (busy) return;
+async function scan(): Promise<boolean> {
+  if (busy) return false;
   if (!libraryRoot) {
     setRootWarning(true);
     setStatus('Introduce la carpeta de la librería.', 'error');
     els.root.focus();
-    return;
+    return false;
   }
 
   setBusy(true);
@@ -1318,6 +1537,7 @@ async function scan(): Promise<void> {
           }`,
       'ok',
     );
+    return true;
   } catch (error) {
     scanData = null;
     updateBatchControls();
@@ -1327,9 +1547,20 @@ async function scan(): Promise<void> {
     // no contiene `plugs\`, que es justo lo que explica el aviso.
     setRootWarning(isFxbApiError(error) && error.status === 400);
     setStatus(describeError(error), 'error');
+    return false;
   } finally {
     setBusy(false);
   }
+}
+
+/**
+ * Escanea desde la pestaña de Ajustes y la cierra solo si la librería vale: con
+ * un error (ruta relativa, carpeta sin `plugs\`) la pestaña se queda abierta
+ * porque el aviso que lo explica vive dentro.
+ */
+async function scanFromSettings(): Promise<void> {
+  const ok = await scan();
+  if (ok) hidePanel(els.settingsDrawer);
 }
 
 /**
@@ -1376,7 +1607,7 @@ async function chooseLibraryRoot(): Promise<void> {
     libraryRoot = chosen;
     writeStorage(STORAGE_ROOT, chosen);
     rememberRoot(chosen);
-    await scan();
+    await scanFromSettings();
   } finally {
     els.rootBrowse.disabled = busy;
   }
@@ -1412,7 +1643,7 @@ async function chooseDll(): Promise<void> {
       setStatus('DLL elegido. Falta la carpeta de la librería para validarlo.', 'ok');
       return;
     }
-    await scan();
+    await scanFromSettings();
   } finally {
     els.dllBrowse.disabled = busy;
   }
@@ -1508,66 +1739,77 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
   }
 }
 
-async function createVfxinfoFromWizard(plugin: ScanPlugin): Promise<void> {
-  const confirmed = plugin.hasVfxinfo
-    ? window.confirm(
-        `¿Reemplazar vfxinfo.txt existente en "${plugin.name}" usando datos del wizard? Se creará respaldo vfxinfo.tx_.`,
-      )
-    : true;
-  if (!confirmed) return;
-
-  setStatus(`Generando vfxinfo.txt desde wizard para ${plugin.name}…`, 'busy');
-  try {
-    const res = await client.wizards.createVfxinfo({
-      pluginDir: plugin.path,
-      force: true,
-    });
-    const data = await fetchPlugins();
-    render(data);
-    setStatus(
-      `Creado vfxinfo.txt para ${plugin.name}${res.backedUp ? ' (con respaldo .tx_)' : ''}.`,
-      'ok',
-    );
-  } catch (error) {
-    setStatus(`No se pudo crear vfxinfo.txt: ${describeError(error)}`, 'error');
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Lotes: instalar/desinstalar todos los plugins escaneados            */
 /* ------------------------------------------------------------------ */
 
+/** Etiqueta legible de la acción que el lote intentaba aplicar. */
+function batchActionLabel(failure: BatchFailure): string {
+  return failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador';
+}
+
+/**
+ * Los fallos del lote como tabla estándar (`mountTable`): el badge de acción,
+ * el mensaje del servidor y el botón «Reintentar» en celdas propias, con la
+ * búsqueda común para cuando el lote deja media docena de errores.
+ */
+const batchErrorsTableView: TableView<BatchFailure> = {
+  columns: [
+    {
+      id: 'name',
+      label: 'Plugin',
+      sortType: 'text',
+      getValue: (failure) => failure.plugin.name,
+    },
+    {
+      id: 'action',
+      label: 'Acción',
+      sortType: 'text',
+      getValue: batchActionLabel,
+      renderNode: (failure) => {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = batchActionLabel(failure);
+        return badge;
+      },
+    },
+    {
+      id: 'message',
+      label: 'Error',
+      sortType: 'text',
+      getValue: (failure) => failure.message,
+    },
+    {
+      id: 'retry',
+      label: '',
+      sortable: false,
+      searchable: false,
+      getValue: () => '',
+      renderNode: (failure) => {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Reintentar';
+        retry.prepend(createIcon('refresh'));
+        retry.title = `Reintentar ${batchActionLabel(failure)} en ${failure.plugin.name}`;
+        retry.addEventListener('click', () => {
+          void retryFailure(failure);
+        });
+        return retry;
+      },
+    },
+  ],
+  getRowId: (failure) => failure.plugin.name,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  pageSize: 100,
+  rowClass: () => 'batch-error',
+  emptyText: 'Ningún plugin del lote ha fallado.',
+};
+
 function renderBatchErrors(): void {
-  els.batchErrorList.replaceChildren();
-
-  for (const failure of batchFailures) {
-    const item = document.createElement('li');
-    item.className = 'batch-error';
-
-    const name = document.createElement('strong');
-    name.textContent = failure.plugin.name;
-
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent =
-      failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador';
-
-    const message = document.createElement('p');
-    message.textContent = failure.message;
-
-    const retry = document.createElement('button');
-    retry.type = 'button';
-    retry.textContent = 'Reintentar';
-    retry.prepend(createIcon('refresh'));
-    retry.title = `Reintentar ${
-      failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador'
-    } en ${failure.plugin.name}`;
-    retry.addEventListener('click', () => {
-      void retryFailure(failure);
-    });
-
-    item.append(name, badge, message, retry);
-    els.batchErrorList.append(item);
+  if (batchErrorsTableController === null) {
+    batchErrorsTableController = mountTable(els.batchErrorList, batchErrorsTableView, batchFailures);
+  } else {
+    batchErrorsTableController.setRows(batchFailures);
   }
 
   els.batchErrors.hidden = batchFailures.length === 0;
@@ -1856,7 +2098,7 @@ function clearBanksView(pluginName: string): void {
   banksTableController?.destroy();
   banksTableController = null;
   els.banksTable.replaceChildren();
-  els.importResults.replaceChildren();
+  clearImportResults();
   hideImportProgress();
   els.exportBank.replaceChildren();
   els.loadFxb.checked = false;
@@ -1900,6 +2142,9 @@ function panelFocusables(panel: HTMLElement): HTMLElement[] {
 function showPanel(panel: HTMLElement, opener?: HTMLElement): void {
   panel.scrollTop = 0;
   if (openPanel === panel) return;
+  // El cajón de datos no se apila con los demás: al abrir otro panel se retira
+  // para que no queden dos cajones visibles a la vez.
+  if (openPanel === els.dataAuditDrawer) closeDataAuditDrawer();
 
   const active = document.activeElement;
   panelOpener = opener ?? (active instanceof HTMLElement && active !== panel ? active : null);
@@ -1923,7 +2168,8 @@ function hidePanel(panel: HTMLElement): void {
     els.logDrawer.hidden &&
     els.importPackageDrawer.hidden &&
     els.auditDrawer.hidden &&
-    els.customPluginDrawer.hidden
+    els.customPluginDrawer.hidden &&
+    els.settingsDrawer.hidden
   ) {
     els.drawerBackdrop.hidden = true;
     document.body.classList.remove('drawer-open');
@@ -2417,50 +2663,98 @@ function readImportPaths(): string[] {
   return paths;
 }
 
+/** Etiqueta legible del estado de un archivo importado. */
+function importStatusLabel(result: ImportResult): string {
+  return result.status === 'imported'
+    ? 'importado'
+    : result.status === 'overwritten'
+      ? 'sobrescrito'
+      : 'rechazado';
+}
+
+/** Etiqueta legible de la compatibilidad técnica de un archivo. */
+function importCompatibilityLabel(result: ImportResult): string {
+  return result.compatibility === 'compatible'
+    ? 'compatible'
+    : result.compatibility === 'incompatible'
+      ? 'incompatible'
+      : 'sin verificar';
+}
+
+/** Motivo del rechazo o los defectos de formato; `''` si no hay nada que contar. */
+function importDetailText(result: ImportResult): string {
+  const issues = result.issues ?? [];
+  return result.reason ?? (issues.length > 0 ? issues.join('; ') : '');
+}
+
+/**
+ * Los resultados de la importación como tabla estándar (`mountTable`): una
+ * fila por archivo con su estado en badge y el motivo del rechazo. Las filas
+ * conservan `import-result <status>` para que el estado siga pintándose (y
+ * localizándose) igual que con la antigua lista.
+ */
+const importResultsTableView: TableView<ImportResult> = {
+  columns: [
+    {
+      id: 'fileName',
+      label: 'Archivo',
+      sortType: 'text',
+      getValue: (result) => result.fileName,
+    },
+    {
+      id: 'status',
+      label: 'Estado',
+      sortType: 'text',
+      getValue: importStatusLabel,
+      renderNode: (result) => {
+        const badge = document.createElement('span');
+        badge.className = result.status === 'rejected' ? 'badge' : 'badge on';
+        badge.textContent = importStatusLabel(result);
+        return badge;
+      },
+    },
+    {
+      id: 'compatibility',
+      label: 'Compatibilidad',
+      sortType: 'text',
+      getValue: importCompatibilityLabel,
+      renderNode: (result) => {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = importCompatibilityLabel(result);
+        return note;
+      },
+    },
+    {
+      id: 'detail',
+      label: 'Detalle',
+      sortable: false,
+      cellClass: 'import-detail',
+      getValue: importDetailText,
+    },
+  ],
+  getRowId: (result) => result.source,
+  initialSort: { columnId: 'fileName', direction: 'asc' },
+  pageSize: 100,
+  // Concatenación y no plantilla: el escáner de clases del test de estilos
+  // empareja literales y un apóstrofo anterior desplaza los backticks.
+  rowClass: (result) => 'import-result ' + result.status,
+  emptyText: 'Sin resultados de importación.',
+};
+
 function renderImportResults(results: ImportResults): void {
-  els.importResults.replaceChildren();
-
-  for (const result of results) {
-    const item = document.createElement('li');
-    item.className = 'import-result';
-    item.classList.add(result.status);
-
-    const name = document.createElement('strong');
-    name.textContent = result.fileName;
-    item.append(name);
-
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent =
-      result.status === 'imported'
-        ? 'importado'
-        : result.status === 'overwritten'
-          ? 'sobrescrito'
-          : 'rechazado';
-    if (result.status !== 'rejected') badge.classList.add('on');
-    item.append(' ', badge);
-
-    const compatibility = document.createElement('span');
-    compatibility.className = 'note';
-    compatibility.textContent =
-      result.compatibility === 'compatible'
-        ? 'compatible'
-        : result.compatibility === 'incompatible'
-          ? 'incompatible'
-          : 'sin verificar';
-    item.append(' · ', compatibility);
-
-    const issues = result.issues ?? [];
-    const detail = result.reason ?? (issues.length > 0 ? issues.join('; ') : null);
-    if (detail) {
-      const text = document.createElement('p');
-      text.className = 'import-detail';
-      text.textContent = detail;
-      item.append(text);
-    }
-
-    els.importResults.append(item);
+  if (importResultsTableController === null) {
+    importResultsTableController = mountTable(els.importResults, importResultsTableView, results);
+  } else {
+    importResultsTableController.setRows(results);
   }
+}
+
+/** Vacía la lista de resultados y suelta la tabla para no dejarla huérfana. */
+function clearImportResults(): void {
+  importResultsTableController?.destroy();
+  importResultsTableController = null;
+  els.importResults.replaceChildren();
 }
 
 /**
@@ -2486,7 +2780,7 @@ async function importBanks(): Promise<void> {
   rememberBanks(sourcePaths);
   setBanksBusy(true);
   setBanksStatus(`Importando ${sourcePaths.length} archivo(s)…`, 'busy');
-  els.importResults.replaceChildren();
+  clearImportResults();
   showImportProgress({ done: 0, total: sourcePaths.length, requests: 0 });
   els.importCancel.hidden = false;
   els.importCancel.disabled = false;
@@ -3296,6 +3590,7 @@ async function openWizards(): Promise<void> {
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
   closeAuditDrawer();
+  closeDataAuditDrawer();
   els.wizards.hidden = false;
   els.wizards.scrollTop = 0;
   els.drawerBackdrop.hidden = false;
@@ -3403,6 +3698,9 @@ async function promptAndInstallFromWizard(
       pluginFolderName: folderName,
       overwrite: true,
       initializeBank: true,
+      // El alta desde el catálogo no toca el registro de Windows: importar el
+      // .reg es una acción explícita de la pestaña de Ajustes.
+      autoImportRegistry: false,
     });
 
     const warnText = res.warnings.length > 0 ? ` [Aviso: ${res.warnings.join('; ')}]` : '';
@@ -3569,6 +3867,7 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
   els.pluginWizardStatus.className = 'status busy';
   els.pluginWizardEmpty.hidden = true;
   els.pluginWizardContent.hidden = true;
+  els.pluginWizardCreateWrap.hidden = true;
 
   try {
     const match = await client.wizards.match({
@@ -3581,6 +3880,8 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
       pluginWizardState = { plugin, wizard: null };
       els.pluginWizardEmpty.hidden = false;
       els.pluginWizardContent.hidden = true;
+      // Sin wizard oficial, el usuario puede generar uno desde el propio plugin.
+      els.pluginWizardCreateWrap.hidden = false;
       els.pluginWizardStatus.textContent = '';
       els.pluginWizardStatus.className = 'status';
       return;
@@ -3664,6 +3965,45 @@ function closePluginWizard(): void {
   pluginWizardState = null;
 }
 
+/**
+ * Genera un `.vfxwizard` desde el plugin abierto (vfxinfo + meta + DLL interno)
+ * y vuelve a resolver la coincidencia para pintar el wizard recién creado.
+ */
+async function createWizardFromPlugin(): Promise<void> {
+  const state = pluginWizardState;
+  if (state === null) return;
+  const plugin = state.plugin;
+  const pluginDir = (plugin.path ?? '').trim();
+  if (pluginDir === '') {
+    els.pluginWizardStatus.textContent = 'No se conoce la carpeta del plugin; vuelve a escanear la librería';
+    els.pluginWizardStatus.className = 'status error';
+    return;
+  }
+
+  els.pluginWizardCreateBtn.disabled = true;
+  els.pluginWizardStatus.textContent = 'Creando wizard desde el plugin…';
+  els.pluginWizardStatus.className = 'status busy';
+  try {
+    const result = await client.wizards.createFromPlugin({ pluginDir });
+    // Fijar el id recién creado evita depender del emparejamiento por nombre/DLL
+    // en la recarga: el panel muestra ya el wizard que acaba de generarse.
+    plugin.wizardId = result.record.id;
+    await openPluginWizard(plugin);
+    const warnings = result.warnings.length > 0 ? ` Avisos: ${result.warnings.join(' · ')}` : '';
+    els.pluginWizardStatus.textContent = `Wizard creado en ${result.wizardPath}.${warnings}`;
+    els.pluginWizardStatus.className = 'status ok';
+  } catch (error) {
+    els.pluginWizardStatus.textContent = `No se pudo crear el wizard: ${describeError(error)}`;
+    els.pluginWizardStatus.className = 'status error';
+  } finally {
+    els.pluginWizardCreateBtn.disabled = false;
+  }
+}
+
+els.pluginWizardCreateBtn.addEventListener('click', () => {
+  void createWizardFromPlugin();
+});
+
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
   libraryRoot = els.root.value.trim();
@@ -3671,7 +4011,7 @@ els.form.addEventListener('submit', (event) => {
   rememberRoot(libraryRoot);
   const dll = currentDll();
   if (dll !== '') rememberDll(dll);
-  void scan();
+  void scanFromSettings();
 });
 
 els.dll.addEventListener('input', () => {
@@ -3695,6 +4035,27 @@ els.rootBrowse.addEventListener('click', () => {
 
 els.dllBrowse.addEventListener('click', () => {
   void chooseDll();
+});
+
+// Elegir una carpeta del desplegable la pone en el campo y escanea con ella.
+els.rootRecentSelect.addEventListener('change', () => {
+  const chosen = els.rootRecentSelect.value;
+  if (chosen === '') return;
+  els.root.value = chosen;
+  libraryRoot = chosen;
+  writeStorage(STORAGE_ROOT, chosen);
+  rememberRoot(chosen);
+  void scanFromSettings();
+});
+
+// Elegir una DLL del desplegable la pone en el campo y revalida con `scan`.
+els.dllRecentSelect.addEventListener('change', () => {
+  const chosen = els.dllRecentSelect.value;
+  if (chosen === '') return;
+  els.dll.value = chosen;
+  writeStorage(STORAGE_DLL, chosen);
+  rememberDll(chosen);
+  void scanFromSettings();
 });
 
 els.recentsClear.addEventListener('click', () => {
@@ -3780,6 +4141,14 @@ els.wizardsNavBtn.addEventListener('click', () => {
 
 els.wizardsClose.addEventListener('click', () => {
   closeWizards();
+});
+
+els.settingsNavBtn.addEventListener('click', () => {
+  showPanel(els.settingsDrawer, els.settingsNavBtn);
+});
+
+els.settingsClose.addEventListener('click', () => {
+  hidePanel(els.settingsDrawer);
 });
 
 els.pluginWizardClose.addEventListener('click', () => {
@@ -3956,6 +4325,7 @@ els.themeToggle.addEventListener('click', cycleTheme);
 let importPackageInspection: LibraryInspectPackageResponse | null = null;
 let importPackageBusy = false;
 let selectedImportPlugins = new Set<string>();
+let selectedImportWizards = new Map<string, string>();
 let currentInspectionPlugins: LibraryInspectPackageResponse['plugins'] = [];
 let importPackagePluginsTableController: TableController<LibraryInspectPackageResponse['plugins'][number]> | null = null;
 let selectedImportBanks = new Set<string>();
@@ -3998,6 +4368,7 @@ function closeImportPackageDrawer(): void {
   els.importPackagePluginsTable.replaceChildren();
   selectedImportPlugins.clear();
   currentInspectionPlugins = [];
+  selectedImportWizards.clear();
   importPackageBanksTableController?.destroy();
   importPackageBanksTableController = null;
   els.importPackageBanksTable.replaceChildren();
@@ -4010,8 +4381,52 @@ function closeImportPackageDrawer(): void {
 
 /** Asistente de creación de plugins nuevos sin wizard. */
 let customPluginBusy = false;
-/** Última inspección mostrada, para no releer la DLL al crear. */
-let customPluginInspection: LibraryInspectDllResponse | null = null;
+
+/**
+ * Las cuatro listas de resultados del asistente (símbolos, incidencias,
+ * rutas creadas y advertencias) son monocolonnas: una sola columna sin orden
+ * ni búsqueda, para que el orden escrito por el servidor se conserve tal cual.
+ */
+function customPluginListView(emptyText: string): TableView<string> {
+  return {
+    columns: [
+      {
+        // Sin cabecera: una lista de una columna no necesita etiqueta.
+        id: 'text',
+        label: '',
+        sortable: false,
+        searchable: false,
+        getValue: (line) => line,
+      },
+    ],
+    getRowId: (line) => line,
+    initialSort: { columnId: 'text', direction: 'asc' },
+    pageSize: 100,
+    emptyText,
+  };
+}
+
+const customPluginExportsView = customPluginListView('Sin símbolos exportados que mostrar.');
+const customPluginIssuesView = customPluginListView('Sin incidencias en la inspección.');
+const customPluginCreatedPathsView = customPluginListView('Sin rutas que mostrar.');
+const customPluginCreatedWarningsView = customPluginListView('Sin advertencias.');
+
+/** Tablas montadas de esas listas, por su contenedor. */
+const customPluginLists = new Map<HTMLElement, TableController<string>>();
+
+/** Monta la tabla en la primera llamada y reutiliza la existente después. */
+function setCustomPluginList(
+  root: HTMLElement,
+  view: TableView<string>,
+  rows: readonly string[],
+): void {
+  const existing = customPluginLists.get(root);
+  if (existing === undefined) {
+    customPluginLists.set(root, mountTable(root, view, [...rows]));
+  } else {
+    existing.setRows(rows);
+  }
+}
 
 /** Número entero del campo o `undefined` si está vacío o es inválido. */
 function optionalInt(input: HTMLInputElement): number | undefined {
@@ -4051,7 +4466,6 @@ function openCustomPluginDrawer(opener?: HTMLElement): void {
 function closeCustomPluginDrawer(): void {
   if (els.customPluginDrawer.hidden) return;
   hidePanel(els.customPluginDrawer);
-  customPluginInspection = null;
   els.customPluginResult.hidden = true;
   els.customPluginCreated.hidden = true;
   els.customPluginBitnessWarning.hidden = true;
@@ -4059,10 +4473,355 @@ function closeCustomPluginDrawer(): void {
   els.customPluginStatus.className = 'status';
 }
 
+function openCaptureDrawer(opener?: HTMLElement): void {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
+  closeAuditDrawer();
+  showPanel(els.captureDrawer, opener);
+
+  if (!captureSessionInitialized) {
+    els.captureStartBtn.disabled = false;
+    els.captureFinishBtn.disabled = true;
+    els.capturePackageBtn.disabled = true;
+    els.captureVmachineBtn.disabled = true;
+    els.captureStartInfo.hidden = true;
+    els.captureFinishInfo.hidden = true;
+    els.captureStagingInfo.hidden = true;
+    els.captureVmachineInfo.hidden = true;
+    els.captureStep1Status.textContent = 'Pendiente';
+    els.captureStep1Status.className = 'capture-step-badge';
+    els.captureStep2Status.textContent = 'Pendiente';
+    els.captureStep2Status.className = 'capture-step-badge';
+    els.captureStep3Status.textContent = 'Pendiente';
+    els.captureStep3Status.className = 'capture-step-badge';
+    els.captureStep4Status.textContent = 'Pendiente';
+    els.captureStep4Status.className = 'capture-step-badge';
+    captureSnapshotBeforeId = null;
+    captureDiffId = null;
+    captureSnapshotText = '';
+    if (els.captureSnapshotSummary) els.captureSnapshotSummary.textContent = '';
+    if (els.captureSnapshotContent) els.captureSnapshotContent.textContent = '';
+    if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = true;
+    if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = true;
+    captureStagingLoaded = false;
+    captureSessionInitialized = true;
+    if (els.captureLog) els.captureLog.replaceChildren();
+    setCaptureStatus('');
+  }
+
+  if (captureTaskId) {
+    setCaptureBusy('Recuperando estado del escaneo…', true);
+    if (captureTaskPoll === null) {
+      captureTaskPoll = setInterval(() => void pollCaptureTask(), 700);
+    }
+    void pollCaptureTask();
+  }
+}
+
+function closeCaptureDrawer(): void {
+  if (els.captureDrawer.hidden) return;
+  hidePanel(els.captureDrawer);
+  setCaptureStatus('');
+}
+
+function startCaptureTaskPolling(taskId: string, kind: 'start' | 'finish'): void {
+  captureTaskId = taskId;
+  captureTaskKind = kind;
+  writeStorage(STORAGE_CAPTURE_TASK, taskId);
+  captureLastProgressLogAt = 0;
+  captureLastPollErrorAt = 0;
+  captureLastProgressMessage = '';
+  captureLastProgressEntries = -1;
+  if (captureTaskPoll !== null) clearInterval(captureTaskPoll);
+  captureTaskPoll = null;
+  if (els.captureProgressWrap) els.captureProgressWrap.hidden = false;
+  if (els.captureProgressNative) els.captureProgressNative.removeAttribute('value');
+  setCaptureBusy('Iniciando captura…', true);
+  if (els.captureStartBtn) els.captureStartBtn.disabled = true;
+  if (els.captureFinishBtn) els.captureFinishBtn.disabled = true;
+  captureTaskPoll = setInterval(() => void pollCaptureTask(), 700);
+  void pollCaptureTask();
+}
+
+async function pollCaptureTask(): Promise<void> {
+  const taskId = captureTaskId;
+  if (!taskId || capturePollInFlight) return;
+  capturePollInFlight = true;
+  try {
+    const response = await fetch(`/capture/tasks/${encodeURIComponent(taskId)}`);
+    if (!response.ok) throw new Error(await response.text());
+    const task = await response.json();
+    captureTaskKind ??= task.kind === 'start' || task.kind === 'finish' ? task.kind : null;
+    renderCaptureTask(task);
+    const now = Date.now();
+    const scannedEntries = Number(task.entriesVisited) || 0;
+    const progressThreshold = task.phase === 'registry' ? 1 : 1000;
+    const progressChanged = task.message !== captureLastProgressMessage || scannedEntries - captureLastProgressEntries >= progressThreshold;
+    if (progressChanged && (now - captureLastProgressLogAt >= 1200 || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) {
+      const location = task.phase === 'registry' ? task.currentRegistryRoot : (task.currentPath || task.currentRoot);
+      const detail = task.phase === 'registry'
+        ? `${task.registryRootsCompleted}/${task.registryRootsTotal} raíces · ${task.message}`
+        : `${Number(task.filesFound).toLocaleString()} archivos · ${scannedEntries.toLocaleString()} entradas · ${task.message}`;
+      captureLog(location ? `${detail} · ${location}` : detail, task.status === 'running' || task.status === 'cancelling' ? 'busy' : 'info');
+      captureLastProgressLogAt = now;
+      captureLastProgressMessage = task.message;
+      captureLastProgressEntries = scannedEntries;
+    }
+    if (task.status === 'running' || task.status === 'cancelling') return;
+
+    const kind = captureTaskKind;
+    stopCaptureTaskPolling(false);
+    captureTaskId = null;
+    captureTaskKind = null;
+    writeStorage(STORAGE_CAPTURE_TASK, '');
+    setCaptureBusy('', false);
+    if (task.status === 'completed' && kind === 'start') {
+      captureSnapshotBeforeId = task.result?.snapshotId ?? null;
+      if (!captureSnapshotBeforeId) {
+        captureLog('La tarea terminó sin devolver el ID del snapshot.', 'error');
+        setCaptureStatus('No se recibió el identificador del snapshot.', 'error');
+        return;
+      }
+      if (els.captureSnapshotBefore) els.captureSnapshotBefore.textContent = captureSnapshotBeforeId;
+      els.captureStartInfo.hidden = false;
+      if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = true;
+      if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = true;
+      els.captureStep1Status.textContent = 'Completado';
+      els.captureStep1Status.className = 'capture-step-badge ok';
+      els.captureFinishBtn.disabled = false;
+      captureLog(`Snapshot inicial guardado: ${captureSnapshotBeforeId} · ${task.filesFound.toLocaleString()} archivos`, 'ok');
+      setCaptureStatus('Snapshot guardado. Cargando el informe completo para que puedas revisarlo…', 'busy');
+      void loadCaptureSnapshot(captureSnapshotBeforeId).then(() => {
+        if (captureSnapshotText) {
+          setCaptureStatus('Snapshot inicial completado. El resultado está listo para revisar antes de instalar el plugin.', 'ok');
+        }
+      });
+    } else if (task.status === 'completed' && kind === 'finish') {
+      captureDiffId = task.result?.diffId ?? null;
+      if (els.captureDiffId) els.captureDiffId.textContent = captureDiffId ?? '';
+      if (els.captureFilesAdded) els.captureFilesAdded.textContent = String(task.result?.filesAdded ?? 0);
+      if (els.captureFilesModified) els.captureFilesModified.textContent = String(task.result?.filesModified ?? 0);
+      if (els.captureFilesDeleted) els.captureFilesDeleted.textContent = String(task.result?.filesRemoved ?? 0);
+      if (els.captureRegistryCount) els.captureRegistryCount.textContent = String((task.result?.registryAdded ?? 0) + (task.result?.registryModified ?? 0));
+      els.captureFinishInfo.hidden = false;
+      els.captureStep2Status.textContent = 'Completado';
+      els.captureStep2Status.className = 'capture-step-badge ok';
+      els.capturePackageBtn.disabled = false;
+      captureLog(`Diff listo: +${task.result?.filesAdded ?? 0} archivos, ${task.result?.filesModified ?? 0} modificados, ${(task.result?.registryAdded ?? 0) + (task.result?.registryModified ?? 0)} cambios de registro`, 'ok');
+      setCaptureStatus('Captura finalizada. Prepara el staging para revisar los archivos.', 'ok');
+    } else if (task.status === 'cancelled') {
+      if (kind === 'start') {
+        els.captureStartBtn.disabled = false;
+        els.captureStep1Status.textContent = 'Detenido';
+        els.captureStep1Status.className = 'capture-step-badge';
+      } else {
+        els.captureFinishBtn.disabled = captureSnapshotBeforeId === null;
+      }
+      captureLog('Escaneo detenido por el usuario. No se guardó un snapshot parcial.', 'info');
+      setCaptureStatus('Escaneo detenido. Puedes volver a intentarlo cuando quieras.', 'info');
+    } else {
+      if (kind === 'start') els.captureStartBtn.disabled = false;
+      else els.captureFinishBtn.disabled = captureSnapshotBeforeId === null;
+      const message = task.error || 'La captura no pudo completarse.';
+      captureLog(`Error en captura: ${message}`, 'error');
+      setCaptureStatus(`Error: ${message}`, 'error');
+    }
+  } catch (error) {
+    const message = describeError(error);
+    const now = Date.now();
+    if (now - captureLastPollErrorAt > 5000) {
+      captureLog(`No se pudo actualizar el progreso; se reintentará: ${message}`, 'error');
+      captureLastPollErrorAt = now;
+    }
+    setCaptureStatus('Sin comunicación con el progreso; se reintentará. La tarea sigue activa y puedes detenerla.', 'error');
+    setCaptureBusy('Esperando respuesta del servidor…', true);
+  } finally {
+    capturePollInFlight = false;
+  }
+}
+
+async function stopCaptureTask(): Promise<void> {
+  if (!captureTaskId) return;
+  const taskId = captureTaskId;
+  setCaptureBusy('Deteniendo; espera un momento…', true, true);
+  captureLog('Solicitud de parada enviada…', 'info');
+  try {
+    const response = await fetch(`/capture/tasks/${encodeURIComponent(taskId)}/cancel`, { method: 'POST' });
+    if (!response.ok) throw new Error(await response.text());
+    renderCaptureTask(await response.json());
+  } catch (error) {
+    if (els.captureStopBtn) els.captureStopBtn.disabled = false;
+    captureLog(`No se pudo detener el escaneo: ${describeError(error)}`, 'error');
+    setCaptureStatus(`No se pudo detener: ${describeError(error)}`, 'error');
+  }
+}
+
+async function captureStart(): Promise<void> {
+  try {
+    captureLog('Solicitando snapshot inicial…', 'busy');
+    setCaptureStatus('Preparando el escaneo del sistema…', 'busy');
+    setCaptureBusy('Creando tarea de escaneo…', true);
+    const response = await fetch('/capture/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const task = await response.json();
+    startCaptureTaskPolling(task.taskId, 'start');
+  } catch (error) {
+    const message = describeError(error);
+    captureLog(`Error al iniciar: ${message}`, 'error');
+    setCaptureStatus(`Error: ${message}`, 'error');
+    setCaptureBusy('', false);
+    els.captureStartBtn.disabled = false;
+  }
+}
+
+async function captureFinish(): Promise<void> {
+  if (!captureSnapshotBeforeId) {
+    setCaptureStatus('No hay snapshot inicial', 'error');
+    return;
+  }
+  try {
+    captureLog('Solicitando snapshot final y comparación…', 'busy');
+    setCaptureStatus('Preparando el escaneo final…', 'busy');
+    setCaptureBusy('Preparando escaneo final…', true);
+    const response = await fetch('/capture/finish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshotIdBefore: captureSnapshotBeforeId }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const task = await response.json();
+    startCaptureTaskPolling(task.taskId, 'finish');
+  } catch (error) {
+    const message = describeError(error);
+    captureLog(`Error al finalizar captura: ${message}`, 'error');
+    setCaptureStatus(`Error: ${message}`, 'error');
+    setCaptureBusy('', false);
+    els.captureFinishBtn.disabled = false;
+  }
+}
+
+async function capturePackage(): Promise<void> {
+  if (!captureDiffId) {
+    setCaptureStatus('No hay diff generado', 'error');
+    return;
+  }
+  try {
+    captureLog('Copiando archivos al staging editable...', 'busy');
+    setCaptureStatus('Preparando staging...', 'busy');
+    els.capturePackageBtn.disabled = true;
+    const res = await fetch('/capture/package', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diffId: captureDiffId, targetDir: '' }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    els.captureStep3Status.textContent = 'Completado';
+    els.captureStep3Status.className = 'capture-step-badge ok';
+    els.captureVmachineBtn.disabled = false;
+    await captureRefreshStaging();
+    captureLog(`Staging preparado (${data.filesCopied || 0} archivos)`, 'ok');
+    setCaptureStatus('Staging listo. Revisa y elimina archivos innecesarios.', 'ok');
+  } catch (error) {
+    els.capturePackageBtn.disabled = false;
+    const msg = describeError(error);
+    captureLog(`Error al preparar staging: ${msg}`, 'error');
+    setCaptureStatus(`Error: ${msg}`, 'error');
+  }
+}
+
+async function captureRefreshStaging(): Promise<void> {
+  if (!captureDiffId) return;
+  try {
+    const res = await fetch(`/capture/staging/${captureDiffId}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const files: string[] = data.files || [];
+    if (els.captureStagingCount) els.captureStagingCount.textContent = String(files.length);
+    els.captureStagingInfo.hidden = false;
+    if (els.captureStagingList) {
+      els.captureStagingList.replaceChildren();
+      if (files.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'note';
+        empty.textContent = 'Staging vacío';
+        els.captureStagingList.append(empty);
+      } else {
+        for (const file of files.slice(0, 150)) {
+          const item = document.createElement('div');
+          item.className = 'capture-staging-item';
+          const name = document.createElement('span');
+          name.className = 'capture-staging-name';
+          name.textContent = file;
+          name.title = file;
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'capture-staging-remove';
+          remove.textContent = '×';
+          remove.title = 'Eliminar del staging';
+          remove.setAttribute('aria-label', `Eliminar ${file} del staging`);
+          remove.addEventListener('click', async () => {
+            try {
+              const response = await fetch(`/capture/staging/${captureDiffId}?path=${encodeURIComponent(file)}`, { method: 'DELETE' });
+              if (!response.ok) throw new Error(await response.text());
+              captureLog(`Eliminado del staging: ${file}`, 'info');
+              await captureRefreshStaging();
+            } catch (error) {
+              captureLog(`Error al eliminar: ${describeError(error)}`, 'error');
+            }
+          });
+          item.append(name, remove);
+          els.captureStagingList.append(item);
+        }
+      }
+    }
+  } catch (error) {
+    captureLog(`Error al cargar staging: ${describeError(error)}`, 'error');
+  }
+}
+
+async function captureVmachine(): Promise<void> {
+  if (!captureDiffId) {
+    setCaptureStatus('No hay diff generado', 'error');
+    return;
+  }
+  const pluginName = els.capturePluginName?.value.trim() || 'CapturedPlugin';
+  const vendor = els.capturePluginVendor?.value.trim() || '';
+  try {
+    captureLog(`Generando banco para V-Machine: ${pluginName}...`, 'busy');
+    setCaptureStatus('Generando...', 'busy');
+    els.captureVmachineBtn.disabled = true;
+    const res = await fetch(`/capture/vmachine/${captureDiffId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pluginName, vendor, generateBank: true, generateWizard: true }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    els.captureStep4Status.textContent = 'Completado';
+    els.captureStep4Status.className = 'capture-step-badge ok';
+    if (els.captureVmachinePath) els.captureVmachinePath.textContent = data.bankDir || '';
+    if (els.captureWizardPath) els.captureWizardPath.textContent = data.wizardPath || '';
+    els.captureVmachineInfo.hidden = false;
+    captureLog(`Generado correctamente`, 'ok');
+    setCaptureStatus('Banco y wizard generados.', 'ok');
+  } catch (error) {
+    els.captureVmachineBtn.disabled = false;
+    const msg = describeError(error);
+    captureLog(`Error al generar: ${msg}`, 'error');
+    setCaptureStatus(`Error: ${msg}`, 'error');
+  }
+}
+
 /** Pinta el resultado de `/library/inspect-dll` y, con lo detectado, rellena el
  * nombre y el id sugeridos. */
 function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
-  customPluginInspection = result;
   els.customPluginResult.hidden = false;
   els.customPluginCreated.hidden = true;
 
@@ -4097,20 +4856,10 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
     els.customPluginWizard.hidden = true;
   }
 
-  els.customPluginExports.replaceChildren();
-  for (const name of result.exportedNames) {
-    const item = document.createElement('li');
-    item.textContent = name;
-    els.customPluginExports.append(item);
-  }
+  setCustomPluginList(els.customPluginExports, customPluginExportsView, result.exportedNames);
   els.customPluginExports.hidden = result.exportedNames.length === 0;
 
-  els.customPluginIssues.replaceChildren();
-  for (const issue of result.issues) {
-    const item = document.createElement('li');
-    item.textContent = issue;
-    els.customPluginIssues.append(item);
-  }
+  setCustomPluginList(els.customPluginIssues, customPluginIssuesView, result.issues);
   els.customPluginIssues.hidden = result.issues.length === 0;
 
   // Advertencia persistente si el binario no es apto para el host de 32 bits:
@@ -4144,7 +4893,6 @@ async function inspectCustomPlugin(): Promise<void> {
     renderCustomPluginInspection(result);
     setCustomPluginStatus('Binario analizado.', 'info');
   } catch (error) {
-    customPluginInspection = null;
     setCustomPluginStatus(`No se pudo analizar el DLL: ${describeError(error)}`, 'error');
   } finally {
     setCustomPluginBusy(false);
@@ -4211,24 +4959,14 @@ async function createCustomPlugin(): Promise<void> {
   try {
     const result: LibraryCreateCustomPluginResponse = await client.library.createCustomPlugin(body);
     els.customPluginCreated.hidden = false;
-    els.customPluginCreatedPaths.replaceChildren();
-    for (const line of [
+    setCustomPluginList(els.customPluginCreatedPaths, customPluginCreatedPathsView, [
       `Carpeta: ${result.pluginDir}`,
       `DLL: ${result.dllRelativePath}`,
       `vfxinfo.txt: ${result.vfxinfoPath}`,
       `fxbLoader.meta.json: ${result.metaPath}`,
       ...(result.wizardPath !== null ? [`Wizard: ${result.wizardPath}`] : []),
-    ]) {
-      const item = document.createElement('li');
-      item.textContent = line;
-      els.customPluginCreatedPaths.append(item);
-    }
-    els.customPluginCreatedWarnings.replaceChildren();
-    for (const warning of result.warnings) {
-      const item = document.createElement('li');
-      item.textContent = warning;
-      els.customPluginCreatedWarnings.append(item);
-    }
+    ]);
+    setCustomPluginList(els.customPluginCreatedWarnings, customPluginCreatedWarningsView, result.warnings);
     els.customPluginCreatedWarnings.hidden = result.warnings.length === 0;
     setCustomPluginStatus(result.created ? 'Plugin creado.' : 'No se creó el plugin.', 'info');
   } catch (error) {
@@ -4241,6 +4979,131 @@ async function createCustomPlugin(): Promise<void> {
 els.customPluginNavBtn.addEventListener('click', () => {
   openCustomPluginDrawer(els.customPluginNavBtn);
 });
+
+if (els.captureNavBtn) {
+  els.captureNavBtn.addEventListener('click', () => {
+    openCaptureDrawer(els.captureNavBtn);
+  });
+}
+
+if (els.captureClose) {
+  els.captureClose.addEventListener('click', () => {
+    closeCaptureDrawer();
+  });
+}  if (els.captureStartBtn) {
+    els.captureStartBtn.addEventListener('click', () => {
+      void captureStart();
+    });
+  }
+
+if (els.captureStopBtn) {
+  els.captureStopBtn.addEventListener('click', () => {
+    void stopCaptureTask();
+  });
+}
+
+async function loadCaptureSnapshot(snapshotId: string): Promise<void> {
+  if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = true;
+  if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = true;
+  try {
+    const response = await fetch(`/capture/snapshots/${encodeURIComponent(snapshotId)}`);
+    if (!response.ok) throw new Error(await response.text());
+    const snapshot = await response.json();
+    const files = Array.isArray(snapshot.files) ? snapshot.files : [];
+    const registry = Array.isArray(snapshot.registry) ? snapshot.registry : [];
+    const summary = `${files.length.toLocaleString()} elementos de archivo · ${registry.length.toLocaleString()} valores de registro · ${snapshot.scanRoots?.length ?? 0} rutas examinadas`;
+    const lines = [
+      'SNAPSHOT INICIAL DE CAPTURA',
+      `ID: ${snapshot.id}`,
+      `Fecha: ${snapshot.createdAt}`,
+      `Plataforma: ${snapshot.platform}`,
+      `Archivos y carpetas: ${files.length}`,
+      `Valores de registro: ${registry.length}`,
+      '',
+      'RUTAS EXAMINADAS',
+      ...(snapshot.scanRoots ?? []).map((root: string) => `- ${root}`),
+      '',
+      'ARCHIVOS Y CARPETAS',
+      ...files.map((file: { path: string; isDir: boolean; size: number; mtimeMs: number; hash?: string }) =>
+        `${file.isDir ? '[DIR] ' : '[FILE]'} ${file.path}${file.isDir ? '' : ` | ${Number(file.size).toLocaleString()} bytes | modificado: ${new Date(file.mtimeMs).toISOString()}${file.hash ? ` | SHA-256: ${file.hash}` : ''}`}`),
+      '',
+      'RAÍCES DE REGISTRO EXAMINADAS',
+      ...(snapshot.registryRoots ?? []).map((root: string) => `- ${root}`),
+      '',
+      'VALORES DE REGISTRO',
+      ...registry.map((entry: { key: string; valueName: string; valueType: string; valueData: string }) =>
+        `[${entry.key}] ${entry.valueName} | ${entry.valueType} | ${entry.valueData}`),
+      '',
+    ];
+    captureSnapshotText = lines.join('\n');
+    if (els.captureSnapshotSummary) els.captureSnapshotSummary.textContent = summary;
+    if (els.captureSnapshotDialogSummary) els.captureSnapshotDialogSummary.textContent = summary;
+    if (els.captureSnapshotContent) els.captureSnapshotContent.textContent = captureSnapshotText;
+    if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = false;
+    if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = false;
+    captureLog(`Informe inicial listo: ${summary}`, 'ok');
+  } catch (error) {
+    const message = describeError(error);
+    captureLog(`No se pudo cargar el resultado del snapshot: ${message}`, 'error');
+    setCaptureStatus(`El snapshot se guardó, pero no se pudo cargar el informe: ${message}`, 'error');
+  }
+}
+
+function viewCaptureSnapshot(): void {
+  if (!captureSnapshotText || !els.captureSnapshotDialog) return;
+  els.captureSnapshotDialog.showModal();
+  els.captureSnapshotContent.focus();
+}
+
+function downloadCaptureSnapshot(): void {
+  if (!captureSnapshotText || !captureSnapshotBeforeId) return;
+  const blob = new Blob([captureSnapshotText], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `snapshot-${captureSnapshotBeforeId}.txt`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+if (els.captureViewSnapshotBtn) {
+  els.captureViewSnapshotBtn.addEventListener('click', viewCaptureSnapshot);
+}
+if (els.captureDownloadSnapshotBtn) {
+  els.captureDownloadSnapshotBtn.addEventListener('click', downloadCaptureSnapshot);
+}
+if (els.captureSnapshotDialogClose) {
+  els.captureSnapshotDialogClose.addEventListener('click', () => els.captureSnapshotDialog.close());
+}
+if (els.captureSnapshotDialog) {
+  els.captureSnapshotDialog.addEventListener('click', (event) => {
+    if (event.target === els.captureSnapshotDialog) els.captureSnapshotDialog.close();
+  });
+}
+
+if (els.captureFinishBtn) {
+  els.captureFinishBtn.addEventListener('click', () => {
+    void captureFinish();
+  });
+}
+
+if (els.capturePackageBtn) {
+  els.capturePackageBtn.addEventListener('click', () => {
+    void capturePackage();
+  });
+}
+
+if (els.captureRefreshStagingBtn) {
+  els.captureRefreshStagingBtn.addEventListener('click', () => {
+    void captureRefreshStaging();
+  });
+}
+
+if (els.captureVmachineBtn) {
+  els.captureVmachineBtn.addEventListener('click', () => {
+    void captureVmachine();
+  });
+}
 
 els.customPluginClose.addEventListener('click', () => {
   closeCustomPluginDrawer();
@@ -4555,6 +5418,10 @@ function renderImportPackageInspection(result: LibraryInspectPackageResponse): v
 
   currentInspectionPlugins = result.plugins;
   selectedImportPlugins = new Set(result.plugins.map((p) => p.sourceDir || p.name));
+  selectedImportWizards = new Map(result.plugins.map((plugin) => {
+    const wizard = plugin.matchedWizard;
+    return [plugin.sourceDir || plugin.name, wizard && wizard.matchReason !== 'suggestion' ? wizard.id : ''];
+  }));
   els.importPackageAllPlugs.checked = true;
 
   if (importPackagePluginsTableController === null) {
@@ -4617,6 +5484,7 @@ async function inspectPackage(): Promise<void> {
     els.importPackagePluginsTable.replaceChildren();
     selectedImportPlugins.clear();
     currentInspectionPlugins = [];
+    selectedImportWizards.clear();
     importPackageBanksTableController?.destroy();
     importPackageBanksTableController = null;
     els.importPackageBanksTable.replaceChildren();
@@ -4655,6 +5523,12 @@ async function executeImportPackage(): Promise<void> {
       targetLibraryRoot: libraryRoot,
       selectedPlugins,
       selectedBanks,
+      selectedWizards: Object.fromEntries(
+        currentInspectionPlugins.map((plugin) => {
+          const key = plugin.sourceDir || plugin.name;
+          return [key, selectedImportWizards.get(key) ?? ''];
+        }),
+      ),
       collisionPolicy,
       repairBanks: els.importPackageRepair.checked,
     });
@@ -4669,6 +5543,12 @@ async function executeImportPackage(): Promise<void> {
       `Importación finalizada con éxito: ` +
       `${result.importedPlugins.length} plugins y ${result.importedBanks.length} bancos importados (${formatBytes(result.totalCopiedBytes)}).` +
       repairedMsg +
+      ((result as { preparedPlugins?: string[] }).preparedPlugins?.length
+        ? ` Preparados con wizard: ${(result as { preparedPlugins?: string[] }).preparedPlugins!.join(', ')}.`
+        : '') +
+      ((result as { wizardWarnings?: { plugin: string; message: string }[] }).wizardWarnings?.length
+        ? ` Avisos de preparación: ${(result as { wizardWarnings?: { plugin: string; message: string }[] }).wizardWarnings!.map((warning) => `${warning.plugin}: ${warning.message}`).join(' · ')}`
+        : '') +
       (result.skippedPlugins.length > 0 || result.skippedBanks.length > 0
         ? ` Omitidos: ${result.skippedPlugins.length} plugins, ${result.skippedBanks.length} bancos.`
         : '');
@@ -4876,13 +5756,54 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
   rowActions: {
     actions: [{ id: 'view-record', label: 'Ver registro', icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
   },
+  onSearchChange: (query) => onAuditSearchChange(query),
 };
+
+/**
+ * Tope del snapshot que pide el visor. El servidor no impone máximo (entero
+ * positivo; sin parámetro usa 200) y devuelve los últimos `limit` eventos que
+ * pasan los filtros —`q` incluido, que estrecha antes de cortar—: el tope
+ * cubre el histórico para que la tabla pinte todas las filas que la búsqueda
+ * deja. El mismo valor en la carga y en el sondeo para que la huella no
+ * provoque recargas en bucle.
+ */
+const AUDIT_SNAPSHOT_LIMIT = 1_000_000;
 
 let auditTableController: TableController<AssociationAuditEntry> | null = null;
 let auditBusy = false;
 /** Huella del último snapshot pintado: cambia cuando el almacén crece. */
 let auditFingerprint = '';
 let auditPollTimer: ReturnType<typeof setInterval> | null = null;
+/** Búsqueda vigente del visor: la manda el servidor como `q` en carga y sondeo. */
+let auditQuery = '';
+/** Recarga en cola mientras el usuario escribe en la búsqueda de la tabla. */
+let auditSearchTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * La búsqueda de la tabla se manda al servidor con 300 ms de espera: el
+ * snapshot vuelve estrechado por `q` y, mientras llega, el filtro local se
+ * aplica sobre las filas ya cargadas para que la respuesta sea inmediata. El
+ * mismo texto en el sondeo es obligatorio: si uno mandara `q` y el otro no, las
+ * huellas `size:total:length` no coincidirían y el cajón entraría en bucle de
+ * recargas.
+ */
+function onAuditSearchChange(query: string): void {
+  const next = query.trim();
+  if (auditSearchTimer !== null) clearTimeout(auditSearchTimer);
+  auditSearchTimer = setTimeout(() => {
+    auditSearchTimer = null;
+    if (next === auditQuery) return;
+    auditQuery = next;
+    void loadAssociationAudit();
+  }, 300);
+}
+
+/** Cierra la búsqueda pendiente y la deja vacía (al abrir o cerrar el cajón). */
+function resetAuditSearch(): void {
+  if (auditSearchTimer !== null) clearTimeout(auditSearchTimer);
+  auditSearchTimer = null;
+  auditQuery = '';
+}
 
 function destroyAssociationAuditTable(): void {
   closeAuditRecordDetail();
@@ -4913,20 +5834,14 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
   els.auditRefresh.disabled = true;
   if (!silent) setAuditStatus('Leyendo el almacén de auditoría…', 'busy');
   try {
-    // El filtro por plugin se manda al servidor: el snapshot trae los últimos
-    // 200 eventos del fichero completo, así que estrecharlo en el navegador
-    // solo vería esa cola y no el histórico.
-    const plugin = els.auditPluginFilter.value.trim();
     const snapshot = await client.associationAudit.list({
       libraryRoot,
-      limit: 200,
-      ...(plugin === '' ? {} : { plugin }),
+      limit: AUDIT_SNAPSHOT_LIMIT,
+      q: auditQuery,
     });
     els.auditPath.textContent = snapshot.auditPath;
     els.auditSummary.textContent = snapshot.exists
-      ? `${snapshot.total} evento(s) · ${formatBytes(snapshot.size)} en el almacén${
-          plugin === '' ? '' : ` · filtrado por «${plugin}»`
-        }`
+      ? `${snapshot.total} evento(s) · ${formatBytes(snapshot.size)} en el almacén`
       : 'Todavía no existe el almacén: lo creará la primera operación que audite.';
     if (auditTableController === null) {
       auditTableController = mountTable(els.auditTable, associationAuditTableView, snapshot.entries);
@@ -4961,13 +5876,12 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
  */
 async function pollAssociationAudit(): Promise<void> {
   if (auditBusy || els.auditDrawer.hidden || !libraryRoot) return;
-  const plugin = els.auditPluginFilter.value.trim();
   let fingerprint: string;
   try {
     const snapshot = await client.associationAudit.list({
       libraryRoot,
-      limit: 200,
-      ...(plugin === '' ? {} : { plugin }),
+      limit: AUDIT_SNAPSHOT_LIMIT,
+      q: auditQuery,
     });
     fingerprint = `${snapshot.size}:${snapshot.total}:${snapshot.entries.length}`;
   } catch {
@@ -5001,10 +5915,10 @@ function openAuditDrawer(opener?: HTMLElement): void {
   showPanel(els.auditDrawer, opener);
   els.auditPath.textContent = '';
   els.auditSummary.textContent = '';
-  els.auditPluginFilter.value = '';
   destroyAssociationAuditTable();
   setAuditStatus('');
   auditFingerprint = '';
+  resetAuditSearch();
   startAuditPolling();
   void loadAssociationAudit();
 }
@@ -5016,8 +5930,8 @@ function closeAuditDrawer(): void {
   destroyAssociationAuditTable();
   els.auditPath.textContent = '';
   els.auditSummary.textContent = '';
-  els.auditPluginFilter.value = '';
   auditFingerprint = '';
+  resetAuditSearch();
   setAuditStatus('');
 }
 
@@ -5031,17 +5945,6 @@ els.auditClose.addEventListener('click', () => {
 
 els.auditRefresh.addEventListener('click', () => {
   void loadAssociationAudit();
-});
-
-// El filtro por plugin estrecha el snapshot en el servidor, tecleando: el
-// mismo rebote que el filtro de wizards, y solo cuando el cajón está abierto.
-let auditFilterTimeout: ReturnType<typeof setTimeout> | null = null;
-els.auditPluginFilter.addEventListener('input', () => {
-  if (auditFilterTimeout) clearTimeout(auditFilterTimeout);
-  auditFilterTimeout = setTimeout(() => {
-    auditFilterTimeout = null;
-    if (!els.auditDrawer.hidden) void loadAssociationAudit();
-  }, 300);
 });
 
 els.importPkgNavBtn.addEventListener('click', () => {
@@ -5099,6 +6002,326 @@ els.importPackageAllBanks.addEventListener('change', () => {
   importPackageBanksTableController?.setRows(currentInspectionBanks);
 });
 
+/** Entrada de la auditoría de datos: un plugin con sus huecos y propuestas. */
+type DataAuditPlugin = LibraryAuditResponse['plugins'][number];
+
+/** Cómo se nombra cada origen de un valor propuesto. */
+const DATA_AUDIT_SOURCE_LABELS: Record<string, string> = {
+  vfxinfo: 'vfxinfo',
+  meta: 'meta',
+  dll: 'DLL',
+  derived: 'deducido',
+};
+
+/** Gravedad de un hueco en una palabra, para el badge del detalle. */
+const DATA_AUDIT_SEVERITY_LABELS: Record<string, string> = {
+  missing: 'falta',
+  invalid: 'no válido',
+  note: 'nota',
+};
+
+/** Un plugin está completo cuando ninguno de sus huecos es `missing`/`invalid`. */
+function dataAuditHasGaps(plugin: DataAuditPlugin): boolean {
+  return plugin.issues.some((issue) => issue.severity !== 'note');
+}
+
+function dataAuditHeading(text: string): HTMLElement {
+  const heading = document.createElement('h4');
+  heading.textContent = text;
+  return heading;
+}
+
+function dataAuditEmpty(text: string): HTMLElement {
+  const line = document.createElement('p');
+  line.className = 'note';
+  line.textContent = text;
+  return line;
+}
+
+function dataAuditItem(field: string, text: string, badgeText: string, badgeClass: string): HTMLElement {
+  const item = document.createElement('li');
+  item.className = 'data-audit-item';
+  const badge = document.createElement('span');
+  badge.className = badgeClass;
+  badge.textContent = badgeText;
+  const code = document.createElement('code');
+  code.textContent = field;
+  const note = document.createElement('span');
+  note.className = 'data-audit-item-note';
+  note.textContent = text;
+  item.append(badge, code, note);
+  return item;
+}
+
+function dataAuditList(items: HTMLElement[]): HTMLElement {
+  const list = document.createElement('ul');
+  list.className = 'data-audit-list';
+  list.append(...items);
+  return list;
+}
+
+const dataAuditTableView: TableView<DataAuditPlugin> = {
+  columns: [
+    {
+      id: 'name',
+      label: 'Plugin',
+      sortType: 'text',
+      getValue: (plugin) => plugin.name,
+      cellTitle: (plugin) => plugin.path,
+    },
+    {
+      id: 'state',
+      label: 'Estado',
+      sortType: 'text',
+      getValue: (plugin) => (dataAuditHasGaps(plugin) ? 'con huecos' : 'completo'),
+      renderNode: (plugin) => {
+        const badge = document.createElement('span');
+        badge.className = dataAuditHasGaps(plugin) ? 'badge off' : 'badge on';
+        badge.textContent = dataAuditHasGaps(plugin) ? 'Con huecos' : 'Completo';
+        return badge;
+      },
+    },
+    {
+      id: 'gaps',
+      label: 'Huecos',
+      sortType: 'number',
+      getValue: (plugin) => plugin.issues.length,
+      cellTitle: (plugin) =>
+        plugin.issues.map((issue) => `${issue.field}: ${issue.message}`).join('\n'),
+    },
+    {
+      id: 'fillable',
+      label: 'Rellenables',
+      sortType: 'number',
+      getValue: (plugin) => plugin.proposals.length,
+      cellTitle: (plugin) =>
+        plugin.proposals.map((proposal) => `${proposal.field} = ${proposal.value}`).join('\n'),
+    },
+    {
+      id: 'dll',
+      label: 'DLL',
+      sortType: 'text',
+      getValue: (plugin) => plugin.dll.resolved ?? '',
+      renderCell: (plugin) => plugin.dll.resolved ?? '—',
+      cellTitle: (plugin) =>
+        [
+          plugin.dll.bitness === null ? '' : `${plugin.dll.bitness} bits`,
+          plugin.dll.vstEntrypoint ?? '',
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+    },
+  ],
+  getRowId: (plugin) => plugin.path,
+  initialSort: { columnId: 'gaps', direction: 'desc' },
+  pageSize: 50,
+  emptyText: 'Sin plugins que auditar en plugs\\.',
+  filters: [
+    {
+      id: 'stateFilter',
+      label: 'Estado',
+      columnId: 'state',
+      type: 'single',
+      options: [
+        { value: '', label: 'Todos', tone: 'neutral' },
+        { value: 'incomplete', label: 'Con huecos', tone: 'negative', predicate: dataAuditHasGaps },
+        {
+          value: 'complete',
+          label: 'Completos',
+          tone: 'positive',
+          predicate: (plugin) => !dataAuditHasGaps(plugin),
+        },
+      ],
+    },
+  ],
+  rowActions: {
+    actions: [
+      {
+        id: 'view-data-detail',
+        label: 'Ver detalle',
+        icon: 'file',
+        onSelect: (plugin, trigger) => openDataAuditDetail(plugin, trigger),
+      },
+    ],
+  },
+};
+
+let dataAuditTableController: TableController<DataAuditPlugin> | null = null;
+let dataAuditBusy = false;
+/** Botón que abrió el detalle del plugin: para devolverle el foco al cerrar. */
+let dataAuditDetailOpener: HTMLButtonElement | null = null;
+
+/**
+ * Detalle de un plugin: los datos que la tabla no pinta (ruta, estado del DLL)
+ * y las dos listas que pide la auditoría —qué falta y qué se puede rellenar—
+ * con el origen de cada valor propuesto.
+ */
+function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement): void {
+  dataAuditDetailOpener = trigger;
+  els.dataAuditDetailTitle.textContent = `Plugin · ${plugin.name}`;
+  els.dataAuditDetailFields.replaceChildren(
+    renderLogDetailField('Carpeta', plugin.path),
+    renderLogDetailField('vfxinfo.txt', plugin.hasVfxinfo ? 'presente' : 'ausente'),
+    renderLogDetailField('fxbLoader.meta.json', plugin.hasMeta ? 'presente' : 'ausente'),
+    renderLogDetailField('DLL declarado', plugin.dll.declared ?? '(sin dll_name)'),
+    renderLogDetailField(
+      'DLL encontrado',
+      plugin.dll.resolved === null ? '(ninguno)' : `plugs/${plugin.dll.resolved}`,
+    ),
+    renderLogDetailField(
+      'Arquitectura',
+      plugin.dll.bitness === null ? '—' : `${plugin.dll.bitness} bits`,
+    ),
+    renderLogDetailField('Entrypoint VST', plugin.dll.vstEntrypoint ?? '—'),
+  );
+
+  const gaps = plugin.issues.map((issue) =>
+    dataAuditItem(
+      issue.field,
+      issue.message,
+      DATA_AUDIT_SEVERITY_LABELS[issue.severity] ?? issue.severity,
+      issue.severity === 'note' ? 'badge' : 'badge off',
+    ),
+  );
+  els.dataAuditDetailGaps.replaceChildren(
+    dataAuditHeading(`Huecos · ${plugin.issues.length}`),
+    ...(gaps.length === 0
+      ? [dataAuditEmpty('Sin huecos: vfxinfo, meta y DLL están completos para lo que se puede leer en disco.')]
+      : [dataAuditList(gaps)]),
+  );
+
+  const proposals = plugin.proposals.map((proposal) =>
+    dataAuditItem(
+      proposal.field,
+      `= ${proposal.value}${proposal.note === undefined ? '' : ` · ${proposal.note}`}`,
+      DATA_AUDIT_SOURCE_LABELS[proposal.source] ?? proposal.source,
+      'badge on',
+    ),
+  );
+  els.dataAuditDetailProposals.replaceChildren(
+    dataAuditHeading(`Se puede rellenar · ${plugin.proposals.length}`),
+    ...(proposals.length === 0
+      ? [dataAuditEmpty('Nada que proponer: no hay de dónde sacar los valores que faltan.')]
+      : [dataAuditList(proposals)]),
+  );
+
+  els.dataAuditDetail.hidden = false;
+  els.dataAuditDetailClose.focus({ preventScroll: true });
+}
+
+function closeDataAuditDetail(): void {
+  if (els.dataAuditDetail.hidden) return;
+  els.dataAuditDetail.hidden = true;
+  els.dataAuditDetailFields.replaceChildren();
+  els.dataAuditDetailGaps.replaceChildren();
+  els.dataAuditDetailProposals.replaceChildren();
+  const opener = dataAuditDetailOpener;
+  dataAuditDetailOpener = null;
+  if (opener?.isConnected && opener.getClientRects().length > 0) {
+    opener.focus({ preventScroll: true });
+  }
+}
+
+function destroyDataAuditTable(): void {
+  closeDataAuditDetail();
+  dataAuditTableController?.destroy();
+  dataAuditTableController = null;
+  els.dataAuditTable.replaceChildren();
+}
+
+function setDataAuditStatus(message: string, kind = ''): void {
+  els.dataAuditStatus.textContent = message;
+  els.dataAuditStatus.className = kind ? `status ${kind}` : 'status';
+}
+
+/**
+ * `POST /library/audit` en modo lectura: la tabla es el detalle por plugin y el
+ * resumen de arriba los totales. La auditoría no sondea —los datos solo
+ * cambian cuando el usuario instala, importa o edita—, así que se relee con
+ * «Actualizar» o al volver a abrir el cajón.
+ */
+async function loadDataAudit(): Promise<void> {
+  if (dataAuditBusy) return;
+  if (!libraryRoot) {
+    destroyDataAuditTable();
+    els.dataAuditPath.textContent = '';
+    els.dataAuditSummary.textContent = '';
+    setDataAuditStatus('Elige la carpeta de la librería activa para auditar sus datos.', 'error');
+    return;
+  }
+
+  dataAuditBusy = true;
+  els.dataAuditRefresh.disabled = true;
+  setDataAuditStatus('Auditando los datos de la librería…', 'busy');
+  try {
+    const result = await client.library.audit({ libraryRoot });
+    els.dataAuditPath.textContent = result.plugsPath;
+    els.dataAuditSummary.textContent =
+      `${result.total} plugin(s) · ${result.complete} completo(s) · ${result.incomplete} con huecos · ` +
+      `${result.issueCount} hueco(s) · ${result.proposalCount} valor(es) rellenables · leído ${result.scannedAt}`;
+    if (dataAuditTableController === null) {
+      dataAuditTableController = mountTable(els.dataAuditTable, dataAuditTableView, result.plugins);
+    } else {
+      dataAuditTableController.setRows(result.plugins);
+    }
+    // Las filas se rehacen: si el detalle estaba abierto desde un botón que ya
+    // no existe, se cierra (como en el resto de tablas de la vista).
+    if (els.dataAuditDetail.hidden === false && dataAuditDetailOpener?.isConnected !== true) {
+      closeDataAuditDetail();
+    }
+    setDataAuditStatus('');
+  } catch (error) {
+    destroyDataAuditTable();
+    els.dataAuditPath.textContent = '';
+    els.dataAuditSummary.textContent = '';
+    setDataAuditStatus(`No se pudo auditar la librería: ${describeError(error)}`, 'error');
+  } finally {
+    dataAuditBusy = false;
+    els.dataAuditRefresh.disabled = false;
+  }
+}
+
+function openDataAuditDrawer(opener?: HTMLElement): void {
+  closeBanks();
+  closeMeta();
+  closeWizards();
+  closePluginWizard();
+  closeLogDrawer();
+  closeImportPackageDrawer();
+  closeCustomPluginDrawer();
+  closeAuditDrawer();
+  closeCaptureDrawer();
+  showPanel(els.dataAuditDrawer, opener);
+  els.dataAuditPath.textContent = '';
+  els.dataAuditSummary.textContent = '';
+  destroyDataAuditTable();
+  setDataAuditStatus('');
+  void loadDataAudit();
+}
+
+function closeDataAuditDrawer(): void {
+  if (els.dataAuditDrawer.hidden) return;
+  hidePanel(els.dataAuditDrawer);
+  destroyDataAuditTable();
+  els.dataAuditPath.textContent = '';
+  els.dataAuditSummary.textContent = '';
+  setDataAuditStatus('');
+}
+
+els.dataAuditNavBtn.addEventListener('click', () => {
+  openDataAuditDrawer(els.dataAuditNavBtn);
+});
+
+els.dataAuditClose.addEventListener('click', () => {
+  closeDataAuditDrawer();
+});
+
+els.dataAuditRefresh.addEventListener('click', () => {
+  void loadDataAudit();
+});
+
+els.dataAuditDetailClose.addEventListener('click', closeDataAuditDetail);
+
 els.drawerBackdrop.addEventListener('click', () => {
   closeBanks();
   closeMeta();
@@ -5108,6 +6331,8 @@ els.drawerBackdrop.addEventListener('click', () => {
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
   closeAuditDrawer();
+  closeDataAuditDrawer();
+  closeCaptureDrawer();
 });
 
 window.addEventListener('keydown', (event) => {
@@ -5120,6 +6345,8 @@ window.addEventListener('keydown', (event) => {
     closeImportPackageDrawer();
     closeCustomPluginDrawer();
     closeAuditDrawer();
+    closeDataAuditDrawer();
+    closeCaptureDrawer();
     closeAllRowMenus();
   }
 });
