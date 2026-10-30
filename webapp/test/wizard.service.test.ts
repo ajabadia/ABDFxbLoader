@@ -3,9 +3,10 @@ import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import { PluginLogService } from '../src/plugin-log/plugin-log.service';
 import { PluginMetaService } from '../src/plugin-meta/plugin-meta.service';
+import { banksSkipReason } from './helpers/environment';
 import { pe32Dll, pe64Dll } from './helpers/pe';
 import {
   parseWizardText,
@@ -144,14 +145,28 @@ describe('Wizard Helpers', () => {
 describe('WizardService', () => {
   const metaService = new PluginMetaService();
   const wizardService = new WizardService(metaService);
+  // `_banks/` no se versiona: en CI no hay base de datos real que indexar.
+  const sinBanks = banksSkipReason();
 
-  it('indexa la base de datos real de _banks/wizards con más de 200 plugins', async () => {
-    const wizardsDir = resolveWizardsDir();
-    assert.ok(existsSync(wizardsDir), `el directorio ${wizardsDir} debe existir`);
-
-    const count = await wizardService.initIndex(wizardsDir);
-    assert.ok(count >= 200, `se esperaban al menos 200 wizards, encontrados ${count}`);
+  // El resto de estas pruebas comparten el servicio y necesitan su índice
+  // cargado. Se indexa aquí una vez, con la base real si está y si no con el
+  // catálogo empaquetado (el mismo que usa la app), en vez de depender de que
+  // otra prueba lo haya hecho antes.
+  before(async () => {
+    await wizardService.initIndex(sinBanks === false ? resolveWizardsDir() : undefined);
   });
+
+  it(
+    'indexa la base de datos real de _banks/wizards con más de 200 plugins',
+    { skip: sinBanks },
+    async () => {
+      const wizardsDir = resolveWizardsDir();
+      assert.ok(existsSync(wizardsDir), `el directorio ${wizardsDir} debe existir`);
+
+      const count = await wizardService.initIndex(wizardsDir);
+      assert.ok(count >= 200, `se esperaban al menos 200 wizards, encontrados ${count}`);
+    },
+  );
 
   it('carga desde catálogo empaquetado JSON sin requerir escaneo de carpetas', async () => {
     const standaloneService = new WizardService(metaService);

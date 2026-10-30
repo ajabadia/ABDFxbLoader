@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { after, before, test } from 'node:test';
 import { moveToTrash } from '../src/common/trash';
+import { recycleBinSkipReason } from './helpers/environment';
 
 /**
  * «Descartar respaldo» no borra: mueve el `.orig` a la papelera. En Windows se
@@ -21,6 +22,13 @@ import { moveToTrash } from '../src/common/trash';
  * al terminar (en Windows la rama nativa no la lee).
  */
 delete process.env['FXB_TRASH_MODE'];
+
+/**
+ * Las pruebas que miran la Papelera de reciclaje REAL necesitan Windows y su
+ * PowerShell. Donde no los haya se omiten con el motivo: usar la papelera del
+ * escritorio de Linux no prueba lo que estas pruebas dicen probar.
+ */
+const noHayPapeleraReal = recycleBinSkipReason();
 
 let papeleraTemporal: string | undefined;
 before(async () => {
@@ -108,57 +116,65 @@ async function purgarEntradasPropias(prefijo: string): Promise<number> {
   return retiradas;
 }
 
-test('mueve el archivo a la papelera del sistema y dice dónde recuperarlo', async (t) => {
-  const dir = await tempDir(t, 'fxb-trash-');
-  // Lo que esta prueba mande a la Papelera real se retira al terminar.
-  t.after(async () => {
-    assert.equal(
-      await purgarEntradasPropias(dir),
-      1,
-      'la entrada de este test debe salir de la Papelera real',
-    );
-  });
-  const target = path.join(dir, 'Rhodes.fxb.orig');
-  await writeFile(target, 'respaldo');
+test(
+  'mueve el archivo a la papelera del sistema y dice dónde recuperarlo',
+  { skip: noHayPapeleraReal },
+  async (t) => {
+    const dir = await tempDir(t, 'fxb-trash-');
+    // Lo que esta prueba mande a la Papelera real se retira al terminar.
+    t.after(async () => {
+      assert.equal(
+        await purgarEntradasPropias(dir),
+        1,
+        'la entrada de este test debe salir de la Papelera real',
+      );
+    });
+    const target = path.join(dir, 'Rhodes.fxb.orig');
+    await writeFile(target, 'respaldo');
 
-  const trash = await moveToTrash(target);
+    const trash = await moveToTrash(target);
 
-  assert.equal(await readFile(target).catch(() => null), null, 'el archivo ya no está en su sitio');
-  assert.notEqual(trash.label, '');
-  assert.match(trash.label, /Papelera/);
-  assert.match(trash.hint, /recuperarlo|Restaurar|Volver a poner/);
+    assert.equal(await readFile(target).catch(() => null), null, 'el archivo ya no está en su sitio');
+    assert.notEqual(trash.label, '');
+    assert.match(trash.label, /Papelera/);
+    assert.match(trash.hint, /recuperarlo|Restaurar|Volver a poner/);
 
-  if (process.platform === 'win32') {
-    assert.equal(trash.path, null, 'Windows no expone una ruta a su Papelera de reciclaje');
-  } else {
-    assert.equal(typeof trash.path, 'string');
-  }
-});
+    if (process.platform === 'win32') {
+      assert.equal(trash.path, null, 'Windows no expone una ruta a su Papelera de reciclaje');
+    } else {
+      assert.equal(typeof trash.path, 'string');
+    }
+  },
+);
 
-test('acepta dos respaldos con el mismo nombre sin pisarse', async (t) => {
-  const dir = await tempDir(t, 'fxb-trash-dup-');
-  const first = path.join(dir, 'a', 'Rhodes.fxb.orig');
-  const second = path.join(dir, 'b', 'Rhodes.fxb.orig');
-  await mkdir(path.dirname(first), { recursive: true });
-  await mkdir(path.dirname(second), { recursive: true });
-  await writeFile(first, 'uno');
-  await writeFile(second, 'dos');
+test(
+  'acepta dos respaldos con el mismo nombre sin pisarse',
+  { skip: noHayPapeleraReal },
+  async (t) => {
+    const dir = await tempDir(t, 'fxb-trash-dup-');
+    const first = path.join(dir, 'a', 'Rhodes.fxb.orig');
+    const second = path.join(dir, 'b', 'Rhodes.fxb.orig');
+    await mkdir(path.dirname(first), { recursive: true });
+    await mkdir(path.dirname(second), { recursive: true });
+    await writeFile(first, 'uno');
+    await writeFile(second, 'dos');
 
-  // Las dos entradas de este test se retiran de la Papelera real al terminar.
-  t.after(async () => {
-    assert.equal(
-      await purgarEntradasPropias(dir),
-      2,
-      'las dos entradas de este test deben salir de la Papelera real',
-    );
-  });
+    // Las dos entradas de este test se retiran de la Papelera real al terminar.
+    t.after(async () => {
+      assert.equal(
+        await purgarEntradasPropias(dir),
+        2,
+        'las dos entradas de este test deben salir de la Papelera real',
+      );
+    });
 
-  await moveToTrash(first);
-  await moveToTrash(second);
+    await moveToTrash(first);
+    await moveToTrash(second);
 
-  assert.equal(await readFile(first).catch(() => null), null);
-  assert.equal(await readFile(second).catch(() => null), null);
-});
+    assert.equal(await readFile(first).catch(() => null), null);
+    assert.equal(await readFile(second).catch(() => null), null);
+  },
+);
 
 test('si el archivo no existe, falla en vez de decir que lo movió', async (t) => {
   const dir = await tempDir(t, 'fxb-trash-missing-');
@@ -247,7 +263,7 @@ test('la papelera XDG no pisa un respaldo que ya tiene ese nombre', async (t) =>
  */
 test(
   'el timeout aborta el envío si la Papelera no responde',
-  { skip: process.platform !== 'win32' && 'solo Windows' },
+  { skip: noHayPapeleraReal },
   async (t) => {
     const dir = await tempDir(t, 'fxb-trash-timeout-');
     const target = path.join(dir, 'Rhodes.fxb.orig');

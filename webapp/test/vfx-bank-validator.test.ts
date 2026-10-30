@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, it } from 'node:test';
+import { banksSkipReason } from './helpers/environment';
 import {
   diagnoseVfxBank,
   repairVfxBank,
@@ -23,9 +24,15 @@ const NOVATION_BANK = path.join(
   '000_Novation V-Station demo.vfxbank',
 );
 const MDA_BANK = path.join(BANKS_ROOT, 'MDAPiano.vfxlibrary', 'banks', '000_MDA Piano.vfxbank');
+// Los dos bancos reales vienen de `_banks/`, que no se versiona: sin ellos se
+// omiten estas pruebas con el motivo; el resto usa fixtures temporales.
+const banksSkip = banksSkipReason([
+  'Novation V-Station demo.vfxlibrary',
+  'MDAPiano.vfxlibrary',
+]);
 
 describe('vfx-bank-validator (utilidad transversal)', () => {
-  it('diagnostica un banco real concordante (Novation V-Station)', async () => {
+  it('diagnostica un banco real concordante (Novation V-Station)', { skip: banksSkip }, async () => {
     const diag = await diagnoseVfxBank(NOVATION_BANK, {
       expectedPluginId: 1316377392,
       wizardLookup: (id) =>
@@ -45,7 +52,7 @@ describe('vfx-bank-validator (utilidad transversal)', () => {
     assert.equal(diag.matchedWizard.name, 'V-Station Demo');
   });
 
-  it('diagnostica MDAPiano.vfxbank correctamente', async () => {
+  it('diagnostica MDAPiano.vfxbank correctamente', { skip: banksSkip }, async () => {
     const diag = await diagnoseVfxBank(MDA_BANK);
 
     assert.equal(diag.presetCount, 1);

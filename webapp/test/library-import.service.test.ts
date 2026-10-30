@@ -8,14 +8,21 @@ import { AssociationAuditService } from '../src/association-audit/association-au
 import { PluginLogService } from '../src/plugin-log/plugin-log.service';
 import { PluginMetaService } from '../src/plugin-meta/plugin-meta.service';
 import { WizardService } from '../src/wizard/wizard.service';
+import { banksSkipReason } from './helpers/environment';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const BANKS_ROOT = path.join(PROJECT_ROOT, '_banks');
+// `_banks/` no se versiona: sin él no hay paquete real que inspeccionar, así
+// que la suite entera se omite con el motivo en vez de fallar con un ENOENT.
+const banksSkip = banksSkipReason([
+  'Novation V-Station demo.vfxlibrary',
+  'MDAPiano.vfxlibrary',
+]);
 const NOVATION_DEMO_DIR = path.join(BANKS_ROOT, 'Novation V-Station demo.vfxlibrary');
 const MDA_PIANO_DIR = path.join(BANKS_ROOT, 'MDAPiano.vfxlibrary');
 const STORAGE_DIR = path.join(BANKS_ROOT, 'storage');
 
-describe('LibraryImportService', () => {
+describe('LibraryImportService', { skip: banksSkip }, () => {
   const wizardService = new WizardService(new PluginMetaService());
   const service = new LibraryImportService(
     new PluginLogService(),
