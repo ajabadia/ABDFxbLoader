@@ -44,9 +44,12 @@ export function recycleBinSkipReason(): SkipReason {
   const probe = spawnSync(
     'powershell.exe',
     ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'exit 0'],
-    { stdio: 'ignore', timeout: 15_000, windowsHide: true },
+    { stdio: 'ignore', timeout: 60_000, windowsHide: true },
   );
-  if (probe.error !== undefined || probe.status !== 0) {
+  // Solo cuenta como «no hay» si el binario no existe. Una máquina cargada que
+  // tarde en arrancar el shell no puede convertir esto en una omisión muda: eso
+  // escondería el fallo que la prueba busca.
+  if ((probe.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
     return 'no hay powershell.exe: sin él no se puede usar la Papelera de reciclaje real';
   }
   return false;
