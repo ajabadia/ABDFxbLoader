@@ -207,7 +207,12 @@ export class CaptureController {
     summary: 'Copiar diff a zona de staging para revisar/editar',
     description:
       'Prepara los archivos y el registro del diff en una carpeta de staging propia; el ' +
-      'destino final no se toca hasta `/capture/finalize`.',
+      'destino final no se toca hasta `/capture/finalize`. Incluye además los archivos del ' +
+      'plugin que ya existían antes de la captura (`preExistingFiles`), recuperados del snapshot ' +
+      'inicial y acotados al tallo del DLL y a las carpetas donde la captura puso archivos para ' +
+      'no arrastrar otros plugins de la misma carpeta. Al ser staging, `GET /capture/staging/:diffId` ' +
+      'los lista y `DELETE /capture/staging/:diffId?path=` permite quitarlos antes de empaquetar: ' +
+      'lo que se quite no llega ni a `/capture/finalize` ni a `/capture/vmachine/:diffId`.',
   })
   @ApiBody({ type: PackageDiffDto, examples: { estandar: { value: CAPTURE_PACKAGE_REQUEST_EXAMPLE } } })
   @ApiOkResponse({
@@ -327,11 +332,13 @@ export class CaptureController {
       'Construye `plugs\\<pluginName>\\` a partir del staging de `/capture/package`: recorta la ruta ' +
       'relativa a la unidad, deja el DLL en la raíz del plugin, escribe `vfxinfo.txt` con un `dll_name` ' +
       'relativo y crea `presets\\`, de modo que la carpeta se puede escanear e importar como una librería ' +
-      'real. Con `includePreExisting` (por defecto `true`) suma además los archivos del plugin que ya ' +
-      'existían antes de la captura, tomados del snapshot inicial y acotados al tallo del DLL y a las ' +
-      'carpetas donde la captura puso archivos para no arrastrar otros plugins de la misma carpeta; con ' +
-      '`false` el paquete se queda solo con lo que cambió. Opcionalmente escribe el `.vfxwizard` junto ' +
-      'al paquete. Los avisos no abortan la generación.',
+      'real. El staging es la única fuente: lo que se haya quitado al revisarlo no se empaqueta. Con ' +
+      '`includePreExisting: false` se dejan fuera los archivos que ya existían antes de la captura y que ' +
+      '`/capture/package` marcó como previos en el manifiesto del staging; por defecto (`true`) se ' +
+      'empaqueta todo el staging. Regenerar sobre la misma carpeta parte de cero: si ' +
+      '`plugs\\<pluginName>\\` ya tiene una generación anterior (su `vfxinfo.txt`), se borra antes de ' +
+      'escribir para no dejar archivos obsoletos. Opcionalmente escribe el `.vfxwizard` junto al paquete. ' +
+      'Los avisos no abortan la generación.',
   })
   @ApiParam({ name: 'diffId', description: 'ID del diff empaquetado.', example: CAPTURE_DIFF_EXAMPLE.diffId })
   @ApiBody({ type: VMachineRequestDto, examples: { estandar: { value: CAPTURE_VMACHINE_REQUEST_EXAMPLE } } })

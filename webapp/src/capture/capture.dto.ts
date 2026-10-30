@@ -297,7 +297,9 @@ export const CAPTURE_PACKAGE_RESULT_EXAMPLE = {
   packageDir: 'D:\\_banks\\paquetes\\SuperWave P8',
   stagingDir: 'C:\\Users\\ajaba\\.fxbloader\\capture\\staging\\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f',
   filesCopied: 12,
+  preExistingFiles: 3,
   registryEntries: 3,
+  warnings: [],
 };
 
 export const CAPTURE_STAGING_EXAMPLE = {
@@ -543,8 +545,23 @@ export class CapturePackageResultDto {
   @ApiProperty({ description: 'Archivos copiados al staging.', example: CAPTURE_PACKAGE_RESULT_EXAMPLE.filesCopied })
   filesCopied!: number;
 
+  @ApiProperty({
+    description:
+      'De esos archivos, cuántos ya existían antes de la captura (DLL, presets, datos del plugin) y se añadieron al staging para poder revisarlos antes de empaquetar.',
+    example: CAPTURE_PACKAGE_RESULT_EXAMPLE.preExistingFiles,
+  })
+  preExistingFiles!: number;
+
   @ApiProperty({ description: 'Valores de registro preparados.', example: CAPTURE_PACKAGE_RESULT_EXAMPLE.registryEntries })
   registryEntries!: number;
+
+  @ApiProperty({
+    description:
+      'Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y faltan archivos previos del plugin.',
+    type: [String],
+    example: CAPTURE_PACKAGE_RESULT_EXAMPLE.warnings,
+  })
+  warnings!: string[];
 }
 
 export class CaptureStagingListDto {

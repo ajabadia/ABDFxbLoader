@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
 import { writeFileAtomic } from '../common/atomic-file';
+import { VFXINFO_FILENAME } from '../library/vfxinfo';
 import type { CaptureSnapshot, CaptureDiff, CaptureTask, CaptureTaskKind, FileSnapshotEntry, RegistrySnapshotEntry } from './capture.types';
 import { serializeWizardToVfxinfo } from '../wizard/wizard-parser';
 import type { WizardRecord } from '../wizard/wizard.types';
@@ -49,11 +50,30 @@ function safePluginFolderName(name: string): string {
   return cleaned === '' || cleaned === '.' || cleaned === '..' ? 'plugin' : cleaned;
 }
 
-/** Raíz común de rutas absolutas, con la forma de la primera. */
+/**
+ * Raíz común de rutas absolutas, con la forma de la primera. Conserva la raíz
+ * de la ruta (`C:\` en Windows, `/` en POSIX): sin ella, en Linux la ruta se
+ * vuelve relativa y ninguna comparación con las rutas del snapshot cae dentro,
+ * así que los archivos previos del plugin desaparecían del paquete.
+ */
 function commonAbsoluteRoot(paths: string[]): string {
   if (paths.length === 0) return '';
   const common = commonDirectory(paths);
-  return splitRelative(paths[0]!).slice(0, common.length).join(path.sep);
+  const joined = splitRelative(paths[0]!).slice(0, common.length).join(path.sep);
+  // En Windows la raíz (`C:\`) ya viaja en el primer segmento y repetirla daría
+  // `C:\C:\…`; en POSIX la `/` no está entre los segmentos y hay que devolverla,
+  // o la ruta común queda relativa.
+  return path.parse(paths[0]!).root === path.sep ? path.sep + joined : joined;
+}
+
+/**
+ * Ruta relativa a la unidad de origen (`C:\`), que es la forma que usa el
+ * staging para no perder la estructura de carpeta del plugin.
+ */
+function unitRelative(absolute: string): string {
+  const parsed = path.parse(absolute);
+  const relative = parsed.root ? path.relative(parsed.root, absolute).replace(/^[\\/]+/, '') : absolute;
+  return (relative === '' ? path.basename(absolute) : relative).split(path.sep).join('/');
 }
 
 /** `child` está dentro de `parent` (`false` si es el propio `parent`). */
@@ -599,7 +619,14 @@ export class CaptureService implements OnModuleInit {
     return this.diffs.get(diffId);
   }
 
-  async packageDiff(diffId: string, targetDir: string, packageName?: string): Promise<{ packageDir: string; stagingDir: string; filesCopied: number; registryEntries: number }> {
+  async packageDiff(diffId: string, targetDir: string, packageName?: string): Promise<{
+    packageDir: string;
+    stagingDir: string;
+    filesCopied: number;
+    preExistingFiles: number;
+    registryEntries: number;
+    warnings: string[];
+  }> {
     const diff = this.diffs.get(diffId);
     if (!diff) {
       throw new NotFoundException({ message: `No existe el diff "${diffId}" para empaquetar.` });
@@ -621,17 +648,26 @@ export class CaptureService implements OnModuleInit {
     for (const file of filesToCopy) {
       try {
         if (!existsSync(file.path)) continue;
-        // Preserve relative path from root
-        const parsed = path.parse(file.path);
-        let relativePath = file.path;
-        if (parsed.root) {
-          relativePath = path.relative(parsed.root, file.path).replace(/^[\\/]+/, '');
-        }
-        if (!relativePath) relativePath = path.basename(file.path);
-        const destPath = path.join(stagingPath, relativePath);
+        const destPath = path.join(stagingPath, ...unitRelative(file.path).split('/'));
         await fs.mkdir(path.dirname(destPath), { recursive: true });
         await fs.copyFile(file.path, destPath);
         filesCopied++;
+      } catch {}
+    }
+
+    // El diff solo trae lo que cambió, así que el DLL o los presets que el
+    // plugin ya tenía se quedaban fuera del paquete. Se copian también al
+    // staging para poder revisarlos (y quitarlos) antes de empaquetar.
+    const preExisting = this.collectPreExisting(diff);
+    const preExistingFiles: string[] = [];
+    for (const file of preExisting.files) {
+      const relativePath = unitRelative(file.absolute);
+      const destPath = path.join(stagingPath, ...relativePath.split('/'));
+      try {
+        if (existsSync(destPath)) continue;
+        await fs.mkdir(path.dirname(destPath), { recursive: true });
+        await fs.copyFile(file.absolute, destPath);
+        preExistingFiles.push(relativePath);
       } catch {}
     }
 
@@ -682,6 +718,9 @@ export class CaptureService implements OnModuleInit {
       name,
       createdAt: new Date().toISOString(),
       filesCopied,
+      // Lo que ya existía antes de la captura, para que v-machine pueda dejarlo
+      // fuera con `includePreExisting: false` sin volver a mirar el snapshot.
+      preExistingFiles,
       registryEntries: allRegEntries.length,
       stagingPath,
       targetDir: path.join(targetDir, name),
@@ -690,7 +729,95 @@ export class CaptureService implements OnModuleInit {
     await writeFileAtomic(path.join(stagingPath, 'capture_diff.json'), Buffer.from(JSON.stringify(diff, null, 2), 'utf8')).catch(() => undefined);
     await writeFileAtomic(path.join(stagingPath, 'manifest.json'), Buffer.from(JSON.stringify(manifest, null, 2), 'utf8')).catch(() => undefined);
 
-    return { packageDir: path.join(targetDir, name), stagingDir: stagingPath, filesCopied, registryEntries: allRegEntries.length };
+    return {
+      packageDir: path.join(targetDir, name),
+      stagingDir: stagingPath,
+      filesCopied,
+      preExistingFiles: preExistingFiles.length,
+      registryEntries: allRegEntries.length,
+      warnings: preExisting.warnings,
+    };
+  }
+
+  /**
+   * Archivos del plugin que ya existían al empezar la captura. Se toman del
+   * snapshot inicial y se acotan al tallo del DLL y a las carpetas donde la
+   * captura puso archivos, para no arrastrar los demás plugins que conviven en
+   * `VstPlugins`. El llamante decide si los empaqueta.
+   */
+  private collectPreExisting(diff: CaptureDiff): { files: { absolute: string; relative: string }[]; warnings: string[] } {
+    const warnings: string[] = [];
+    const files: { absolute: string; relative: string }[] = [];
+    const before = this.snapshots.get(diff.snapshotIdBefore);
+    if (before === undefined) {
+      warnings.push(
+        'No se pudo recuperar el snapshot inicial: faltan archivos del plugin que ya existían antes de la captura.',
+      );
+      return { files, warnings };
+    }
+
+    const capturedFiles = [
+      ...diff.addedFiles,
+      ...diff.modifiedFiles.map((entry) => entry.after),
+    ].filter((file) => !file.isDir);
+    const packageRoot = commonAbsoluteRoot(capturedFiles.map((file) => file.path));
+    if (packageRoot === '') return { files, warnings };
+
+    const capturedPaths = new Set(capturedFiles.map((file) => file.path.toLowerCase()));
+    const removedPaths = new Set(diff.removedFiles.map((file) => file.path.toLowerCase()));
+    const rootSegments = splitRelative(packageRoot).length;
+    const beforeFiles = before.files.filter((file) => !file.isDir);
+
+    // El DLL manda: la selección se ancla a su carpeta y a su nombre.
+    const capturedStems = new Set(capturedFiles.map((file) => path.parse(file.path).name.toLowerCase()));
+    const beforeDlls = beforeFiles.filter(
+      (file) =>
+        file.path.toLowerCase().endsWith('.dll') &&
+        isInside(packageRoot, file.path) &&
+        !removedPaths.has(file.path.toLowerCase()),
+    );
+    const primary =
+      beforeDlls.find((file) => capturedStems.has(path.parse(file.path).name.toLowerCase())) ??
+      beforeDlls[0];
+    if (primary === undefined) return { files, warnings };
+
+    const dllDir = path.dirname(primary.path);
+    const dllStem = path.parse(primary.path).name;
+    // Las carpetas donde la captura escribió, salvo la del propio DLL: ahí
+    // conviven los demás plugins instalados y no se pueden arrastrar.
+    const capturedDirs = capturedFiles
+      .map((file) => path.dirname(file.path))
+      .filter((dir) => dir.toLowerCase() !== dllDir.toLowerCase());
+
+    for (const file of beforeFiles) {
+      const key = file.path.toLowerCase();
+      if (capturedPaths.has(key) || removedPaths.has(key)) continue;
+      if (!isInside(packageRoot, file.path)) continue;
+      const relative = splitRelative(file.path).slice(rootSegments).join('/');
+      if (relative === '') continue;
+      const firstSegment = relative.split('/')[0] ?? '';
+      const ownedByDll = isInside(dllDir, file.path) && belongsToStem(firstSegment, dllStem);
+      const insideCapturedDir = capturedDirs.some(
+        (dir) => isInside(dir, file.path) || dir.toLowerCase() === path.dirname(file.path).toLowerCase(),
+      );
+      if (!ownedByDll && !insideCapturedDir) continue;
+      if (!existsSync(file.path)) continue;
+      files.push({ absolute: file.path, relative });
+    }
+    return { files, warnings };
+  }
+
+  /** Rutas del staging que `POST /capture/package` marcó como previas a la captura. */
+  private async readStagedPreExisting(diffId: string): Promise<string[]> {
+    try {
+      const raw = await fs.readFile(path.join(this.stagingDir, diffId, 'manifest.json'), 'utf8');
+      const manifest = JSON.parse(raw) as { preExistingFiles?: unknown };
+      const files = manifest.preExistingFiles;
+      return Array.isArray(files) ? files.filter((file): file is string => typeof file === 'string') : [];
+    } catch {
+      // Sin manifiesto (staging creado a mano) no hay «previos» que distinguir.
+      return [];
+    }
   }
 
   /** Staging inexistente: 404 con el motivo, no un 500 genérico. */
@@ -768,8 +895,9 @@ export class CaptureService implements OnModuleInit {
     generateBank?: boolean;
     generateWizard?: boolean;
     /**
-     * Sumar al paquete los archivos que ya existían al iniciar la captura.
-     * Ausente equivale a `true`: es el comportamiento histórico del flujo.
+     * Sumar al paquete los archivos que ya existían al iniciar la captura, que
+     * `POST /capture/package` deja en el staging. Ausente equivale a `true`: es
+     * el comportamiento histórico del flujo.
      */
     includePreExisting?: boolean;
     outputDir?: string;
@@ -820,94 +948,21 @@ export class CaptureService implements OnModuleInit {
               path.basename(entry.absolute).toLowerCase() === requestedDll,
           )) ?? candidates[0];
 
-    // Archivos que ya estaban antes de la captura: el diff solo trae lo que
-    // cambió, así que un DLL o una carpeta de presets preexistente se quedaría
-    // fuera del paquete. Se toman del snapshot inicial, acotados al plugin (el
-    // tallo del DLL y las carpetas donde la captura puso archivos) para no
-    // arrastrar los demás plugins que conviven en `VstPlugins`. El cliente
-    // puede optar por no incluirlos (`includePreExisting: false`), p. ej. para
-    // montar el plugin solo con los archivos que tocó la instalación.
-    const capturedFiles = [
-      ...diff.addedFiles,
-      ...diff.modifiedFiles.map((entry) => entry.after),
-    ].filter((file) => !file.isDir);
-    const capturedPaths = new Set(capturedFiles.map((file) => file.path.toLowerCase()));
-    const removedPaths = new Set(diff.removedFiles.map((file) => file.path.toLowerCase()));
-    const packageRoot = commonAbsoluteRoot(capturedFiles.map((file) => file.path));
-    const rootSegments = splitRelative(packageRoot).length;
-    const before = this.snapshots.get(diff.snapshotIdBefore);
-    const beforeFiles = (before?.files ?? []).filter((file) => !file.isDir);
-
-    // El DLL manda sobre el resto: el paquete y `dll_name` se organizan a su
-    // alrededor. Si la captura no lo incluyó, tiene que ser uno preexistente.
-    const stagedDll = pickDll(
-      stagingEntries.filter((entry) => entry.relative.toLowerCase().endsWith('.dll')),
+    // Los archivos que ya existían antes de la captura llegaron al staging con
+    // `POST /capture/package`, así que aquí la única verdad es el staging: lo
+    // que el usuario haya quitado al revisarlo no vuelve al paquete. Con
+    // `includePreExisting: false` se descartan los que el manifiesto del
+    // staging marcó como previos, y el paquete se queda con lo que cambió la
+    // instalación.
+    const preExistingRelatives = new Set(
+      (await this.readStagedPreExisting(diffId)).map((file) =>
+        splitRelative(file).slice(baseSegments.length).join('/').toLowerCase(),
+      ),
     );
-    let primaryAbsolute = stagedDll
-      ? capturedFiles.find(
-          (file) =>
-            path.basename(file.path).toLowerCase() ===
-            path.posix.basename(stagedDll.relative).toLowerCase(),
-        )?.path ?? null
-      : null;
-    if (stagedDll === undefined && packageRoot !== '') {
-      const beforeDlls = beforeFiles.filter(
-        (file) =>
-          file.path.toLowerCase().endsWith('.dll') &&
-          isInside(packageRoot, file.path) &&
-          !removedPaths.has(file.path.toLowerCase()),
-      );
-      const capturedStems = new Set(capturedFiles.map((file) => path.parse(file.path).name.toLowerCase()));
-      const chosen =
-        (requestedDll === ''
-          ? undefined
-          : beforeDlls.find((file) => path.basename(file.path).toLowerCase() === requestedDll)) ??
-        beforeDlls.find((file) => capturedStems.has(path.parse(file.path).name.toLowerCase())) ??
-        beforeDlls[0];
-      if (chosen) primaryAbsolute = chosen.path;
-    }
-
-    const preExisting: PackageEntry[] = [];
-    if (before === undefined) {
-      warnings.push(
-        'No se pudo recuperar el snapshot inicial: el paquete puede omitir archivos del plugin que ya existían antes de la captura.',
-      );
-    } else if (
-      options.includePreExisting !== false &&
-      packageRoot !== '' &&
-      primaryAbsolute !== null
-    ) {
-      const dllDir = path.dirname(primaryAbsolute);
-      const dllStem = path.parse(primaryAbsolute).name;
-      // Las carpetas donde la captura escribió, salvo la del propio DLL: ahí
-      // conviven los demás plugins instalados y no se pueden arrastrar.
-      const capturedDirs = capturedFiles
-        .map((file) => path.dirname(file.path))
-        .filter((dir) => dir.toLowerCase() !== dllDir.toLowerCase());
-      for (const file of beforeFiles) {
-        const key = file.path.toLowerCase();
-        if (capturedPaths.has(key) || removedPaths.has(key)) continue;
-        if (!isInside(packageRoot, file.path)) continue;
-        const relative = splitRelative(file.path).slice(rootSegments).join('/');
-        if (relative === '') continue;
-        const firstSegment = relative.split('/')[0] ?? '';
-        const ownedByDll = isInside(dllDir, file.path) && belongsToStem(firstSegment, dllStem);
-        const insideCapturedDir = capturedDirs.some(
-          (dir) => isInside(dir, file.path) || dir.toLowerCase() === path.dirname(file.path).toLowerCase(),
-        );
-        if (!ownedByDll && !insideCapturedDir) continue;
-        if (!existsSync(file.path)) continue;
-        preExisting.push({ absolute: file.path, relative });
-      }
-    }
-
-    const entries: PackageEntry[] = [...stagingEntries];
-    const knownRelatives = new Set(entries.map((entry) => entry.relative.toLowerCase()));
-    for (const entry of preExisting) {
-      if (knownRelatives.has(entry.relative.toLowerCase())) continue;
-      knownRelatives.add(entry.relative.toLowerCase());
-      entries.push(entry);
-    }
+    const entries: PackageEntry[] =
+      options.includePreExisting === false
+        ? stagingEntries.filter((entry) => !preExistingRelatives.has(entry.relative.toLowerCase()))
+        : stagingEntries;
 
     const dllEntries = entries.filter((entry) => entry.relative.toLowerCase().endsWith('.dll'));
     const primaryDll = pickDll(dllEntries);
@@ -923,6 +978,14 @@ export class CaptureService implements OnModuleInit {
     }
 
     if (options.generateBank !== false) {
+      // Regenerar sobre la misma carpeta tiene que dar el paquete del staging
+      // actual: se borra la generación anterior antes de escribir, o quedaría
+      // como basura todo lo que se quitó del staging entre una y otra. Solo se
+      // borra si la carpeta es una generación previa de este mismo flujo (su
+      // `vfxinfo.txt`), para no arrasar con contenido ajeno al empaquetado.
+      if (existsSync(path.join(pluginDir, VFXINFO_FILENAME))) {
+        await fs.rm(pluginDir, { force: true, recursive: true });
+      }
       await fs.mkdir(pluginDir, { recursive: true });
 
       for (const entry of entries) {

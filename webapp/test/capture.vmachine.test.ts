@@ -130,8 +130,8 @@ test('v-machine empaqueta el staging sintético con la estructura de la librerí
   );
 
   const capturedFiles = staged.map((file) => `${capturedRoot}\\${file.split('/').join('\\')}`);
-  // El snapshot inicial contiene los mismos archivos que el staging: no queda
-  // nada previo que recuperar y no debe aparecer el aviso por ello.
+  // El snapshot inicial contiene lo mismo que el staging: v-machine solo lee el
+  // staging, así que aquí no se añade nada extra.
   snapshots.set(snapshotId, snapshotWith(snapshotId, capturedFiles));
   diffs.set(diffId, syntheticDiff(snapshotId, capturedFiles));
 
@@ -226,6 +226,10 @@ test('v-machine empaqueta el staging sintético con la estructura de la librerí
  * Captura donde el plugin ya existía en disco antes de empezar: la captura solo
  * añadió `P8.ini` y `presets/factory.fxb`, y hay piezas del plugin (DLL, datos,
  * un preset), otro plugin de la misma carpeta y un DLL que la captura borró.
+ *
+ * El staging lo produce `POST /capture/package` de verdad: la prueba cubre así
+ * que los archivos previos del plugin llegan ahí y se pueden revisar o quitar
+ * antes de empaquetar.
  */
 async function preExistingFixture(t: TestContext) {
   const { http, service } = await makeApp(t);
@@ -234,12 +238,14 @@ async function preExistingFixture(t: TestContext) {
   const diffId = randomUUID();
   const snapshotId = randomUUID();
   const stagingPath = path.join(service.stagingRoot, diffId);
+  const targetDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-pkg-'));
   const { diffs, snapshots } = service as unknown as SeededService;
   t.after(async () => {
     diffs.delete(diffId);
     snapshots.delete(snapshotId);
     await rm(stagingPath, { recursive: true, force: true });
     await rm(systemDir, { recursive: true, force: true });
+    await rm(targetDir, { recursive: true, force: true });
   });
 
   const systemFile = (relative: string): string => path.join(pluginsDir, ...relative.split('/'));
@@ -247,13 +253,6 @@ async function preExistingFixture(t: TestContext) {
     const target = systemFile(relative);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, content);
-  };
-  // El staging conserva la ruta relativa a la unidad, como `packageDiff`.
-  const writeStagedFromSystem = async (relative: string): Promise<void> => {
-    const staged = path.relative(path.parse(systemDir).root, systemFile(relative));
-    const target = path.join(stagingPath, staged);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, await readFile(systemFile(relative)));
   };
 
   await writeSystem('P8.dll', pe32Dll());
@@ -263,8 +262,6 @@ async function preExistingFixture(t: TestContext) {
   await writeSystem('presets/legacy.fxb', buildBank({ uniqueId: 'Lgcy' }));
   await writeSystem('P8.ini', '[P8]\n');
   await writeSystem('presets/factory.fxb', buildBank({ uniqueId: 'SwP8' }));
-  await writeStagedFromSystem('P8.ini');
-  await writeStagedFromSystem('presets/factory.fxb');
 
   const captured = [systemFile('P8.ini'), systemFile('presets/factory.fxb')];
   snapshots.set(
@@ -281,15 +278,39 @@ async function preExistingFixture(t: TestContext) {
   diff.removedFiles.push({ path: systemFile('Old.dll'), size: 0, mtimeMs: 0, isDir: false });
   diffs.set(diffId, diff);
 
-  return { http, diffId };
+  const packaged = await http()
+    .post('/capture/package')
+    .send({ diffId, targetDir })
+    .expect(200);
+
+  return { http, diffId, packaged: packaged.body as { filesCopied: number; preExistingFiles: number; warnings: string[] } };
 }
 
 test('v-machine suma los archivos del plugin que ya existían antes de la captura', async (t) => {
-  const { http, diffId } = await preExistingFixture(t);
+  const { http, diffId, packaged } = await preExistingFixture(t);
   const outputDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-prev-'));
   t.after(async () => {
     await rm(outputDir, { recursive: true, force: true });
   });
+
+  // Los previos del plugin no se esconden: `/capture/package` los deja en el
+  // staging para poder revisarlos y quitarlos antes de empaquetar.
+  assert.equal(packaged.preExistingFiles, 3);
+  assert.deepEqual(packaged.warnings, []);
+  const staging = await http().get(`/capture/staging/${diffId}`).expect(200);
+  const staged = (staging.body.files as string[]).map((file) => file.split(/[\\/]+/).join('/'));
+  for (const relative of ['P8.dll', 'P8/wavetables/table.wav', 'presets/legacy.fxb']) {
+    assert.ok(
+      staged.some((file) => file.endsWith(`/${relative}`)),
+      `el archivo previo "${relative}" debe aparecer en el staging`,
+    );
+  }
+  for (const relative of ['Other/Other.dll', 'Old.dll']) {
+    assert.ok(
+      !staged.some((file) => file.endsWith(`/${relative}`)),
+      `"${relative}" no es del plugin y no debe llegar al staging`,
+    );
+  }
 
   const response = await http()
     .post(`/capture/vmachine/${diffId}`)
@@ -343,7 +364,9 @@ test('v-machine suma los archivos del plugin que ya existían antes de la captur
 });
 
 test('v-machine respeta includePreExisting:false y empaqueta solo lo capturado', async (t) => {
-  const { http, diffId } = await preExistingFixture(t);
+  const { http, diffId, packaged } = await preExistingFixture(t);
+  // El staging sí trae los previos: el filtro tiene que quitarlos al empaquetar.
+  assert.equal(packaged.preExistingFiles, 3, 'el staging debe incluir los archivos previos del plugin');
   const outputDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-only-'));
   t.after(async () => {
     await rm(outputDir, { recursive: true, force: true });
@@ -388,6 +411,113 @@ test('v-machine respeta includePreExisting:false y empaqueta solo lo capturado',
   const vfxinfo = (await readFile(path.join(bankDir, 'vfxinfo.txt'), 'latin1')).split(/\r?\n/);
   assert.ok(vfxinfo.includes(`dll_name: ${PLUGIN_NAME}/${PLUGIN_NAME}.dll`));
   assert.deepEqual(await treeFiles(bankDir), [
+    'P8.ini',
+    'presets/factory.fxb',
+    'vfxinfo.txt',
+  ]);
+});
+
+/**
+ * El staging es la única fuente del paquete: un archivo previo del plugin que
+ * se quita al revisar el staging no vuelve a aparecer al generar para v-machine.
+ */
+test('v-machine no empaqueta el archivo previo que se quita del staging', async (t) => {
+  const { http, diffId } = await preExistingFixture(t);
+  const outputDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-drop-'));
+  t.after(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  const staging = await http().get(`/capture/staging/${diffId}`).expect(200);
+  const legacy = (staging.body.files as string[]).find((file) => file.endsWith('legacy.fxb'));
+  assert.ok(legacy, 'el preset previo debe estar en el staging para poder quitarlo');
+  await http().delete(`/capture/staging/${diffId}`).query({ path: legacy }).expect(200);
+
+  const response = await http()
+    .post(`/capture/vmachine/${diffId}`)
+    .send({ pluginName: PLUGIN_NAME, uniqueId: UNIQUE_ID, isSynth: true, outputDir })
+    .expect(200);
+  assert.deepEqual(response.body.warnings, []);
+
+  const bankDir = path.join(outputDir, 'plugs', PLUGIN_NAME);
+  await assert.rejects(
+    stat(path.join(bankDir, 'presets', 'legacy.fxb')),
+    'lo quitado del staging no debe acabar en el paquete',
+  );
+  for (const relative of ['P8.ini', 'P8.dll', 'P8/wavetables/table.wav', 'presets/factory.fxb']) {
+    await assert.doesNotReject(
+      stat(path.join(bankDir, ...relative.split('/'))),
+      `falta "${relative}": solo se quitó el preset del staging`,
+    );
+  }
+
+  // El paquete sigue siendo válido: un único banco, el capturado.
+  const loader = path.join(outputDir, 'fxbLoader.dll');
+  await writeFile(loader, pe32Dll());
+  const scan = await http()
+    .post('/library/scan')
+    .send({ libraryRoot: outputDir, dllSourcePath: loader })
+    .expect(200);
+  const plugin = scan.body.plugins[0];
+  assert.equal(plugin.compatible, true, JSON.stringify(plugin.compatibilityIssues));
+  assert.deepEqual(plugin.banks, { count: 1, names: ['factory.fxb'] });
+});
+
+/**
+ * Generar dos veces sobre la misma carpeta tiene que dar el paquete del staging
+ * actual, no la unión de las dos generaciones. Un archivo que se quitó del
+ * staging entre ambas no puede sobrevivir en `plugs\\<Plugin>\\`, ni su carpeta
+ * contenedora: es justo lo que se revisa a mano antes de empaquetar.
+ */
+test('regenerar el paquete en la misma carpeta no deja archivos de la generación anterior', async (t) => {
+  const { http, diffId } = await preExistingFixture(t);
+  const outputDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-regen-'));
+  t.after(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  const generate = () =>
+    http()
+      .post(`/capture/vmachine/${diffId}`)
+      .send({ pluginName: PLUGIN_NAME, uniqueId: UNIQUE_ID, isSynth: true, outputDir })
+      .expect(200);
+
+  await generate();
+  const bankDir = path.join(outputDir, 'plugs', PLUGIN_NAME);
+  // Primera generación: lo capturado más todo lo previo del plugin.
+  assert.deepEqual(await treeFiles(bankDir), [
+    'P8.dll',
+    'P8.ini',
+    'P8/wavetables/table.wav',
+    'presets/factory.fxb',
+    'presets/legacy.fxb',
+    'vfxinfo.txt',
+  ]);
+
+  // Se revisan el staging y se quitan dos previos: un preset y la carpeta de
+  // datos del DLL (que deja `P8/wavetables/` vacía).
+  const staging = await http().get(`/capture/staging/${diffId}`).expect(200);
+  const removable = (staging.body.files as string[]).filter((file) =>
+    file.endsWith('legacy.fxb') || file.endsWith(path.join('P8', 'wavetables', 'table.wav')),
+  );
+  assert.equal(removable.length, 2, 'los dos previos deben estar en el staging');
+  for (const file of removable) {
+    await http().delete(`/capture/staging/${diffId}`).query({ path: file }).expect(200);
+  }
+
+  const second = await generate();
+  assert.deepEqual(second.body.warnings, []);
+
+  // Ni los archivos quitados ni la carpeta que los contenía sobreviven.
+  for (const relative of ['presets/legacy.fxb', 'P8/wavetables/table.wav', 'P8/wavetables']) {
+    await assert.rejects(
+      stat(path.join(bankDir, ...relative.split('/'))),
+      `"${relative}" es de la generación anterior y no debe quedar en el paquete`,
+    );
+  }
+  // El resto se regeneró completo.
+  assert.deepEqual(await treeFiles(bankDir), [
+    'P8.dll',
     'P8.ini',
     'presets/factory.fxb',
     'vfxinfo.txt',

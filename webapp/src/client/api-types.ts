@@ -169,7 +169,7 @@ export interface paths {
         put?: never;
         /**
          * Copiar diff a zona de staging para revisar/editar
-         * @description Prepara los archivos y el registro del diff en una carpeta de staging propia; el destino final no se toca hasta `/capture/finalize`.
+         * @description Prepara los archivos y el registro del diff en una carpeta de staging propia; el destino final no se toca hasta `/capture/finalize`. Incluye además los archivos del plugin que ya existían antes de la captura (`preExistingFiles`), recuperados del snapshot inicial y acotados al tallo del DLL y a las carpetas donde la captura puso archivos para no arrastrar otros plugins de la misma carpeta. Al ser staging, `GET /capture/staging/:diffId` los lista y `DELETE /capture/staging/:diffId?path=` permite quitarlos antes de empaquetar: lo que se quite no llega ni a `/capture/finalize` ni a `/capture/vmachine/:diffId`.
          */
         post: operations["CaptureController_package"];
         delete?: never;
@@ -244,7 +244,7 @@ export interface paths {
         put?: never;
         /**
          * Generar paquete de plugin para v-machine y/o wizard reutilizable
-         * @description Construye `plugs\<pluginName>\` a partir del staging de `/capture/package`: recorta la ruta relativa a la unidad, deja el DLL en la raíz del plugin, escribe `vfxinfo.txt` con un `dll_name` relativo y crea `presets\`, de modo que la carpeta se puede escanear e importar como una librería real. Opcionalmente escribe el `.vfxwizard` junto al paquete. Los avisos no abortan la generación.
+         * @description Construye `plugs\<pluginName>\` a partir del staging de `/capture/package`: recorta la ruta relativa a la unidad, deja el DLL en la raíz del plugin, escribe `vfxinfo.txt` con un `dll_name` relativo y crea `presets\`, de modo que la carpeta se puede escanear e importar como una librería real. El staging es la única fuente: lo que se haya quitado al revisarlo no se empaqueta. Con `includePreExisting: false` se dejan fuera los archivos que ya existían antes de la captura y que `/capture/package` marcó como previos en el manifiesto del staging; por defecto (`true`) se empaqueta todo el staging. Regenerar sobre la misma carpeta parte de cero: si `plugs\<pluginName>\` ya tiene una generación anterior (su `vfxinfo.txt`), se borra antes de escribir para no dejar archivos obsoletos. Opcionalmente escribe el `.vfxwizard` junto al paquete. Los avisos no abortan la generación.
          */
         post: operations["CaptureController_generateVMachine"];
         delete?: never;
@@ -1403,10 +1403,20 @@ export interface components {
              */
             filesCopied: number;
             /**
+             * @description De esos archivos, cuántos ya existían antes de la captura (DLL, presets, datos del plugin) y se añadieron al staging para poder revisarlos antes de empaquetar.
+             * @example 3
+             */
+            preExistingFiles: number;
+            /**
              * @description Valores de registro preparados.
              * @example 3
              */
             registryEntries: number;
+            /**
+             * @description Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y faltan archivos previos del plugin.
+             * @example []
+             */
+            warnings: string[];
         };
         CaptureStagingListDto: {
             /**
@@ -1468,6 +1478,11 @@ export interface components {
              * @example true
              */
             generateBank?: boolean;
+            /**
+             * @description Sumar al paquete los archivos del plugin que ya existían antes de iniciar la captura (se leen del snapshot inicial), acotados al tallo del DLL y a las carpetas donde la captura puso archivos. Por defecto `true`; con `false` el paquete se queda solo con lo que cambió durante la captura.
+             * @example true
+             */
+            includePreExisting?: boolean;
             /**
              * @description Generar el wizard para el software original
              * @example true
@@ -4537,7 +4552,9 @@ export interface operations {
                      *       "packageDir": "D:\\_banks\\paquetes\\SuperWave P8",
                      *       "stagingDir": "C:\\Users\\ajaba\\.fxbloader\\capture\\staging\\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
                      *       "filesCopied": 12,
-                     *       "registryEntries": 3
+                     *       "preExistingFiles": 3,
+                     *       "registryEntries": 3,
+                     *       "warnings": []
                      *     }
                      */
                     "application/json": components["schemas"]["CapturePackageResultDto"];
