@@ -272,13 +272,19 @@ jobs:
 
       # `node --test --experimental-test-coverage` escribe coverage/lcov.info y
       # scripts/coverage.mjs lo convierte en coverage/html (sin dependencias).
-      # Los umbrales están justo por debajo del dato actual de este job
-      # (líneas 94.67 · funciones 80.93 · ramas 82.86): una regresión de
-      # cobertura rompe el job aunque los tests pasen.
+      # Los umbrales están justo por debajo del dato actual de cada escenario,
+      # así una regresión de cobertura rompe el job aunque los tests pasen.
+      # `_banks/` no se versiona, así que aquí sus pruebas de paquetes reales se
+      # omiten con un motivo y la cobertura medible baja (~87 · 72 · 77 frente a
+      # 94.67 · 80.93 · 82.86 con los paquetes en el checkout): un umbral fijo
+      # en el dato local fallaría siempre en CI.
       - name: Generar la cobertura y comprobar los umbrales
-        run: >-
-          npm run test:coverage --
-          --min-lines 94 --min-functions 80 --min-branches 78
+        run: |
+          if [ -d ../_banks ]; then
+            npm run test:coverage -- --min-lines 94 --min-functions 80 --min-branches 78
+          else
+            npm run test:coverage -- --min-lines 86 --min-functions 71 --min-branches 75
+          fi
 
       # if-no-files-found: error evita publicar un artefacto vacío si el paso
       # anterior dejara de escribir el informe.

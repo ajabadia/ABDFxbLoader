@@ -47,6 +47,13 @@ npm run client  # openapi + tipos del cliente (src/client/api-types.ts)
 
 El servidor escucha solo en loopback: escribe en el disco del usuario.
 
+Hay dos cosas que este checkout no siempre trae y las pruebas que dependen de
+ellas se **omiten con un motivo** en vez de fallar, que es lo que pasa en CI:
+`_banks/` (está en `.gitignore`, pesa demasiado) para las pruebas de paquetes
+reales, y la Papelera de reciclaje de Windows para las que comprueban el envío
+real. [`test/helpers/environment.ts`](test/helpers/environment.ts) decide el
+motivo; `node --test` lo imprime junto al nombre de la prueba omitida.
+
 ### Arranque en Windows
 
 [`start.bat`](../start.bat), en la raíz del repositorio, hace todo de una vez:
@@ -161,10 +168,15 @@ Los umbrales se declaran en el propio comando (porcentajes de 0 a 100):
 npm run test:coverage -- --min-lines 94 --min-functions 80 --min-branches 78
 ```
 
-La CI usa esos tres valores, justo por debajo del dato que imprime el propio job
-(líneas 94.67 %, funciones 80.93 %, ramas 82.86 %), así que una regresión que
-tire la cobertura rompe el job con una anotación `::error::` y el resumen de qué
-métrica falló.
+La CI usa dos juegos de valores, cada uno justo por debajo del dato que imprime
+el propio job, así que una regresión que tire la cobertura rompe el job con una
+anotación `::error::` y el resumen de qué métrica falló: `94 · 80 · 78` cuando el
+checkout tiene `_banks/` (líneas 94.67 %, funciones 80.93 %, ramas 82.86 %) y
+`86 · 71 · 75` cuando no lo tiene (medido en CI: líneas 87.33 %, funciones
+72.04 %, ramas 76.98 %). La diferencia no es un margen de cortesía: `_banks/` no
+se versiona,
+así que en CI se omiten con un motivo las pruebas que leen sus paquetes reales
+y esa cobertura no se puede medir.
 Una métrica sin datos también falla: no se puede dar por cumplido un umbral que
 no se midió. Un flag desconocido o un porcentaje fuera de rango salen con código
 2, para no confundir un error de uso con cobertura insuficiente.
