@@ -251,6 +251,7 @@ export const appEs = {
       openSettingsTitle: 'Abrir Ajustes y situar el foco en el campo de la ruta',
       focusField: 'Ir al campo',
       goToLibraryField: 'Ir a la ruta de librería',
+      connectedLocalAgent: 'Conectado al agente local en 127.0.0.1:3210.',
     },
     audit: {
       emptyValue: '(vacío)',

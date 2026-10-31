@@ -252,6 +252,7 @@ export const appEn = {
       openSettingsTitle: 'Open Settings panel and focus the path field',
       focusField: 'Go to field',
       goToLibraryField: 'Go to library field',
+      connectedLocalAgent: 'Connected to local agent on 127.0.0.1:3210.',
     },
     audit: {
       emptyValue: '(empty)',

@@ -107,6 +107,8 @@ test('diccionarios i18n contienen las claves de acción hacia Ajustes y rutas', 
   assert.equal(typeof appEn.ui.app.openSettingsTitle, 'string');
   assert.equal(typeof appEs.ui.app.focusField, 'string');
   assert.equal(typeof appEn.ui.app.focusField, 'string');
+  assert.equal(typeof appEs.ui.app.connectedLocalAgent, 'string');
+  assert.equal(typeof appEn.ui.app.connectedLocalAgent, 'string');
 });
 
 test('renderStatusWithAction pinta el mensaje y el botón de acción interactivo', () => {

@@ -71,7 +71,7 @@ import {
   restoreStagedFileLabel,
   revealPreExistingLabel,
 } from '../capture.js';
-import { client, describeError, isFxbApiError } from './api.js';
+import { client, createFxbClient, describeError, isFxbApiError, setClientBaseUrl } from './api.js';
 import { byId } from './dom.js';
 import { mountTable, closeAllRowMenus, type TableController, type TableView } from '../table.js';
 
@@ -1693,18 +1693,41 @@ let appCapabilities: SystemCapabilitiesResponse = {
 };
 
 async function initCapabilities(): Promise<void> {
+  // 1. Probar el origen actual (modo local o desktop empaquetado)
   try {
     appCapabilities = await client.system.capabilities();
+    return;
   } catch {
-    appCapabilities = {
-      mode: 'web-remote',
-      canCaptureRegistry: false,
-      canTrash: false,
-      canRevealInExplorer: false,
-      canNativePick: false,
-      canFileSystemAccess: typeof window !== 'undefined' && 'showDirectoryPicker' in window,
-    };
+    // Si falla (por ejemplo, en Vercel con rutas estáticas donde /system/capabilities da 404):
   }
+
+  // 2. Si estamos en un host remoto (no localhost / 127.0.0.1), comprobar si el agente local está activo
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    try {
+      const probeClient = createFxbClient({ baseUrl: 'http://127.0.0.1:3210' });
+      const localCaps = await probeClient.system.capabilities();
+      setClientBaseUrl('http://127.0.0.1:3210');
+      appCapabilities = localCaps;
+      setStatus(t('ui.app.connectedLocalAgent'), 'ok');
+      return;
+    } catch {
+      // Agente local no detectado en este puerto
+    }
+  }
+
+  // 3. Fallback a modo remoto con degradación de Win32
+  appCapabilities = {
+    mode: 'web-remote',
+    canCaptureRegistry: false,
+    canTrash: false,
+    canRevealInExplorer: false,
+    canNativePick: false,
+    canFileSystemAccess: typeof window !== 'undefined' && 'showDirectoryPicker' in window,
+  };
 
   if (!appCapabilities.canCaptureRegistry && els.captureNavBtn) {
     els.captureNavBtn.disabled = true;
@@ -1717,6 +1740,35 @@ async function pickPaths(
   where: 'library' | 'banks',
 ): Promise<string[] | null> {
   const show = where === 'library' ? setStatus : setBanksStatus;
+
+  // Si no tenemos selector nativo del sistema (ej. modo remoto en la nube)
+  if (!appCapabilities.canNativePick && typeof window !== 'undefined') {
+    try {
+      if (body.kind === 'folder' && 'showDirectoryPicker' in window) {
+        const handle = await (
+          window as unknown as { showDirectoryPicker(): Promise<{ name: string }> }
+        ).showDirectoryPicker();
+        return handle?.name ? [handle.name] : [];
+      }
+      if ((body.kind === 'file' || body.kind === 'files') && 'showOpenFilePicker' in window) {
+        const handles = await (
+          window as unknown as {
+            showOpenFilePicker(options?: { multiple?: boolean }): Promise<Array<{ name: string }>>;
+          }
+        ).showOpenFilePicker({
+          multiple: body.kind === 'files',
+        });
+        return handles.map((h) => h.name);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return [];
+      }
+      show(describeError(err), 'error');
+      return null;
+    }
+  }
+
   try {
     const response = await client.system.pick(body);
     return response.paths;
@@ -1877,7 +1929,20 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
     render(data);
     setStatus(`${isInstalled ? 'Cargador quitado de' : 'Cargador puesto en'} ${plugin.name}.`, 'ok');
   } catch (error) {
-    setStatus(describeError(error), 'error');
+    const errorMsg = describeError(error);
+    const isDllIssue = /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(errorMsg);
+    setStatus(
+      errorMsg,
+      'error',
+      isDllIssue
+        ? {
+            label: t('ui.app.focusField'),
+            icon: 'folder',
+            title: t('ui.app.openSettingsTitle'),
+            onClick: () => openSettingsAndFocus('dll-source'),
+          }
+        : undefined,
+    );
   } finally {
     setBusy(false);
   }
@@ -2080,12 +2145,33 @@ async function runBatch(
     // resume lo confirmado, se marcan los pendientes y se deja el motivo.
     const pending = run.unreported === 0 ? '' : ` ${run.unreported} plugin(s) sin confirmar.`;
     const message = t('ui.batch.aborted', { 0: describeError(run.error), 1: summarize(run), 2: pending });
+    const isDllIssue = /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(describeError(run.error));
+    const action = isDllIssue
+      ? {
+          label: t('ui.app.focusField'),
+          icon: 'folder',
+          title: t('ui.app.openSettingsTitle'),
+          onClick: () => openSettingsAndFocus('dll-source'),
+        }
+      : undefined;
     setBatchStatus(message, 'error');
-    setStatus(message, 'error');
+    setStatus(message, 'error', action);
   } else {
     const summary = summarize(run);
+    const isDllIssue =
+      run.failed > 0 &&
+      run.succeeded === 0 &&
+      run.results.some((r) => r.message !== null && /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(r.message));
+    const action = isDllIssue
+      ? {
+          label: t('ui.app.focusField'),
+          icon: 'folder',
+          title: t('ui.app.openSettingsTitle'),
+          onClick: () => openSettingsAndFocus('dll-source'),
+        }
+      : undefined;
     setBatchStatus(summary, run.failed === 0 ? 'ok' : 'error');
-    setStatus(summary, run.failed === 0 ? 'ok' : 'error');
+    setStatus(summary, run.failed === 0 ? 'ok' : 'error', action);
   }
 
   renderBatchErrors();
@@ -3783,8 +3869,17 @@ async function loadWizards(query: string): Promise<void> {
       items.push(...next.items);
     }
     renderWizardsList(items, first.total);
-    els.wizardsStatus.textContent = '';
-    els.wizardsStatus.className = 'status';
+    if (!libraryRoot) {
+      renderStatusWithAction(
+        els.wizardsStatus,
+        t('ui.wizard.needLibrary'),
+        'info',
+        openSettingsForLibraryRootAction(),
+      );
+    } else {
+      els.wizardsStatus.textContent = '';
+      els.wizardsStatus.className = 'status';
+    }
   } catch (error) {
     els.wizardsStatus.textContent = t('ui.wizard.loadError', { 0: describeError(error) });
     els.wizardsStatus.className = 'status error';
@@ -4630,6 +4725,9 @@ function openCustomPluginDrawer(opener?: HTMLElement): void {
   showPanel(els.customPluginDrawer, opener);
   if (!els.customPluginRoot.value.trim() && libraryRoot) {
     els.customPluginRoot.value = libraryRoot;
+  }
+  if (!libraryRoot && !els.customPluginRoot.value.trim()) {
+    setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'info', openSettingsForLibraryRootAction());
   }
   els.customPluginPath.focus();
 }
@@ -5775,6 +5873,12 @@ els.customPluginBrowse.addEventListener('click', async () => {
     }
   } catch (error) {
     setCustomPluginStatus(t('ui.picker.openError', { 0: describeError(error) }), 'error');
+  }
+});
+
+els.customPluginRoot.addEventListener('input', () => {
+  if (els.customPluginRoot.value.trim() !== '') {
+    setCustomPluginStatus('');
   }
 });
 
