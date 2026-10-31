@@ -463,7 +463,18 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
 - [x] **Adaptación de la interfaz sin bifurcar markup:**
   - En modo Web Remota sin agente local, los botones de "Captura de instalación" y "Papelera de reciclaje" permanecen visibles pero deshabilitados o con aviso contextual:
     `"Función disponible exclusivamente en la versión de escritorio para Windows."`
-  - Fallback a `window.showDirectoryPicker()` cuando `canNativePick` es falso.
+  - Fallback a `window.showDirectoryPicker()` y `window.showOpenFilePicker()` cuando `canNativePick` es falso.
+- [x] **Enlaces interactivos y guiado de rutas hacia Ajustes:**
+  - Sistema transversal de avisos de estado con botones de acción interactivos (`StatusAction` / `renderStatusWithAction`).
+  - Al faltar la ruta de librería (`!libraryRoot`), el aviso de inicio y de escaneo ofrece el botón `[Configurar en Ajustes]` con icono SVG que abre el cajón deslizante y posiciona el foco en `#library-root`.
+  - Si ya hay ruta configurada, no se muestra mensaje ni enlace de advertencia.
+  - Extendida la detección y navegación asistida por foco a todas las secciones y cajones:
+    - Cajón de Asistentes (`Wizards`): aviso informativo al abrir si no hay librería + aviso interactivo al intentar instalar.
+    - Cajón de Plugins Personalizados (`Create Plugin`): aviso informativo al abrir si no hay librería + foco asistido en `#custom-plugin-root` o `#custom-plugin-path` al analizar/crear.
+    - Cajón de Importación (`Import Package`): foco asistido en `#import-package-path` o `#library-root`.
+    - Cajón de Auditoría y Auditoría de Datos: enlace interactivo directo al campo de librería en Ajustes.
+    - Instalación de cargador individual y en lotes: detección de fallos por DLL faltante o inválida con enlace directo a enfocar el campo `#dll-source` en Ajustes.
+    - Suite de pruebas `ui.status-actions.test.ts` e integración e2e en verde.
 
 ---
 
