@@ -416,7 +416,13 @@ escribe la vista con el HTML (incluida la plantilla de filas), y
 `styles.css` con ese mismo matcher: si un selector no coincide con ningún
 elemento del HTML, ni depende de un nombre que cree el JS, ni pinta una fila de
 la plantilla, la regla se reporta como muerta con su línea. Hoy no hay ninguna;
-el test está para que renombrar un id o una clase no deje CSS huérfano. En el
+el test está para que renombrar un id o una clase no deje CSS huérfano. El
+mismo archivo vigila el scroll de las tablas paginadas: cada contenedor
+`*-table` que vive dentro de un cajón tiene que ganar en su `.table-wrap` un
+`max-height: none` y un `overflow-y: visible`, porque el recorte genérico de
+`.drawer .table-wrap` (260 px) devuelve dos barras verticales y esconde filas
+que el paginador ya acota. La comprobación resuelve la cascada (especificidad y
+orden) para saber qué regla manda, y falla citando tabla, propiedad y línea. En el
 sentido contrario, [test/ui.markup.test.ts](test/ui.markup.test.ts) recorre los
 ids, clases, atributos `data-*` y atributos ARIA de `index.html` (plantilla de
 filas incluida) y falla si no los usa nadie: un id vale si lo pinta el CSS, lo
@@ -778,15 +784,26 @@ campo lleva prefijo de origen: `vfxinfo.*`, `meta.*`, `dll` y `dll.bitness`/
 
 `source` dice de dónde sale cada valor propuesto: `vfxinfo` (la identidad ya
 declarada, p. ej. `meta.id`), `meta` (lo que el catálogo ya tenía y falta en el
-vfxinfo), `dll` (la ruta real del binario que `dll_name` debería nombrar) o
-`derived` (género deducido de `is_synth`, abreviatura del nombre, versión por
-defecto). Solo se propone lo que falta: un `meta.id` ya escrito no vuelve a
-aparecer como rellenable.
+vfxinfo), `dll` (la ruta real del binario que `dll_name` debería nombrar),
+`wizard` (el wizard del catálogo) o `derived` (género deducido de `is_synth`,
+abreviatura del nombre, versión por defecto). Solo se propone lo que falta: un
+`meta.id` ya escrito no vuelve a aparecer como rellenable.
 
-Los campos que el binario calcula al cargar (`is_synth`, `parameter_count`,
-`program_count`, `has_editor`, `editor_width`, `editor_height`) se marcan como
-`missing` cuando faltan, pero **no llevan propuesta**: el análisis estático no
-puede inventarlos sin cargar el DLL.
+El catálogo de wizards es la fuente de lo que el análisis estático del DLL no
+puede ver. Cuando el plugin coincide con un wizard —ID, nombre de DLL o nombre
+**exactos**: un parecido por subcadena sirve para sugerir en el buscador, no
+para escribir datos— se proponen, con `source: "wizard"` y la procedencia en
+`note`, los campos que falten en disco: fabricante, URL, notas, versión y los campos de
+ejecución (`is_synth`, `parameter_count`, `program_count`, `has_editor`,
+`editor_width`, `editor_height`). El wizard nunca pisa un valor ya escrito, y el
+`apply` los escribe igual que cualquier otra propuesta. Los contadores y el
+tamaño del editor valen `0` cuando el wizard no los declara y un cero declarado
+no se distingue del ausente, así que un `0` no se propone: es preferible el
+hueco a un dato inventado.
+
+Sin wizard en el catálogo, esos campos de ejecución se siguen marcando como
+`missing` y **sin propuesta**: el análisis estático no puede inventarlos sin
+cargar el DLL.
 
 ### `POST /library/loader/add`
 
@@ -1077,11 +1094,16 @@ con el parser solo. Cronometra cuatro alturas para poder atribuir la diferencia:
 parser sobre un buffer en memoria (500 muestras), lectura + parse, el servicio
 en proceso sin HTTP y la petición HTTP completa con su JSON (40 muestras cada
 una, todas con calentamiento). Publica mediana, p95 y operaciones/s, y exige
-25/1500/2000 ms de mediana para parser, servicio y HTTP: techos amplios para
+25/1500/2000 ms **por muestra** para parser, servicio y HTTP: techos amplios para
 detectar un salto de orden sin depender de la máquina (en `npm test` los
-archivos corren en paralelo y la importación compite por el disco). En un equipo
-normal el parser tarda microsegundos y la importación milisegundos, así que el
-coste está en el disco (lectura, copia atómica y `rename`), no en el parseo.
+archivos corren en paralelo y la importación compite por el disco). Se compara
+la **mejor** muestra, no la mediana: la carga de un runner solo puede sumar
+tiempo, así que un pico ajeno hacía fallar el test sin que nada hubiera
+empeorado (pasó en CI con 2,9 s de mediana y 1,9 s de mínimo frente a 2,5 s de
+presupuesto). La mediana se sigue mirando con un techo de 4×, para que un
+empeoramiento de fondo rompa el test igual. En un equipo normal el parser tarda
+microsegundos y la importación milisegundos, así que el coste está en el disco
+(lectura, copia atómica y `rename`), no en el parseo.
 Para leer cifras comparables, ejecuta solo los tests de rendimiento:
 
 ```bash
@@ -1097,6 +1119,11 @@ tardó **19–23 ms** y las nueve peticiones **66–80 ms**: **3,4–3,5×** má
 `fxbLoader.config`, búsqueda de la referencia del destino y el JSON de ida y
 vuelta). La copia de los bancos cuesta lo mismo en los dos casos, así que la
 diferencia es el coste fijo de cada petición.
+
+Esa razón entre las dos estrategias se comprueba además como tope (`8×`): a
+diferencia de los milisegundos, no depende de la máquina —las dos se frenan
+igual—, así que sigue cazando una regresión de coste por petición aunque el
+runner esté ocupado.
 
 Las dos estrategias dan **el mismo resultado por archivo**: en los nueve
 fixtures —de cinco plugins distintos— se importan los dos bancos de Massive
@@ -1913,7 +1940,7 @@ test/
   table-dom.test.ts            renderizado accesible de tablas, ordenación y filtros
   ui.test.ts                   estáticos, ids y selectores de la UI contra index.html
   ui.dom.test.ts               parser de HTML y matcher de selectores de ese test
-  ui.styles.test.ts            audita styles.css contra index.html (reglas muertas)
+  ui.styles.test.ts            audita styles.css contra index.html (reglas muertas y scroll de tablas)
   ui.markup.test.ts            audita index.html al revés (ids, clases, data-* y ARIA sin uso)
   helpers/css.ts               parser de CSS, auditoría de selectores y del marcado
   helpers/openapi-examples.ts  valida cada ejemplo del documento contra su esquema

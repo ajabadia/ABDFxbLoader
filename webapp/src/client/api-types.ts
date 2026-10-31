@@ -178,6 +178,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/capture/pre-existing/{diffId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contar los archivos previos a la captura que se incluirían
+         * @description Consulta el snapshot inicial sin copiar nada: devuelve cuántos archivos del plugin ya existían antes de la captura y se sumarían al paquete con «incluir los archivos previos». Es la misma selección que hace `/capture/package`, acotada al tallo del DLL y a las carpetas donde la captura puso archivos. Si el staging ya existe, solo cuenta los que siguen en él, porque son los que `/capture/vmachine/:diffId` empaquetaría de verdad. `restorableFiles` lista los que se quitaron y todavía se pueden devolver de uno en uno.
+         */
+        get: operations["CaptureController_listPreExisting"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/pre-existing/{diffId}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abrir en el Explorador de Windows un archivo previo del paso 4
+         * @description Abre la carpeta del Explorador con ese archivo resaltado, para comprobar qué es antes de generar el banco. El `path` se valida contra la misma selección que hace `GET /capture/pre-existing/:diffId`: una ruta que no sea de los previos de ese diff, o un previo que ya no está en el disco, es un 404 y no se abre ninguna ventana. El servidor tiene que correr en Windows; en otro sistema es un 501.
+         */
+        post: operations["CaptureController_revealPreExisting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/staging/{diffId}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abrir en el Explorador de Windows un archivo del staging
+         * @description Abre la carpeta del Explorador con ese archivo del staging resaltado, para comprobar qué se va a empaquetar. El `path` se resuelve dentro de la carpeta del staging del `diffId`: una ruta absoluta, con `..`, de una carpeta o de un archivo que ya no está es un 404 y no se abre nada. El servidor tiene que correr en Windows; en otro sistema es un 501.
+         */
+        post: operations["CaptureController_revealStaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capture/staging/{diffId}": {
         parameters: {
             query?: never;
@@ -191,6 +251,26 @@ export interface paths {
         post?: never;
         /** Eliminar archivo del staging */
         delete: operations["CaptureController_removeFromStaging"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture/staging/{diffId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recuperar en el staging los archivos previos que se quitaron
+         * @description Vuelve a copiar desde el snapshot inicial los archivos que `POST /capture/package` marcó como anteriores a la captura y que ya no están en el staging. No repite el empaquetado: los archivos de la captura, el `.reg` y el manifiesto se quedan como están. Los que el manifiesto declara pero cuyo origen ya no existe se devuelven en `missing`, no como error. Con `path` devuelve solo ese archivo —el botón de una fila quitada del staging—; sin `path` los devuelve todos. Repetirlo sin nada que devolver es un 200 con `restored: 0`.
+         */
+        post: operations["CaptureController_restoreStaging"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -327,6 +407,26 @@ export interface paths {
          * @description Recorre `plugs\*` en modo lectura y devuelve, por plugin, los campos que faltan en `vfxinfo.txt` y en `fxbLoader.meta.json`, el estado del DLL (arquitectura y entrypoint VST) y qué valores se pueden rellenar automáticamente, indicando si salen del vfxinfo, del meta, del DLL o son derivados. No modifica ningún archivo.
          */
         post: operations["LibraryController_audit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/audit/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Aplica las propuestas de datos de un plugin
+         * @description Escribe en `vfxinfo.txt` y/o `fxbLoader.meta.json` los valores que propone la auditoría, recalculados en el servidor en ese momento (el cliente solo elige los campos, nunca los valores). Antes de tocar cada archivo lo respalda como `*.bak` y conserva todo lo que no son los campos pedidos: bloques del vfxinfo, `extended` del meta y sus claves desconocidas. Los campos que ya tienen el valor propuesto no reescriben nada y se devuelven como omitidos.
+         */
+        post: operations["LibraryController_auditApply"];
         delete?: never;
         options?: never;
         head?: never;
@@ -917,6 +1017,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capacidades del entorno de ejecución
+         * @description Devuelve qué características del sistema operativo (diálogos nativos, papelera de reciclaje, registro de Windows, explorador) están disponibles según el modo (desktop .exe o web local).
+         */
+        get: operations["SystemCapabilitiesController_getCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1418,6 +1538,71 @@ export interface components {
              */
             warnings: string[];
         };
+        CapturePreExistingDto: {
+            /**
+             * @description Archivos que ya existían antes de la captura y se sumarían al paquete con «incluir archivos previos» marcado. Ya descuenta los que se hayan quitado del staging.
+             * @example 3
+             */
+            count: number;
+            /**
+             * @description Rutas relativas de esos archivos, tal como aparecen en el staging.
+             * @example [
+             *       "P8.dll",
+             *       "P8\\wavetables\\table.wav",
+             *       "presets\\legacy.fxb"
+             *     ]
+             */
+            files: string[];
+            /**
+             * @description Archivos previos que se quitaron del staging y todavía se pueden devolver con `POST /capture/staging/:diffId/restore`. Es lo que enciende el botón «Recuperar previos».
+             * @example 0
+             */
+            restorable: number;
+            /**
+             * @description Rutas relativas de esos archivos, en el orden del manifiesto. La vista lista cada una con su propio botón para devolverla con `POST /capture/staging/:diffId/restore?path=` sin recuperar las demás.
+             * @example []
+             */
+            restorableFiles: string[];
+            /**
+             * @description Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y no hay forma de saber qué archivos previos faltan.
+             * @example []
+             */
+            warnings: string[];
+        };
+        CaptureRevealPreExistingDto: {
+            /**
+             * @description El archivo se ha abierto en el Explorador.
+             * @example true
+             */
+            ok: boolean;
+            /**
+             * @description Ruta del archivo previo, relativa a la unidad de origen y con `/`.
+             * @example Program Files/VstPlugins/P8.dll
+             */
+            file: string;
+            /**
+             * @description Ruta absoluta que se ha abierto: la misma que el recuento tiene en el snapshot.
+             * @example C:\Program Files\VstPlugins\P8.dll
+             */
+            opened: string;
+        };
+        CaptureRevealStagingDto: {
+            /**
+             * @description El archivo se ha abierto en el Explorador.
+             * @example true
+             */
+            ok: boolean;
+            /**
+             * @description Ruta del archivo en el staging, tal como la devuelve `GET /capture/staging/:diffId` (con el separador de la plataforma).
+             * @example Program Files\VstPlugins\P8.dll
+             */
+            file: string;
+            /**
+             * @description Ruta absoluta que se ha abierto, dentro de la carpeta del staging.
+             * @example C:\Program Files\VstPlugins\P8.dll
+             */
+            opened: string;
+        };
         CaptureStagingListDto: {
             /**
              * @description Carpeta de staging del diff.
@@ -1439,6 +1624,31 @@ export interface components {
              * @example true
              */
             ok: boolean;
+        };
+        CaptureStagingRestoreDto: {
+            /**
+             * @description Archivos previos devueltos al staging en esta llamada.
+             * @example 2
+             */
+            restored: number;
+            /**
+             * @description Rutas relativas de los archivos recuperados, desde la unidad de origen y con `/`.
+             * @example [
+             *       "Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav",
+             *       "Users/tester/Program Files/VstPlugins/P8/presets/legacy.fxb"
+             *     ]
+             */
+            files: string[];
+            /**
+             * @description Previos que el manifiesto da por anteriores a la captura y no se han podido recuperar: el origen ya no está en disco o la ruta del manifiesto no es válida.
+             * @example []
+             */
+            missing: string[];
+            /**
+             * @description Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y por eso no hay previos que devolver.
+             * @example []
+             */
+            warnings: string[];
         };
         CaptureFinalizeResultDto: {
             /**
@@ -2023,11 +2233,11 @@ export interface components {
              */
             value: string;
             /**
-             * @description Origen del valor: `vfxinfo`, `meta`, `dll` o deducido.
+             * @description Origen del valor: `vfxinfo`, `meta`, `dll`, `derived` o `wizard` (catálogo de wizards: fabricante, URL, notas, versión y campos de ejecución que el DLL no expone).
              * @example derived
              * @enum {string}
              */
-            source: "vfxinfo" | "meta" | "dll" | "derived";
+            source: "vfxinfo" | "meta" | "dll" | "derived" | "wizard";
             /** @description Aclaración sobre cómo se obtuvo el valor. */
             note?: string;
         };
@@ -2102,6 +2312,84 @@ export interface components {
             proposalCount: number;
             /** @description Detalle por plugin, ordenado por nombre. */
             plugins: components["schemas"]["LibraryAuditPluginDto"][];
+        };
+        LibraryAuditApplyRequestDto: {
+            /**
+             * @description Ruta absoluta a la librería VFX activa (la que contiene `plugs\`).
+             * @example D:\_banks\storage
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin bajo `plugs\`; no es una ruta.
+             * @example FSynthz-15
+             */
+            plugin: string;
+            /**
+             * @description Campos a escribir. Si se omite se aplican todas las propuestas de la auditoría; los que no tengan propuesta se omiten con su motivo.
+             * @example [
+             *       "meta.genre",
+             *       "meta.id",
+             *       "meta.name"
+             *     ]
+             */
+            fields?: string[];
+        };
+        LibraryAuditAppliedDto: {
+            /**
+             * @description Campo escrito.
+             * @example meta.genre
+             */
+            field: string;
+            /**
+             * @description Valor escrito.
+             * @example Synth
+             */
+            value: string;
+        };
+        LibraryAuditSkippedDto: {
+            /**
+             * @description Campo que no se escribió.
+             * @example vfxinfo.dll_name
+             */
+            field: string;
+            /**
+             * @description Motivo por el que se omitió.
+             * @example el valor ya era el vigente
+             */
+            reason: string;
+        };
+        LibraryAuditApplyResultDto: {
+            /**
+             * @description Carpeta del plugin bajo `plugs\`.
+             * @example FSynthz-15
+             */
+            plugin: string;
+            /** @description Valores escritos. */
+            applied: components["schemas"]["LibraryAuditAppliedDto"][];
+            /** @description Propuestas omitidas con el motivo. */
+            skipped: components["schemas"]["LibraryAuditSkippedDto"][];
+            /**
+             * @description `vfxinfo.txt` reescrito, o `null` si no se tocó.
+             * @example D:\_banks\storage\plugs\FSynthz-15\vfxinfo.txt
+             */
+            vfxinfoPath: string | null;
+            /**
+             * @description `fxbLoader.meta.json` escrito, o `null` si no se tocó.
+             * @example D:\_banks\storage\plugs\FSynthz-15\fxbLoader.meta.json
+             */
+            metaPath: string | null;
+            /**
+             * @description Respaldos creados antes de escribir, uno por archivo tocado.
+             * @example [
+             *       "D:\\_banks\\storage\\plugs\\FSynthz-15\\vfxinfo.txt.bak"
+             *     ]
+             */
+            backups: string[];
+            /**
+             * @description Avisos que no impiden aplicar el resto.
+             * @example []
+             */
+            warnings: string[];
         };
         LibraryDllPreferenceRequestDto: {
             /**
@@ -4070,6 +4358,39 @@ export interface components {
             /** @description Un elemento por ruta pedida, en el mismo orden. */
             results: components["schemas"]["SystemPathStateDto"][];
         };
+        SystemCapabilitiesResponseDto: {
+            /**
+             * @description Modo de entrega y ejecución de la aplicación
+             * @example web-local
+             * @enum {string}
+             */
+            mode: "desktop" | "web-local" | "web-remote";
+            /**
+             * @description Indica si puede tomar instantáneas y diffs del Registro de Windows
+             * @example true
+             */
+            canCaptureRegistry: boolean;
+            /**
+             * @description Indica si puede enviar archivos a la Papelera de reciclaje de Windows
+             * @example true
+             */
+            canTrash: boolean;
+            /**
+             * @description Indica si puede revelar archivos en el Explorador de Windows (explorer.exe)
+             * @example true
+             */
+            canRevealInExplorer: boolean;
+            /**
+             * @description Indica si puede abrir diálogos nativos del sistema operativo (PowerShell/Win32)
+             * @example true
+             */
+            canNativePick: boolean;
+            /**
+             * @description Indica si el entorno soporta File System Access API (navegador)
+             * @example false
+             */
+            canFileSystemAccess: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -4576,6 +4897,196 @@ export interface operations {
             };
         };
     };
+    CaptureController_listPreExisting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID del diff calculado al finalizar la captura. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recuento y rutas relativas de los archivos previos que entrarían. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "count": 3,
+                     *       "files": [
+                     *         "P8.dll",
+                     *         "P8\\wavetables\\table.wav",
+                     *         "presets\\legacy.fxb"
+                     *       ],
+                     *       "restorable": 0,
+                     *       "restorableFiles": [],
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CapturePreExistingDto"];
+                };
+            };
+            /** @description No existe ningún diff con ese `diffId`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_revealPreExisting: {
+        parameters: {
+            query: {
+                /** @description Ruta del previo tal como la devuelve `GET /capture/pre-existing/:diffId` en `files`. Se compara sin distinguir mayúsculas ni separadores. */
+                path: string;
+            };
+            header?: never;
+            path: {
+                /** @description ID del diff calculado al finalizar la captura. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivo mostrado en el Explorador. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "ok": true,
+                     *       "file": "Program Files/VstPlugins/P8.dll",
+                     *       "opened": "C:\\Program Files\\VstPlugins\\P8.dll"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureRevealPreExistingDto"];
+                };
+            };
+            /** @description Falta el parámetro `path`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "path requerido"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+            /** @description No existe el diff, o el `path` no es uno de sus archivos previos: también cuando ese previo existía al listarlo pero ya se borró del disco. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+            /** @description El servidor no corre en Windows: no hay Explorador que abrir. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "Abrir en el Explorador solo está disponible en Windows"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_revealStaging: {
+        parameters: {
+            query: {
+                /** @description Ruta del archivo tal como la devuelve `GET /capture/staging/:diffId` en `files`. */
+                path: string;
+            };
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivo del staging mostrado en el Explorador. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "ok": true,
+                     *       "file": "Program Files\\VstPlugins\\P8.dll",
+                     *       "opened": "C:\\Program Files\\VstPlugins\\P8.dll"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureRevealStagingDto"];
+                };
+            };
+            /** @description Falta el parámetro `path`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "path requerido"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+            /** @description No existe el staging del diff, o el `path` no apunta a un archivo que siga dentro de él. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+            /** @description El servidor no corre en Windows: no hay Explorador que abrir. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "Abrir en el Explorador solo está disponible en Windows"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
     CaptureController_listStaging: {
         parameters: {
             query?: never;
@@ -4666,6 +5177,52 @@ export interface operations {
                 };
             };
             /** @description No hay staging para ese diff, o el archivo indicado en `path` ya no está en él. Una ruta inexistente no se responde con 200: no se ha borrado nada. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureErrorDto"];
+                };
+            };
+        };
+    };
+    CaptureController_restoreStaging: {
+        parameters: {
+            query?: {
+                /** @description Ruta relativa del único previo que se quiere devolver, tal como aparece en `restorableFiles` de `GET /capture/pre-existing/:diffId`. Si no es uno de los previos que el manifiesto marca, la respuesta es 404 y no se copia nada. */
+                path?: string;
+            };
+            header?: never;
+            path: {
+                /** @description ID del diff empaquetado. */
+                diffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivos previos devueltos al staging, y los que ya no se pueden recuperar. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "restored": 2,
+                     *       "files": [
+                     *         "Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav",
+                     *         "Users/tester/Program Files/VstPlugins/P8/presets/legacy.fxb"
+                     *       ],
+                     *       "missing": [],
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CaptureStagingRestoreDto"];
+                };
+            };
+            /** @description No hay staging para ese diff, el diff ya no está cargado (por ejemplo, tras reiniciar el servidor) —sin snapshot inicial no hay de dónde copiar los previos—, o el `path` pedido no es uno de los archivos previos del manifiesto. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5136,6 +5693,116 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_auditApply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryAuditApplyRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Campos escritos, omitidos, archivos tocados y respaldos. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": "FSynthz-15",
+                     *       "applied": [
+                     *         {
+                     *           "field": "meta.id",
+                     *           "value": "1177630041"
+                     *         },
+                     *         {
+                     *           "field": "meta.name",
+                     *           "value": "15 - SynthEdit"
+                     *         },
+                     *         {
+                     *           "field": "meta.genre",
+                     *           "value": "Synth"
+                     *         },
+                     *         {
+                     *           "field": "meta.name_abbreviation",
+                     *           "value": "15"
+                     *         }
+                     *       ],
+                     *       "skipped": [
+                     *         {
+                     *           "field": "vfxinfo.version",
+                     *           "reason": "el valor ya era el vigente"
+                     *         }
+                     *       ],
+                     *       "vfxinfoPath": null,
+                     *       "metaPath": "D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json",
+                     *       "backups": [
+                     *         "D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json.bak"
+                     *       ],
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryAuditApplyResultDto"];
+                };
+            };
+            /** @description `libraryRoot` o `plugin` ausentes o inválidos. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description `fxbLoader.meta.json` cambió en disco entre la auditoría y la escritura. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "fxbLoader.meta.json cambió en disco mientras se aplicaba; vuelve a auditar y repite."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El meta en disco no es válido y no se puede fusionar. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "Metadatos no válidos: el archivo propio no es JSON válido"
+                     *     }
+                     */
                     "application/json": components["schemas"]["LibraryErrorDto"];
                 };
             };
@@ -7471,6 +8138,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemPathsErrorDto"];
+                };
+            };
+        };
+    };
+    SystemCapabilitiesController_getCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capacidades activas del sistema */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemCapabilitiesResponseDto"];
                 };
             };
         };

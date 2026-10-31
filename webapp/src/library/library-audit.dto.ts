@@ -12,6 +12,85 @@ export class LibraryAuditRequestDto {
   libraryRoot!: string;
 }
 
+export class LibraryAuditApplyRequestDto {
+  @ApiProperty({
+    description: 'Ruta absoluta a la librería VFX activa (la que contiene `plugs\\`).',
+    example: 'D:\\_banks\\storage',
+  })
+  libraryRoot!: string;
+
+  @ApiProperty({
+    description: 'Nombre de la carpeta del plugin bajo `plugs\\`; no es una ruta.',
+    example: 'FSynthz-15',
+  })
+  plugin!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Campos a escribir. Si se omite se aplican todas las propuestas de la auditoría; los que no ' +
+      'tengan propuesta se omiten con su motivo.',
+    type: [String],
+    example: ['meta.genre', 'meta.id', 'meta.name'],
+  })
+  fields?: string[];
+}
+
+export class LibraryAuditAppliedDto {
+  @ApiProperty({ description: 'Campo escrito.', example: 'meta.genre' })
+  field!: string;
+
+  @ApiProperty({ description: 'Valor escrito.', example: 'Synth' })
+  value!: string;
+}
+
+export class LibraryAuditSkippedDto {
+  @ApiProperty({ description: 'Campo que no se escribió.', example: 'vfxinfo.dll_name' })
+  field!: string;
+
+  @ApiProperty({
+    description: 'Motivo por el que se omitió.',
+    example: 'el valor ya era el vigente',
+  })
+  reason!: string;
+}
+
+export class LibraryAuditApplyResultDto {
+  @ApiProperty({ description: 'Carpeta del plugin bajo `plugs\\`.', example: 'FSynthz-15' })
+  plugin!: string;
+
+  @ApiProperty({ description: 'Valores escritos.', type: [LibraryAuditAppliedDto] })
+  applied!: LibraryAuditAppliedDto[];
+
+  @ApiProperty({ description: 'Propuestas omitidas con el motivo.', type: [LibraryAuditSkippedDto] })
+  skipped!: LibraryAuditSkippedDto[];
+
+  @ApiProperty({
+    description: '`vfxinfo.txt` reescrito, o `null` si no se tocó.',
+    type: String,
+    nullable: true,
+    example: 'D:\\_banks\\storage\\plugs\\FSynthz-15\\vfxinfo.txt',
+  })
+  vfxinfoPath!: string | null;
+
+  @ApiProperty({
+    description: '`fxbLoader.meta.json` escrito, o `null` si no se tocó.',
+    type: String,
+    nullable: true,
+    example: 'D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json',
+  })
+  metaPath!: string | null;
+
+  @ApiProperty({
+    description: 'Respaldos creados antes de escribir, uno por archivo tocado.',
+    type: [String],
+    example: ['D:\\_banks\\storage\\plugs\\FSynthz-15\\vfxinfo.txt.bak'],
+  })
+  backups!: string[];
+
+  @ApiProperty({ description: 'Avisos que no impiden aplicar el resto.', type: [String], example: [] })
+  warnings!: string[];
+}
+
 export class LibraryAuditIssueDto {
   @ApiProperty({
     description: 'Campo afectado, con prefijo de origen (`vfxinfo.id`, `meta.vendor`, `dll`…).',
@@ -41,8 +120,10 @@ export class LibraryAuditProposalDto {
   value!: string;
 
   @ApiProperty({
-    description: 'Origen del valor: `vfxinfo`, `meta`, `dll` o deducido.',
-    enum: ['vfxinfo', 'meta', 'dll', 'derived'],
+    description:
+      'Origen del valor: `vfxinfo`, `meta`, `dll`, `derived` o `wizard` (catálogo de wizards: ' +
+      'fabricante, URL, notas, versión y campos de ejecución que el DLL no expone).',
+    enum: ['vfxinfo', 'meta', 'dll', 'derived', 'wizard'],
     example: 'derived',
   })
   source!: LibraryAuditProposalSource;
@@ -142,6 +223,27 @@ export class LibraryAuditResultDto {
 
 export const LIBRARY_AUDIT_REQUEST_EXAMPLE: LibraryAuditRequestDto = {
   libraryRoot: 'D:\\_banks\\storage',
+};
+
+export const LIBRARY_AUDIT_APPLY_REQUEST_EXAMPLE: LibraryAuditApplyRequestDto = {
+  libraryRoot: 'D:\\_banks\\storage',
+  plugin: 'FSynthz-15',
+  fields: ['meta.id', 'meta.name', 'meta.genre', 'meta.name_abbreviation'],
+};
+
+export const LIBRARY_AUDIT_APPLY_EXAMPLE: LibraryAuditApplyResultDto = {
+  plugin: 'FSynthz-15',
+  applied: [
+    { field: 'meta.id', value: '1177630041' },
+    { field: 'meta.name', value: '15 - SynthEdit' },
+    { field: 'meta.genre', value: 'Synth' },
+    { field: 'meta.name_abbreviation', value: '15' },
+  ],
+  skipped: [{ field: 'vfxinfo.version', reason: 'el valor ya era el vigente' }],
+  vfxinfoPath: null,
+  metaPath: 'D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json',
+  backups: ['D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json.bak'],
+  warnings: [],
 };
 
 export const LIBRARY_AUDIT_EXAMPLE: LibraryAuditResultDto = {

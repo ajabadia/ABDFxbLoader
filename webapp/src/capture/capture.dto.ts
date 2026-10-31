@@ -302,10 +302,41 @@ export const CAPTURE_PACKAGE_RESULT_EXAMPLE = {
   warnings: [],
 };
 
+export const CAPTURE_PRE_EXISTING_EXAMPLE = {
+  count: 3,
+  files: ['P8.dll', 'P8\\wavetables\\table.wav', 'presets\\legacy.fxb'],
+  restorable: 0,
+  restorableFiles: [],
+  warnings: [],
+};
+
+export const CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE = {
+  ok: true,
+  file: 'Program Files/VstPlugins/P8.dll',
+  opened: 'C:\\Program Files\\VstPlugins\\P8.dll',
+};
+
+export const CAPTURE_STAGING_REVEAL_EXAMPLE = {
+  ok: true,
+  file: 'Program Files\\VstPlugins\\P8.dll',
+  opened: 'C:\\Program Files\\VstPlugins\\P8.dll',
+};
+
 export const CAPTURE_STAGING_EXAMPLE = {
   stagingDir: 'C:\\Users\\ajaba\\.fxbloader\\capture\\staging\\5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f',
   // El staging conserva la ruta relativa a la unidad de origen.
   files: ['Program Files\\VstPlugins\\P8.dll', 'Program Files\\VstPlugins\\P8\\presets\\factory.fxb'],
+};
+
+export const CAPTURE_STAGING_RESTORE_EXAMPLE = {
+  restored: 2,
+  // El manifiesto guarda la ruta relativa a la unidad de origen, con `/`.
+  files: [
+    'Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav',
+    'Users/tester/Program Files/VstPlugins/P8/presets/legacy.fxb',
+  ],
+  missing: [],
+  warnings: [],
 };
 
 export const CAPTURE_FINALIZE_RESULT_EXAMPLE = {
@@ -560,6 +591,111 @@ export class CapturePackageResultDto {
       'Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y faltan archivos previos del plugin.',
     type: [String],
     example: CAPTURE_PACKAGE_RESULT_EXAMPLE.warnings,
+  })
+  warnings!: string[];
+}
+
+export class CapturePreExistingDto {
+  @ApiProperty({
+    description:
+      'Archivos que ya existían antes de la captura y se sumarían al paquete con «incluir archivos previos» marcado. Ya descuenta los que se hayan quitado del staging.',
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.count,
+  })
+  count!: number;
+
+  @ApiProperty({
+    description: 'Rutas relativas de esos archivos, tal como aparecen en el staging.',
+    type: [String],
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.files,
+  })
+  files!: string[];
+
+  @ApiProperty({
+    description:
+      'Archivos previos que se quitaron del staging y todavía se pueden devolver con `POST /capture/staging/:diffId/restore`. Es lo que enciende el botón «Recuperar previos».',
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.restorable,
+  })
+  restorable!: number;
+
+  @ApiProperty({
+    description:
+      'Rutas relativas de esos archivos, en el orden del manifiesto. La vista lista cada una con su propio botón para devolverla con `POST /capture/staging/:diffId/restore?path=` sin recuperar las demás.',
+    type: [String],
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.restorableFiles,
+  })
+  restorableFiles!: string[];
+
+  @ApiProperty({
+    description:
+      'Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y no hay forma de saber qué archivos previos faltan.',
+    type: [String],
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.warnings,
+  })
+  warnings!: string[];
+}
+
+export class CaptureRevealPreExistingDto {
+  @ApiProperty({ description: 'El archivo se ha abierto en el Explorador.', example: true })
+  ok!: boolean;
+
+  @ApiProperty({
+    description: 'Ruta del archivo previo, relativa a la unidad de origen y con `/`.',
+    example: CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE.file,
+  })
+  file!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta que se ha abierto: la misma que el recuento tiene en el snapshot.',
+    example: CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE.opened,
+  })
+  opened!: string;
+}
+
+export class CaptureRevealStagingDto {
+  @ApiProperty({ description: 'El archivo se ha abierto en el Explorador.', example: true })
+  ok!: boolean;
+
+  @ApiProperty({
+    description:
+      'Ruta del archivo en el staging, tal como la devuelve `GET /capture/staging/:diffId` (con el separador de la plataforma).',
+    example: CAPTURE_STAGING_REVEAL_EXAMPLE.file,
+  })
+  file!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta que se ha abierto, dentro de la carpeta del staging.',
+    example: CAPTURE_STAGING_REVEAL_EXAMPLE.opened,
+  })
+  opened!: string;
+}
+
+export class CaptureStagingRestoreDto {
+  @ApiProperty({
+    description: 'Archivos previos devueltos al staging en esta llamada.',
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE.restored,
+  })
+  restored!: number;
+
+  @ApiProperty({
+    description: 'Rutas relativas de los archivos recuperados, desde la unidad de origen y con `/`.',
+    type: [String],
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE.files,
+  })
+  files!: string[];
+
+  @ApiProperty({
+    description:
+      'Previos que el manifiesto da por anteriores a la captura y no se han podido recuperar: el origen ya no está en disco o la ruta del manifiesto no es válida.',
+    type: [String],
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE.missing,
+  })
+  missing!: string[];
+
+  @ApiProperty({
+    description:
+      'Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y por eso no hay previos que devolver.',
+    type: [String],
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE.warnings,
   })
   warnings!: string[];
 }

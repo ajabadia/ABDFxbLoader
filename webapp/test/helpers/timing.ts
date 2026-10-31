@@ -64,6 +64,48 @@ export async function measureAsync(
   return timingFromSamples(samples);
 }
 
+export interface BudgetResult {
+  ok: boolean;
+  /** La mediana pasó del presupuesto aunque la mejor muestra no: apunta a carga. */
+  loadSuspected: boolean;
+  message: string;
+}
+
+/**
+ * Comprueba un presupuesto de tiempo con dos lecturas complementarias.
+ *
+ * La **mejor muestra** es la más cercana al coste real: la carga de la máquina
+ * solo puede sumar tiempo, así que un runner ocupado no la mueve —mientras que
+ * la mediana sí, y convertir la carga en un fallo es lo que hacía fallar la CI
+ * de forma intermitente—. Una regresión de verdad sube también la mejor
+ * muestra.
+ *
+ * La mediana se sigue mirando, pero con holgura (`medianHeadroom`): así un
+ * empeoramiento de fondo —algo que se volvió varias veces más lento en todas
+ * las muestras— rompe el test igual, aunque el mínimo siga por debajo.
+ */
+export function checkBudget(
+  timing: Timing,
+  budgetMs: number,
+  label: string,
+  medianHeadroom = 4,
+): BudgetResult {
+  const medianCeilingMs = budgetMs * medianHeadroom;
+  const bestOk = timing.bestMs < budgetMs;
+  const message =
+    `${label} tardó ${timing.bestMs.toFixed(3)} ms en su mejor muestra ` +
+    `(mediana ${timing.medianMs.toFixed(3)} ms, peor ${timing.worstMs.toFixed(3)} ms); ` +
+    `presupuesto ${budgetMs} ms por muestra y techo de mediana ${medianCeilingMs} ms`;
+  const medianBelowCeiling = timing.medianMs < medianCeilingMs;
+  return {
+    ok: bestOk && medianBelowCeiling,
+    // Solo es «carga» si pasa por la mediana y no llega a fallar: si se pasa
+    // también del techo, es una regresión y el diagnóstico no debe excusarla.
+    loadSuspected: bestOk && medianBelowCeiling && timing.medianMs >= budgetMs,
+    message,
+  };
+}
+
 /** «mediana 0.0310 ms (p95 …, min …, max …) ≈ 32258 parses/s». */
 export function describeTiming(timing: Timing, noun: string): string {
   return (

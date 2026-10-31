@@ -44,6 +44,10 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /data-icon="dark"/);
   assert.doesNotMatch(response.text, /data-icon="auto"/);
   assert.doesNotMatch(response.text, /🎛|🌓|☀|🌙/);
+  // Ajustes repite el tema como radios y aloja la documentación de la API.
+  assert.match(response.text, /name="theme-mode"/);
+  assert.match(response.text, /role="radiogroup" aria-label="Interface theme"/);
+  assert.match(response.text, /class="settings-link" href="\/docs"/);
   // El catálogo es la tabla reutilizable: `index.html` trae la `<section>` de
   // resultados y el contenedor; la tabla, su búsqueda y los chips los monta
   // `mountTable` en el navegador.
@@ -58,15 +62,15 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /La carpeta debe contener <code>plugs\\<\/code>/);
   assert.doesNotMatch(response.text, /class="hint"/);
   assert.match(response.text, /id="root-browse"/);
-  assert.match(response.text, /Elegir carpeta…/);
+  assert.match(response.text, /(?:Elegir carpeta…|Choose folder…)/);
   assert.match(response.text, /id="dll-source-recents"/);
   assert.match(response.text, /list="dll-source-recents"/);
   assert.match(response.text, /id="dll-browse"/);
-  assert.match(response.text, /Elegir DLL…/);
+  assert.match(response.text, /(?:Elegir DLL…|Choose DLL…)/);
   assert.match(response.text, /id="recents-clear"/);
-  assert.match(response.text, /Vaciar historial de rutas/);
+  assert.match(response.text, /(?:Vaciar historial de rutas|Clear path history)/);
   assert.match(response.text, /id="import-browse"/);
-  assert.match(response.text, /Añadir archivos…/);
+  assert.match(response.text, /(?:Añadir archivos…|Add files…)/);
   // Los cajones son diálogos modales: el rol, el nombre y el foco inicial.
   assert.match(
     response.text,
@@ -76,29 +80,29 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.doesNotMatch(response.text, /id="banks-rows"/);
   assert.match(response.text, /id="default-bank"/);
   assert.match(response.text, /id="default-convert"/);
-  assert.match(response.text, /Convertir orden de bytes/);
+  assert.match(response.text, /(?:Convertir orden de bytes|Convert byte order)/);
   assert.match(response.text, /id="default-restore"/);
-  assert.match(response.text, /Restaurar original/);
+  assert.match(response.text, /(?:Restaurar original|Restore original)/);
   assert.match(response.text, /id="default-discard"/);
-  assert.match(response.text, /Descartar respaldo/);
+  assert.match(response.text, /(?:Descartar respaldo|Discard backup)/);
   assert.match(response.text, /id="import-paths"/);
   assert.match(response.text, /id="recent-banks"/);
-  assert.match(response.text, /Bancos usados recientemente/);
+  assert.match(response.text, /(?:Bancos usados recientemente|Recently used banks)/);
   assert.match(response.text, /id="import-progress"/);
-  assert.match(response.text, /Progreso de la importación de bancos/);
+  assert.match(response.text, /(?:Progreso de la importación de bancos|Bank import progress)/);
   assert.match(response.text, /id="export-bank"/);
   assert.match(response.text, /id="export-order"/);
   assert.match(response.text, /id="export-overwrite"/);
   assert.match(response.text, /id="export-button"/);
-  assert.match(response.text, /Exportar un banco en otro orden de bytes/);
+  assert.match(response.text, /(?:Exportar un banco en otro orden de bytes|Export a bank in another byte order)/);
   assert.match(response.text, /id="install-all"/);
   assert.match(response.text, /id="uninstall-all"/);
   assert.match(response.text, /id="batch-cancel"/);
-  assert.match(response.text, /Cancelar/);
+  assert.match(response.text, /(?:Cancelar|Cancel)/);
   assert.match(response.text, /id="batch-resume"/);
-  assert.match(response.text, /Reanudar/);
+  assert.match(response.text, /(?:Reanudar|Resume)/);
   assert.match(response.text, /id="retry-all"/);
-  assert.match(response.text, /Reintentar fallidos/);
+  assert.match(response.text, /(?:Reintentar fallidos|Retry failed)/);
   assert.match(response.text, /id="batch-errors"/);
   assert.match(response.text, /id="batch-error-list"/);
   assert.match(response.text, /id="batch-progress"/);
@@ -126,10 +130,10 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.match(response.text, /id="meta-save"/);
   // La nota que explica de dónde salen los valores al abrir el panel.
   assert.match(response.text, /id="meta-origin"/);
-  assert.match(response.text, /Campos propios \(JSON\)/);
+  assert.match(response.text, /(?:Campos propios \(JSON\)|Custom fields \(JSON\))/);
   // El botón del panel es una acción de fila de la tabla reutilizable: el
   // `data-action` lo escribe `mountTable` en el navegador, no el HTML.
-  assert.match(response.text, /Catálogo/);
+  assert.match(response.text, /(?:Catálogo|Catalog)/);
   // El log del plugin, con su ruta, sus entradas y los archivos rotados en su propio cajón.
   assert.match(response.text, /id="log-path"/);
   assert.match(response.text, /id="log-summary"/);
@@ -160,7 +164,7 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.doesNotMatch(response.text, /id="audit-rows"/);
   assert.match(response.text, /id="log-rotated"/);
   // Igual que «Catálogo»: la acción de fila «Historial» la monta la tabla.
-  assert.match(response.text, /Historial/);
+  assert.match(response.text, /(?:Historial|History)/);
 
   // La UI es un módulo ESM compilado desde TypeScript; `app.js` ya no existe.
   assert.match(response.text, /<script type="module" src="\/js\/ui\/browser\/main\.js">/);
@@ -291,8 +295,8 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   );
   assert.match(
     main.text,
-    /label: 'Ver registro',\s*icon: 'file'/,
-    'Ver registro sigue en el historial con el icono file',
+    /label: t\('ui\.log\.viewRecord'\),\s*icon: 'file'/,
+    'el registro sigue en el historial con el icono file',
   );
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
   assert.match(main.text, /associationAuditTableView/);
@@ -490,6 +494,16 @@ test('el grafo de la UI se resuelve en el navegador: imports relativos con .js',
     const relative = path.relative(jsRoot, file);
     for (const match of source.matchAll(imports)) {
       const specifier = match[1]!;
+      // El único especificador de paquete permitido es el del motor de i18n:
+      // lo resuelve el import map de `index.html`, no el sistema de ficheros.
+      if (specifier.startsWith('@abdsynths/shared/') || specifier.startsWith('@abdsynths/i18n')) {
+        const html = await readFile(path.join(resolvePublicDir(), 'index.html'), 'utf8');
+        assert.ok(
+          html.includes('"' + specifier + '"'),
+          `${relative} importa "${specifier}", que el import map de index.html no declara`,
+        );
+        continue;
+      }
       assert.match(
         specifier,
         /\.js$/,

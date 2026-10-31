@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { runPowerShellPicker, PickerService } from './picker.service';
 import { SystemController } from './picker.controller';
 import { SystemPathsController } from './paths.controller';
+import { SystemCapabilitiesController } from './capabilities.controller';
 import { PathsService } from './paths.service';
 
 @Module({
-  controllers: [SystemController, SystemPathsController],
+  controllers: [SystemController, SystemPathsController, SystemCapabilitiesController],
   providers: [
     {
       provide: PickerService,

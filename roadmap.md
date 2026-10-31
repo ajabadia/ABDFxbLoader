@@ -38,6 +38,7 @@
 - **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
 - **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [COMPLETO]**
 - **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [EN MARCHA]**
+- **Fase V: Distribución Híbrida — Standalone .exe, Web Local y Web Remota Zero-Fork [PLANIFICADA]**
 
 ## Objetivos Arquitectónicos
 
@@ -384,6 +385,93 @@ Modificados:
   API real). Falta commit.
 - **Regeneración de artefactos:** `openapi.json` y `api-types.ts` ya están regenerados contra el
   árbol completo; quedan marcados como modificados hasta que salga el commit de arriba.
+
+---
+
+## Fase V: Distribución Híbrida — Standalone .exe, Web Local y Web Remota Zero-Fork [PLANIFICADA]
+
+> **Objetivo:** Distribuir la aplicación en tres formatos de entrega complementarios sin bifurcar código (política Zero-Fork):
+> 1. **Desktop `.exe`**: Ejecutable nativo para Windows sin dependencias externas (doble clic y listo).
+> 2. **Web Local**: Servidor local `localhost:3210` en Node.js (entorno actual).
+> 3. **Web Remota**: Despliegue estático/Edge en Vercel con edición directa in-place mediante File System Access API y degradación elegante de funciones exclusivas de Win32.
+
+### 1. Diagnóstico de las APIs de Acceso a Disco Existentes
+
+La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar con el disco:
+- **`POST /system/pick` (`PickerService`):**
+  - Abre selectores nativos de Windows vía PowerShell (`System.Windows.Forms.FileDialog` / `IFileOpenDialog`) para elegir carpetas o archivos devolviendo rutas absolutas.
+  - *Diagnóstico:* Imprescindible para el `.exe` y Web Local en Windows. En Web Remota (Vercel), no puede invocar PowerShell; se sustituye por `window.showDirectoryPicker()` / `showOpenFilePicker()` nativo del navegador.
+- **`POST /system/paths` (`PathsService`):**
+  - Valida rutas absolutas almacenadas en `localStorage` contra `fs.stat` para podar sugerencias caducadas.
+  - *Diagnóstico:* En local funciona contra el disco duro; en Web Remota valida contra el árbol en memoria o los handles retenidos por el navegador.
+- **Operaciones de Librería (`LibraryService` / `LibraryController`):**
+  - `POST /library/scan`, `POST /library/banks/*`, `POST /library/inspect-dll`, `POST /library/import-package`.
+  - *Diagnóstico:* La lógica de manipulación (parseo de cabeceras binarias FXB, lectura de `vfxinfo.txt`, inspección PE32) es procesamiento de datos en memoria. Solo la entrada/salida final depende de `node:fs`.
+  - **Conclusión:** Las APIs y DTOs actuales son **el contrato canónico perfecto** (`IFxbClient`). Permiten mantener la UI 100% intacta intercambiando únicamente la capa de transporte/almacenamiento.
+
+---
+
+### 2. Desglose de Subfases y Tareas
+
+#### Subfase V.A: Desacoplamiento de Dominio y Contrato de Cliente (`IFxbClient`)
+- [x] **Aislar la lógica de dominio en funciones puras (Web Standards):**
+  - `fxb-bank.ts`: parseo, validación y conversión de endianness ahora soportan `Uint8Array` nativo (con sobrecargas genéricas de TypeScript y `DataView` estándar para el navegador). Probado con test unitario de `Uint8Array` puro y benchmark (> 1.25M parses/s).
+  - `pe-exports.ts`: implementado `inspectPeExportsBuffer(data: Uint8Array)` para analizar DLLs en memoria sin tocar disco ni `node:fs`.
+  - `vfxinfo.ts`: verificado que sus parsers y patchers (`splitLines`, `joinLines`, `analyzeVfxinfo`, `writeVfxinfoFields`, `patchVfxinfo`) ya son 100% funciones puras de texto.
+- [x] **Matriz de Capacidades y Contrato de Cliente (`FxbClient`):**
+  - Creado `SystemCapabilitiesController` (`GET /system/capabilities`) y DTO OpenAPI `SystemCapabilitiesResponseDto`.
+  - Añadido `client.system.capabilities()` al cliente tipado `FxbClient` para consultar capacidades en tiempo de ejecución (`mode: desktop | web-local | web-remote`, `canCaptureRegistry`, `canTrash`, etc.).
+- [ ] **Adaptador Browser para Almacenamiento Local (`BrowserFsStorage`):**
+  - Crear la implementación de cliente cliente-side para resolver `client.library.*` sobre `FileSystemDirectoryHandle`.
+
+#### Subfase V.B: Empaquetado Desktop .exe Nativo (Windows Standalone)
+- [x] **Configurar Node.js SEA (Single Executable Application):**
+  - Bundle del servidor NestJS y activos estáticos mediante `@vercel/ncc` + ExpressAdapter estático + `postject` en `scripts/package-desktop.mjs`.
+  - Generación de `dist-desktop/ABDfxbloader.exe` 100% standalone sin dependencias de Node externas.
+- [x] **Lanzador en Modo Aplicación (Edge App Mode):**
+  - Al iniciar `ABDfxbloader.exe`, levanta el backend local en puerto configurable (`127.0.0.1:3210`) mediante `src/desktop.ts`.
+  - Abre la ventana de la aplicación sin sobrecoste de Chromium ejecutando:
+    `msedge.exe --app=http://127.0.0.1:3210 --window-size=1280,850`
+  - Control de ciclo de vida: monitoriza el cierre de la ventana de Edge para detener el proceso del servidor de forma limpia.
+  - Acceso total a características nativas: captura del registro de Windows (`capture.service.ts`), diálogos nativos (`picker.service.ts`), papelera de reciclaje (`trash.ts`) y revelado en el Explorador (`reveal.ts`).
+
+#### Subfase V.C: Adaptador Web Remoto (Vercel / File System Access API)
+- [x] **Configuración para despliegue en Vercel:**
+  - Archivos `vercel.json` (raíz con `--prefix webapp`) y `webapp/vercel.json` (subcarpeta directa) con build estático de `webapp/public`.
+  - Script `copy-vendor.mjs` para resolver `@abdsynths/shared/Components/I18n` a `webapp/public/vendor/abdsynths/`.
+  - Configuración CORS en `app.setup.ts` para aceptar peticiones seguras desde `https://*.vercel.app` hacia el agente local en `127.0.0.1:3210`.
+- [ ] **Edición directa in-place en el navegador:**
+  - Si no se detecta backend local, la web solicita acceso a la carpeta de la librería mediante `window.showDirectoryPicker()`.
+  - `BrowserFxbClient` monta el árbol de la carpeta `plugs/`, ejecuta el escaneo y gestiona conversiones FXB directamente en el navegador del usuario.
+  - Privacidad y coste cero: ningún archivo de audio o preset se sube a internet.
+- [x] **Detección de Agente Local (Modo Híbrido):**
+  - Si la web remota se abre en un equipo que tiene el `.exe` o servidor local en ejecución, la web intenta conectar con `http://127.0.0.1:3210` (vía CORS habilitado).
+  - Si responde el backend local, la web remota conmuta automáticamente a `HttpFxbClient`, habilitando todas las herramientas nativas de Windows.
+
+#### Subfase V.D: Matriz de Capacidades y Degradación Elegante en la UI
+- [x] **Endpoint y estado de capacidades (`capabilities`):**
+  - Proporcionar la matriz de soporte:
+    ```typescript
+    interface AppCapabilities {
+      mode: 'desktop' | 'web-local' | 'web-remote';
+      canCaptureRegistry: boolean;
+      canTrash: boolean;
+      canRevealInExplorer: boolean;
+      canNativePick: boolean;
+    }
+    ```
+- [x] **Adaptación de la interfaz sin bifurcar markup:**
+  - En modo Web Remota sin agente local, los botones de "Captura de instalación" y "Papelera de reciclaje" permanecen visibles pero deshabilitados o con aviso contextual:
+    `"Función disponible exclusivamente en la versión de escritorio para Windows."`
+  - Fallback a `window.showDirectoryPicker()` cuando `canNativePick` es falso.
+
+---
+
+### 3. Criterios de Aceptación de la Fase V
+1. El archivo `ABDfxbloader.exe` generado pesa < 50 MB, no requiere Node.js instalado y arranca con doble clic abriendo una ventana limpia de aplicación en Windows 10/11.
+2. La misma base de código TypeScript compila tanto para el binario de escritorio como para la web local y el despliegue estático de Vercel.
+3. En la versión web remota desplegada en Vercel, un usuario con Google Chrome / Microsoft Edge puede abrir su carpeta de librería VFX desde un pendrive o disco duro local, escanearla, editar `vfxinfo.txt` y convertir bancos `.fxb` sin enviar datos a ningún servidor externo.
+4. Cero duplicación de código en la UI y suite completa de tests automatizados verde en todos los modos.
 
 ---
 

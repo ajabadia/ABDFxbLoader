@@ -113,8 +113,12 @@ import {
 import { defaultLoaderDllPath } from './loader-dll';
 import { LibraryAuditService } from './library-audit.service';
 import {
+  LIBRARY_AUDIT_APPLY_EXAMPLE,
+  LIBRARY_AUDIT_APPLY_REQUEST_EXAMPLE,
   LIBRARY_AUDIT_EXAMPLE,
   LIBRARY_AUDIT_REQUEST_EXAMPLE,
+  LibraryAuditApplyRequestDto,
+  LibraryAuditApplyResultDto,
   LibraryAuditRequestDto,
   LibraryAuditResultDto,
 } from './library-audit.dto';
@@ -415,6 +419,77 @@ export class LibraryController {
     const record = asRecord(body);
     try {
       return await this.auditService.audit(requireString(record, 'libraryRoot'));
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('audit/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aplica las propuestas de datos de un plugin',
+    description:
+      'Escribe en `vfxinfo.txt` y/o `fxbLoader.meta.json` los valores que propone la auditoría, ' +
+      'recalculados en el servidor en ese momento (el cliente solo elige los campos, nunca los valores). ' +
+      'Antes de tocar cada archivo lo respalda como `*.bak` y conserva todo lo que no son los campos ' +
+      'pedidos: bloques del vfxinfo, `extended` del meta y sus claves desconocidas. Los campos que ya ' +
+      'tienen el valor propuesto no reescriben nada y se devuelven como omitidos.',
+  })
+  @ApiBody({
+    type: LibraryAuditApplyRequestDto,
+    examples: {
+      catalogo: {
+        summary: 'Rellenar identidad y género del meta',
+        value: LIBRARY_AUDIT_APPLY_REQUEST_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Campos escritos, omitidos, archivos tocados y respaldos.',
+    type: LibraryAuditApplyResultDto,
+    example: LIBRARY_AUDIT_APPLY_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`libraryRoot` o `plugin` ausentes o inválidos.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    examples: {
+      rutaRelativa: { summary: 'Librería relativa', value: LIBRARY_SCAN_PATH_ERROR_EXAMPLE },
+      pluginConRuta: {
+        summary: 'El plugin llega como ruta y no como carpeta',
+        value: { message: 'plugin debe ser el nombre de una carpeta bajo plugs\\: "..\\Otro"' },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\`.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description: '`fxbLoader.meta.json` cambió en disco entre la auditoría y la escritura.',
+    type: LibraryErrorDto,
+    example: { message: 'fxbLoader.meta.json cambió en disco mientras se aplicaba; vuelve a auditar y repite.' },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El meta en disco no es válido y no se puede fusionar.',
+    type: LibraryErrorDto,
+    example: { message: 'Metadatos no válidos: el archivo propio no es JSON válido' },
+  })
+  async auditApply(@Body() body: unknown) {
+    const record = asRecord(body);
+    const configured = record['fields'];
+    if (
+      configured !== undefined &&
+      (!Array.isArray(configured) || configured.some((field) => typeof field !== 'string'))
+    ) {
+      throw new BadRequestException({ message: 'fields debe ser una lista de cadenas' });
+    }
+    try {
+      return await this.auditService.apply({
+        libraryRoot: requireString(record, 'libraryRoot'),
+        plugin: requireString(record, 'plugin'),
+        fields: configured as string[] | undefined,
+      });
     } catch (error) {
       mapDomainError(error);
     }

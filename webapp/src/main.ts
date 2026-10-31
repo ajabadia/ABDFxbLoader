@@ -3,11 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { configureStaticAssets } from './app.setup';
+import { configureCors, configureStaticAssets } from './app.setup';
 import { buildOpenApiDocument } from './swagger';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureCors(app);
   configureStaticAssets(app);
 
   const document = buildOpenApiDocument(app);

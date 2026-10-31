@@ -179,6 +179,34 @@ describe('WizardService', () => {
     assert.ok(minimoog?.filesToCopy.length > 0, 'Minimoog debe tener filesToCopy');
   });
 
+  it('matchExact solo acepta el mismo plugin, no un parecido por subcadena', async () => {
+    const standaloneService = new WizardService(metaService);
+    await standaloneService.initIndex();
+
+    // El índice está cargado: hay wizards y el parecido por subcadena funciona.
+    assert.ok(standaloneService.getAll().length > 0, 'el catálogo debe estar cargado');
+    assert.notEqual(
+      standaloneService.match({ name: 'Synth' }),
+      null,
+      '`match` cae a la subcadena para sugerir',
+    );
+
+    // `matchExact` no: la auditoría escribe datos y un parecido no basta.
+    assert.equal(standaloneService.matchExact({ name: 'Synth' }), null);
+    assert.equal(standaloneService.matchExact({ name: 'Synth1 VSTi pro' }), null);
+
+    // Con la identidad exacta sí coincide, por nombre, por DLL y por ID.
+    const byName = standaloneService.matchExact({ name: 'StringSynth' });
+    assert.equal(byName?.name, 'StringSynth');
+    const byDll = standaloneService.matchExact({ dllName: 'StringSynth/StringSynth.dll' });
+    assert.equal(byDll?.name, 'StringSynth');
+    const sample = standaloneService
+      .getAll()
+      .find((record) => record.id.trim() !== '' && record.sourcePath.includes('StringSynth'));
+    assert.ok(sample !== undefined, 'el catálogo debe traer StringSynth');
+    assert.equal(standaloneService.matchExact({ id: sample.id })?.id, sample.id);
+  });
+
   it('list permite buscar por texto y paginar resultados', () => {
     const result = wizardService.list({ query: 'SuperWave', limit: 10 });
     assert.ok(result.total >= 1);

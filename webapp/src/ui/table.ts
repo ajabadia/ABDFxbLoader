@@ -1,3 +1,5 @@
+import { t } from './i18n/index.js';
+
 export type TableSortType = 'text' | 'number' | 'date' | 'boolean';
 export type TableDirection = 'asc' | 'desc';
 export type TableFilterTone = 'neutral' | 'positive' | 'negative';
@@ -68,6 +70,12 @@ export interface TableDateRangeFilter {
 
 export type TableFilterDefinition<T> = TableFilter<T> | TableMultiSelectFilter<T> | TableDateRangeFilter | TableChipFilter<T>;
 export type TableFilterValue = string | string[] | { from: string; to: string };
+
+/** Tamaños ofrecidos por el paginador compartido: una sola lista para todas las tablas. */
+export const TABLE_PAGE_SIZES = [10, 25, 50, 100, 200] as const;
+
+/** Filas por página con las que arranca cualquier tabla que no fije su propio tamaño. */
+export const TABLE_DEFAULT_PAGE_SIZE = 10;
 
 export interface TableView<T> {
   columns: readonly TableColumn<T>[];
@@ -153,7 +161,7 @@ export function createTableState<T>(view: TableView<T>, rows: readonly T[] = [])
       if (filter.type === 'date-range') return [filter.id, { from: '', to: '' }];
       return [filter.id, filter.options?.[0]?.value ?? ''];
     })),
-    page: 1, pageSize: Math.max(1, view.pageSize ?? 100),
+    page: 1, pageSize: Math.max(1, view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE),
   };
 }
 
@@ -197,7 +205,7 @@ export function processTableRows<T>(rows: readonly T[], view: TableView<T>, stat
       return compareValues(left, right, column.sortType ?? 'text') * sign || a.index - b.index;
     }).map(item => item.row);
   }
-  const pageSize = Math.max(1, state.pageSize || view.pageSize || 100);
+  const pageSize = Math.max(1, state.pageSize || view.pageSize || TABLE_DEFAULT_PAGE_SIZE);
   const total = result.length; const totalPages = Math.ceil(total / pageSize);
   const page = totalPages === 0 ? 1 : Math.min(Math.max(1, state.page), totalPages);
   return { rows: result.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, totalPages };
@@ -236,7 +244,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   let rows = [...initialRows]; const state = createTableState(view, rows);
   const listeners: Array<() => void> = [];
   /** Menús «···» vivos de la página actual; se repueblan en cada render. */
-  let rowMenus: Array<{ dropdown: HTMLElement; button: HTMLButtonElement }> = [];
+  let rowMenus: Array<{ dropdown: HTMLElement; button: HTMLButtonElement; rowId: string }> = [];
   const closeRowMenus = (): void => {
     for (const entry of rowMenus) {
       entry.dropdown.hidden = true;
@@ -351,9 +359,9 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   const empty = document.createElement('p'); empty.className = 'table-empty'; empty.hidden = true; empty.textContent = view.emptyText ?? 'No hay registros.'; shell.append(empty);
   const pager = document.createElement('div'); pager.className = 'pagination table-pagination';
   const sizeLabel = document.createElement('label'); sizeLabel.className = 'pagination-size'; sizeLabel.append(document.createTextNode('Mostrar: '));
-  const sizeSelect = document.createElement('select'); sizeSelect.className = 'pagination-select'; sizeSelect.setAttribute('aria-label', 'Registros por página');
-  for (const size of [25, 50, 100, 200]) { const option = document.createElement('option'); option.value = String(size); option.textContent = String(size); sizeSelect.append(option); }
-  sizeLabel.append(sizeSelect, document.createTextNode(' por página'));
+  const sizeSelect = document.createElement('select'); sizeSelect.className = 'pagination-select'; sizeSelect.setAttribute('aria-label', t('msg.rowsPerPage'));
+  for (const size of TABLE_PAGE_SIZES) { const option = document.createElement('option'); option.value = String(size); option.textContent = String(size); sizeSelect.append(option); }
+  sizeLabel.append(sizeSelect, document.createTextNode(t('msg.perPageSuffix')));
   const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'pagination-btn'; prev.textContent = 'Anterior';
   const info = document.createElement('span'); info.className = 'pagination-info'; info.setAttribute('aria-live', 'polite');
   const next = document.createElement('button'); next.type = 'button'; next.className = 'pagination-btn'; next.textContent = 'Siguiente';
@@ -461,7 +469,26 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     return group;
   }
 
-  function render(): void {
+  /**
+   * `keepRowMenu` lo usa `setRows`: el sondeo de la auditoría repinta las filas
+   * cada pocos segundos y un «···» abierto no debe cerrarse por su culpa. El
+   * menú se vuelve a abrir en la fila con el mismo id, y el foco regresa al
+   * mismo botón o acción para no perder el sitio con el teclado.
+   */
+  function render(keepRowMenu = false): void {
+    const openMenu = keepRowMenu
+      ? rowMenus.find((entry) => entry.dropdown.hidden === false)
+      : undefined;
+    const active = (document.activeElement ?? null) as HTMLElement | null;
+    const activeInsideMenu =
+      openMenu !== undefined &&
+      active !== null &&
+      typeof openMenu.dropdown.contains === 'function' &&
+      openMenu.dropdown.contains(active);
+    const focusedAction = activeInsideMenu ? active.dataset?.['action'] ?? null : null;
+    const focusedTrigger = openMenu !== undefined && active === openMenu.button;
+    const openRowId = openMenu?.rowId ?? null;
+
     const result = processTableRows(rows, view, state); state.page = result.page; tbody.replaceChildren(); rowMenus = [];
     if (result.rows.length === 0) {
       const emptyTr = document.createElement('tr'); emptyTr.className = 'table-empty-row';
@@ -511,10 +538,25 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
             listen(item, 'click', () => { dropdown.hidden = true; button.setAttribute('aria-expanded', 'false'); action.onSelect(row, button); }); dropdown.append(item);
           }
           listen(button, 'click', event => { event.stopPropagation(); const opening = dropdown.hidden; closeRowMenus(); dropdown.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); });
-          rowMenus.push({ dropdown, button });
+          rowMenus.push({ dropdown, button, rowId: view.getRowId(row) });
           menu.append(button, dropdown); td.append(menu); tr.append(td);
         }
         tbody.append(tr);
+      }
+    }
+    if (openRowId !== null) {
+      const reopened = rowMenus.find((entry) => entry.rowId === openRowId);
+      if (reopened !== undefined) {
+        reopened.dropdown.hidden = false;
+        reopened.button.setAttribute('aria-expanded', 'true');
+        if (focusedTrigger) {
+          reopened.button.focus({ preventScroll: true });
+        } else if (focusedAction !== null) {
+          const item = [...reopened.dropdown.querySelectorAll<HTMLButtonElement>('button')].find(
+            (button) => button.dataset['action'] === focusedAction,
+          );
+          item?.focus({ preventScroll: true });
+        }
       }
     }
     for (const [index, column] of view.columns.entries()) {
@@ -540,7 +582,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   const registry = { closeRowMenus };
   mountedTables.add(registry);
   return {
-    setRows(nextRows, options) { rows = [...nextRows]; if (options?.keepPage !== true) state.page = 1; render(); },
+    setRows(nextRows, options) { rows = [...nextRows]; if (options?.keepPage !== true) state.page = 1; render(true); },
     destroy() {
       for (const remove of listeners) remove();
       if (canListen) document.removeEventListener('click', onDocumentClick);

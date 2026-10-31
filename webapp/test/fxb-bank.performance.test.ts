@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { parseFxbBank } from '../src/library/fxb-bank';
-import { describeTiming, measureSync } from './helpers/timing';
+import { checkBudget, describeTiming, measureSync } from './helpers/timing';
 
 /**
  * Referencia de rendimiento del parser con bancos reales: el de 100 programas
@@ -77,16 +77,12 @@ test('el parser tarda microsegundos con los bancos reales de MauSynth y OB-Xd', 
     `OB-Xd ${obxdBytes} bytes, 128 programas chunk → parse ${describeTiming(obxdTiming, 'parses/s')}`,
   );
 
-  assert.ok(
-    mausynthTiming.medianMs < BUDGET_MS,
-    `MauSynth (100 programas) tardó ${mausynthTiming.medianMs.toFixed(3)} ms de mediana, ` +
-      `presupuesto ${BUDGET_MS} ms`,
-  );
-  assert.ok(
-    obxdTiming.medianMs < BUDGET_MS,
-    `OB-Xd (128 programas) tardó ${obxdTiming.medianMs.toFixed(3)} ms de mediana, ` +
-      `presupuesto ${BUDGET_MS} ms`,
-  );
+  // Mejor muestra, no mediana: un runner cargado solo suma tiempo y hacía
+  // fallar el test sin que el parser hubiera empeorado (ver `checkBudget`).
+  const mausynthBudget = checkBudget(mausynthTiming, BUDGET_MS, 'MauSynth (100 programas)');
+  const obxdBudget = checkBudget(obxdTiming, BUDGET_MS, 'OB-Xd (128 programas)');
+  assert.ok(mausynthBudget.ok, mausynthBudget.message);
+  assert.ok(obxdBudget.ok, obxdBudget.message);
 
   // Los buffers son los del fixture: parsear no debe reescribirlos.
   assert.deepEqual(mausynth, await readFile(MAUSYNTH), 'el parse no modifica el banco de MauSynth');

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -112,16 +112,79 @@
         </svg>
         <div class="brand-copy">
           <h1>VFX Plugin &amp; Bank Manager</h1>
-          <p class="sub">Librería VFX</p>
+          <p class="sub" data-i18n="app.subtitle">VFX Library</p>
         </div>
       </div>
       <div class="top-actions">
         <button
+          id="wizards-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="SM Pro Audio / VFX wizard explorer" data-i18n-title="nav.wizardsTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg data-i18n="nav.wizards">Wizards
+        </button>
+        <button
+          id="import-pkg-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Import instruments or packages (.vfxlibrary) into the active library" data-i18n-title="nav.importTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="common.import">Import
+        </button>
+        <details class="creation-menu">
+          <summary class="nav-btn">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg data-i18n="nav.createPlugin">Create plugin
+          </summary>
+          <div class="creation-menu-items">
+            <button
+              id="custom-plugin-nav-btn"
+              class="creation-menu-item"
+              type="button"
+              title="Register a new VST plugin without a wizard by analysing its DLL file" data-i18n-title="nav.newPluginTitle"
+            >
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg data-i18n="nav.newPlugin">New plugin without wizard
+            </button>
+            <button
+              id="capture-nav-btn"
+              class="creation-menu-item"
+              type="button"
+              title="Automatically capture a plugin installation to prepare a V-Machine bank" data-i18n-title="nav.captureTitle"
+            >
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg data-i18n="nav.capture">Capture installation
+            </button>
+          </div>
+        </details>
+        <button
+          id="data-audit-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Data audit: what each plugin is missing and what can be filled in from vfxinfo, meta or the DLL" data-i18n-title="nav.dataTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg data-i18n="nav.data">Data
+        </button>
+        <button
+          id="audit-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Durable association audit of the active library" data-i18n-title="nav.auditTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg data-i18n="nav.audit">Audit
+        </button>
+        <button
+          id="settings-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="General settings" data-i18n-title="nav.settingsTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg data-i18n="navbar.settings">Settings
+        </button>
+        <button
           id="theme-toggle"
           class="theme-toggle"
           type="button"
-          title="Tema: Sistema (clic para cambiar a Oscuro)"
-          aria-label="Cambiar tema de color"
+          title="Theme: System (click to switch to Dark)" data-i18n-title="header.themeTitle"
+          aria-label="Change colour theme" data-i18n-label="header.themeLabel"
         >
           <!-- Dos dibujos: sol para el tema claro y luna para el oscuro. Con
           «Sistema» se enseña el que toque; `applyTheme` cambia el visible. -->
@@ -155,70 +218,6 @@
             <path d="M20.1 15.1a8.1 8.1 0 1 1-11.2-11 8.5 8.5 0 1 0 11.2 11z" />
           </svg>
         </button>
-        <button
-          id="wizards-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="Explorador de Wizards SM Pro Audio / VFX"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Wizards
-        </button>
-        <button
-          id="import-pkg-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="Importar instrumentos o paquetes (.vfxlibrary) a la librería activa"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar
-        </button>
-        <details class="creation-menu">
-          <summary class="nav-btn">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>Crear plugin
-          </summary>
-          <div class="creation-menu-items">
-            <button
-              id="custom-plugin-nav-btn"
-              class="creation-menu-item"
-              type="button"
-              title="Dar de alta un plugin VST nuevo sin wizard, analizando su archivo DLL"
-            >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Plugin nuevo sin wizard
-            </button>
-            <button
-              id="capture-nav-btn"
-              class="creation-menu-item"
-              type="button"
-              title="Capturar automáticamente una instalación de plugin para preparar un banco V-Machine"
-            >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg>Capturar instalación
-            </button>
-          </div>
-        </details>
-        <button
-          id="data-audit-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="Auditoría de datos: qué falta en cada plugin y qué se puede rellenar desde vfxinfo, meta o el DLL"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Datos
-        </button>
-        <button
-          id="audit-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="Auditoría durable de asociaciones de la librería activa"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg>Auditoría
-        </button>
-        <button
-          id="settings-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="Ajustes generales"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg>Ajustes
-        </button>
-        <nav><a href="/docs" target="_blank" rel="noreferrer">API OpenAPI</a></nav>
       </div>
     </header>
 
@@ -235,13 +234,13 @@
 
         <div class="batch">
           <div class="batch-actions">
-            <button id="install-all" class="primary" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span class="label">Poner cargador a todos</span></button>
-            <button id="uninstall-all" class="danger" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg><span class="label">Quitar cargador a todos</span></button>
+            <button id="install-all" class="primary" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span class="label" data-i18n="batch.installAll">Set loader on all</span></button>
+            <button id="uninstall-all" class="danger" type="button" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg><span class="label" data-i18n="batch.uninstallAll">Remove loader from all</span></button>
             <button id="batch-cancel" type="button" hidden>
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cancelar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.cancel">Cancel
             </button>
-            <button id="batch-resume" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg><span class="label">Reanudar</span></button>
-            <button id="retry-all" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span class="label">Reintentar fallidos</span></button>
+            <button id="batch-resume" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg><span class="label" data-i18n="batch.resume">Resume</span></button>
+            <button id="retry-all" type="button" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span class="label" data-i18n="batch.retryFailed">Retry failed</span></button>
           </div>
           <p id="batch-status" class="status" role="status" aria-live="polite"></p>
           <progress
@@ -249,7 +248,7 @@
             class="batch-progress"
             max="1"
             value="0"
-            aria-label="Progreso del lote"
+            aria-label="Batch progress" data-i18n-label="batch.progressLabel"
             hidden
           ></progress>
           <p id="batch-step" class="batch-step" hidden></p>
@@ -281,9 +280,9 @@
       >
         <div class="summary">
           <!-- #banks-title solo lo referencia aria-labelledby de #banks: la vista no lo toca. -->
-          <h2 id="banks-title">Bancos de <span id="banks-plugin"></span></h2>
+          <h2 id="banks-title" data-i18n="banks.title">Banks of <span id="banks-plugin"></span></h2>
           <button id="banks-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -294,37 +293,37 @@
 
         <div class="default-row">
           <div class="field">
-            <label for="default-bank">Banco por defecto</label>
+            <label for="default-bank" data-i18n="banks.defaultBank">Default bank</label>
             <select id="default-bank"></select>
           </div>
           <label class="check">
-            <input id="load-fxb" type="checkbox" />
-            Cargar el banco al abrir el plugin
+            <input id="load-fxb" type="checkbox" / data-i18n="banks.loadOnOpen">
+            Load the bank when the plugin opens
           </label>
           <button id="default-save" class="primary" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="common.save">Save
           </button>
           <button
             id="default-convert"
             type="button"
-            title="Convierte el banco por defecto en su mismo archivo y guarda el original como banco.fxb.orig"
+            title="Converts the default bank in place and keeps the original as banco.fxb.orig" data-i18n-title="banks.convertTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-repeat"></use></svg>Convertir orden de bytes
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-repeat"></use></svg data-i18n="banks.convert">Convert byte order
           </button>
           <button
             id="default-restore"
             type="button"
-            title="Devuelve el banco por defecto al contenido de banco.fxb.orig sin tocar el respaldo"
+            title="Restores the default bank from banco.fxb.orig without touching the backup" data-i18n-title="banks.restoreTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-restore"></use></svg>Restaurar original
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-restore"></use></svg data-i18n="banks.restore">Restore original
           </button>
           <button
             id="default-discard"
             class="danger"
             type="button"
-            title="Envía el respaldo .orig del banco por defecto a la Papelera de reciclaje para poder recuperarlo"
+            title="Sends the default bank .orig backup to the Recycle Bin so it can be recovered" data-i18n-title="banks.discardTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>Descartar respaldo
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg data-i18n="banks.discard">Discard backup
           </button>
         </div>
 
@@ -334,9 +333,9 @@
 
         <details class="import">
           <summary>
-            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Importar bancos .fxb
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg data-i18n="banks.importSection">Import .fxb banks
           </summary>
-          <label for="import-paths">Rutas absolutas, una por línea</label>
+          <label for="import-paths" data-i18n="banks.importPathsLabel">Absolute paths, one per line</label>
           <textarea
             id="import-paths"
             rows="3"
@@ -347,28 +346,28 @@
             id="recent-banks"
             class="recents"
             role="group"
-            aria-label="Bancos usados recientemente"
+            aria-label="Recently used banks" data-i18n-label="banks.recentsLabel"
             hidden
           ></div>
           <div class="import-row">
             <button
               id="import-browse"
               type="button"
-              title="Elegir los bancos .fxb con el diálogo del sistema"
+              title="Choose the .fxb banks with the system dialog" data-i18n-title="banks.browseTitle"
             >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>Añadir archivos…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg data-i18n="banks.addFiles">Add files…
             </button>
           </div>
           <div class="import-row">
             <label class="check">
-              <input id="import-overwrite" type="checkbox" checked />
-              Sobrescribir un banco con el mismo nombre
+              <input id="import-overwrite" type="checkbox" checked / data-i18n="banks.overwrite">
+              Overwrite a bank with the same name
             </label>
             <button id="import-button" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="common.import">Import
             </button>
             <button id="import-cancel" type="button" hidden>
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cancelar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.cancel">Cancel
             </button>
           </div>
           <progress
@@ -376,7 +375,7 @@
             class="import-progress"
             max="1"
             value="0"
-            aria-label="Progreso de la importación de bancos"
+            aria-label="Bank import progress" data-i18n-label="banks.importProgress"
             hidden
           ></progress>
           <div id="import-results" class="import-results"></div>
@@ -384,26 +383,26 @@
 
         <details class="export">
           <summary>
-            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Exportar un banco en otro orden de bytes
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg data-i18n="banks.exportSection">Export a bank in another byte order
           </summary>
           <div class="import-row">
             <div class="field">
-              <label for="export-bank">Banco importado</label>
+              <label for="export-bank" data-i18n="banks.importedBank">Imported bank</label>
               <select id="export-bank"></select>
             </div>
             <div class="field">
-              <label for="export-order">Orden de salida</label>
+              <label for="export-order" data-i18n="banks.outputOrder">Output order</label>
               <select id="export-order">
-                <option value="little">little-endian (legacy de Windows)</option>
-                <option value="big">big-endian (estándar VST2)</option>
+                <option value="little" data-i18n="banks.orderLittle">little-endian (Windows legacy)</option>
+                <option value="big" data-i18n="banks.orderBig">big-endian (VST2 standard)</option>
               </select>
             </div>
             <label class="check">
-              <input id="export-overwrite" type="checkbox" />
-              Sobrescribir si ya existe
+              <input id="export-overwrite" type="checkbox" / data-i18n="banks.overwriteExisting">
+              Overwrite if it already exists
             </label>
             <button id="export-button" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg>Exportar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg data-i18n="common.export">Export
             </button>
           </div>
           <p class="note">
@@ -415,11 +414,11 @@
 
         <details class="create">
           <summary>
-            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Crear un banco .fxb desde cero
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg data-i18n="banks.createSection">Create an .fxb bank from scratch
           </summary>
           <div class="import-row">
             <div class="field">
-              <label for="create-bank-name">Nombre del archivo</label>
+              <label for="create-bank-name" data-i18n="banks.fileName">File name</label>
               <input
                 id="create-bank-name"
                 autocomplete="off"
@@ -428,24 +427,24 @@
               />
             </div>
             <div class="field">
-              <label for="create-mode">Contenido</label>
+              <label for="create-mode" data-i18n="banks.content">Content</label>
               <select id="create-mode">
-                <option value="programNames">Programas FxBk (con nombres)</option>
-                <option value="chunk">Chunk opaco FBCh</option>
+                <option value="programNames" data-i18n="banks.modePrograms">FxBk programs (with names)</option>
+                <option value="chunk" data-i18n="banks.modeChunk">Opaque FBCh chunk</option>
               </select>
             </div>
             <div class="field">
-              <label for="create-order">Orden de bytes</label>
+              <label for="create-order" data-i18n="banks.byteOrder">Byte order</label>
               <select id="create-order">
-                <option value="little">little-endian (legacy de Windows)</option>
-                <option value="big">big-endian (estándar VST2)</option>
+                <option value="little" data-i18n="banks.orderLittle">little-endian (Windows legacy)</option>
+                <option value="big" data-i18n="banks.orderBig">big-endian (VST2 standard)</option>
               </select>
             </div>
           </div>
           <div id="create-program-rows">
             <div class="import-row">
               <div class="field field-wide">
-                <label for="create-program-names">Nombres de programa (uno por línea)</label>
+                <label for="create-program-names" data-i18n="banks.programNames">Program names (one per line)</label>
                 <textarea
                   id="create-program-names"
                   rows="4"
@@ -458,7 +457,7 @@
                 <input id="create-fx-version" type="number" min="0" step="1" placeholder="0" />
               </div>
               <div class="field">
-                <label for="create-num-params">Parámetros por programa</label>
+                <label for="create-num-params" data-i18n="banks.paramsPerProgram">Parameters per program</label>
                 <input id="create-num-params" type="number" min="0" step="1" placeholder="0" />
               </div>
             </div>
@@ -477,29 +476,29 @@
             </div>
             <div class="import-row">
               <div class="field">
-                <label for="create-chunk-version">Versión del formato</label>
+                <label for="create-chunk-version" data-i18n="banks.formatVersion">Format version</label>
                 <select id="create-chunk-version">
-                  <option value="1">1 (solo cabecera)</option>
-                  <option value="2">2 (con programa activo)</option>
+                  <option value="1" data-i18n="banks.version1">1 (header only)</option>
+                  <option value="2" data-i18n="banks.version2">2 (with active program)</option>
                 </select>
               </div>
               <div class="field">
-                <label for="create-current-program">Programa activo (solo v2)</label>
+                <label for="create-current-program" data-i18n="banks.currentProgram">Active program (v2 only)</label>
                 <input id="create-current-program" type="number" min="0" step="1" placeholder="0" />
               </div>
               <div class="field">
-                <label for="create-chunk-programs">Programas informativos</label>
+                <label for="create-chunk-programs" data-i18n="banks.infoPrograms">Informational programs</label>
                 <input id="create-chunk-programs" type="number" min="0" step="1" placeholder="0" />
               </div>
             </div>
           </div>
           <div class="import-row">
             <label class="check">
-              <input id="create-overwrite" type="checkbox" />
-              Reemplazar si ya existe
+              <input id="create-overwrite" type="checkbox" / data-i18n="banks.replaceExisting">
+              Replace if it already exists
             </label>
             <button id="create-bank-button" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Crear banco
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="banks.create">Create bank
             </button>
           </div>
           <p class="note">
@@ -521,9 +520,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="meta-title">Catálogo de <span id="meta-plugin"></span></h2>
+          <h2 id="meta-title" data-i18n="meta.title">Catalog of <span id="meta-plugin"></span></h2>
           <button id="meta-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -536,11 +535,11 @@
 
         <div id="meta-wizard-banner" class="wizard-banner" hidden>
           <div class="wizard-banner-info">
-            <span class="badge badge-wizard">Wizard disponible</span>
+            <span class="badge badge-wizard" data-i18n="meta.wizardBadge">Wizard available</span>
             <span id="meta-wizard-title" class="wizard-title"></span>
           </div>
           <button id="meta-wizard-apply" class="primary" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Rellenar desde Wizard
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="meta.fillFromWizard">Fill from wizard
           </button>
         </div>
 
@@ -550,61 +549,61 @@
             <input id="meta-id" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-name">Nombre</label>
+            <label for="meta-name" data-i18n="common.name">Name</label>
             <input id="meta-name" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-vendor">Fabricante</label>
+            <label for="meta-vendor" data-i18n="meta.vendor">Vendor</label>
             <input id="meta-vendor" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-vendor-url">URL del fabricante</label>
+            <label for="meta-vendor-url" data-i18n="meta.vendorUrl">Vendor URL</label>
             <input id="meta-vendor-url" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-genre">Género</label>
+            <label for="meta-genre" data-i18n="meta.genre">Genre</label>
             <input id="meta-genre" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-abbreviation">Abreviatura</label>
+            <label for="meta-abbreviation" data-i18n="meta.abbreviation">Abbreviation</label>
             <input id="meta-abbreviation" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="meta-created">Creado (AAAA-MM-DD)</label>
+            <label for="meta-created" data-i18n="meta.created">Created (YYYY-MM-DD)</label>
             <input id="meta-created" autocomplete="off" spellcheck="false" />
           </div>
         </div>
 
         <div class="field">
-          <label for="meta-notes">Notas</label>
+          <label for="meta-notes" data-i18n="meta.notes">Notes</label>
           <textarea id="meta-notes" rows="2"></textarea>
         </div>
 
         <div class="field">
-          <label for="meta-extended">Campos propios (JSON)</label>
+          <label for="meta-extended" data-i18n="meta.extended">Custom fields (JSON)</label>
           <textarea id="meta-extended" rows="6" spellcheck="false"></textarea>
         </div>
 
         <div id="meta-dll-actions" class="row meta-dll">
           <div class="field">
-            <label for="meta-dll">Preferencia de DLL (dll_name)</label>
+            <label for="meta-dll" data-i18n="meta.dllPreference">DLL preference (dll_name)</label>
             <input id="meta-dll" autocomplete="off" spellcheck="false" />
             <p id="meta-dll-note" class="note"></p>
           </div>
           <button id="meta-dll-save" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar preferencia
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="meta.saveDllPreference">Save preference
           </button>
           <button id="meta-dll-cancel" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg>Cancelar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg data-i18n="common.cancel">Cancel
           </button>
         </div>
 
         <div class="row">
           <button id="meta-save" class="primary" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Guardar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="common.save">Save
           </button>
           <button id="meta-reload" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg>Descartar cambios
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg data-i18n="meta.discard">Discard changes
           </button>
         </div>
 
@@ -621,14 +620,14 @@
         hidden
       >
         <div class="summary">
-          <h2 id="plugin-wizard-title">Wizard de <span id="plugin-wizard-plugin"></span></h2>
+          <h2 id="plugin-wizard-title" data-i18n="wizard.title">Wizard of <span id="plugin-wizard-plugin"></span></h2>
           <button id="plugin-wizard-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
-        <p id="plugin-wizard-empty" class="note" hidden>
-          No existe ningún wizard oficial certificado para este plugin en la base de datos de SM Pro Audio / VFX.
+        <p id="plugin-wizard-empty" class="note" hidden data-i18n="wizard.empty">
+          No official certified wizard exists for this plugin in the SM Pro Audio / VFX database.
         </p>
 
         <div id="plugin-wizard-create-wrap" class="row" hidden>
@@ -636,9 +635,9 @@
             id="plugin-wizard-create-btn"
             class="primary"
             type="button"
-            title="Genera un .vfxwizard en el catálogo local con los datos de vfxinfo.txt y fxbLoader.meta.json del plugin, usando el DLL que ya está en su carpeta"
+            title="Generates a .vfxwizard in the local catalog from the plugin vfxinfo.txt and fxbLoader.meta.json, using the DLL already in its folder" data-i18n-title="wizard.createTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>Crear wizard desde este plugin
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg data-i18n="wizard.create">Create a wizard from this plugin
           </button>
         </div>
 
@@ -652,64 +651,64 @@
 
           <div class="meta-grid">
             <div class="field">
-              <label>Fabricante</label>
+              <label data-i18n="meta.vendor">Vendor</label>
               <p id="plugin-wizard-vendor" class="note"></p>
             </div>
             <div class="field">
-              <label>Género</label>
+              <label data-i18n="meta.genre">Genre</label>
               <p id="plugin-wizard-genre" class="note"></p>
             </div>
             <div class="field">
-              <label>ID VST (FourCC)</label>
+              <label data-i18n="wizard.vstId">VST ID (FourCC)</label>
               <p id="plugin-wizard-id" class="note"></p>
             </div>
             <div class="field">
-              <label>DLL original</label>
+              <label data-i18n="wizard.originalDll">Original DLL</label>
               <p id="plugin-wizard-dll" class="note"></p>
             </div>
             <div class="field">
-              <label>Dimensiones UI</label>
+              <label data-i18n="wizard.dimensions">UI dimensions</label>
               <p id="plugin-wizard-dimensions" class="note"></p>
             </div>
             <div class="field">
-              <label>Parámetros / Canales</label>
+              <label data-i18n="wizard.params">Parameters / Channels</label>
               <p id="plugin-wizard-params" class="note"></p>
             </div>
             <div class="field">
-              <label>Flags VST</label>
+              <label data-i18n="wizard.flags">VST flags</label>
               <p id="plugin-wizard-flags" class="note"></p>
             </div>
           </div>
 
           <div id="plugin-wizard-files-wrap" class="field" hidden>
-            <label>Archivos y dependencias requeridas</label>
+            <label data-i18n="wizard.files">Required files and dependencies</label>
             <pre id="plugin-wizard-files" class="wizard-code"></pre>
           </div>
 
           <div id="plugin-wizard-registry-wrap" class="field" hidden>
-            <label>Directivas de registro (Wine)</label>
+            <label data-i18n="wizard.registry">Registry directives (Wine)</label>
             <pre id="plugin-wizard-registry" class="wizard-code"></pre>
           </div>
 
           <div id="plugin-wizard-notes-wrap" class="field" hidden>
-            <label>Notas de compatibilidad</label>
+            <label data-i18n="wizard.notes">Compatibility notes</label>
             <p id="plugin-wizard-notes" class="note"></p>
           </div>
 
           <div id="plugin-wizard-readme-wrap" class="field" hidden>
-            <label>Instrucciones (README)</label>
+            <label data-i18n="wizard.readme">Instructions (README)</label>
             <pre id="plugin-wizard-readme" class="wizard-code"></pre>
           </div>
 
           <div class="row">
             <button id="plugin-wizard-vfxinfo-btn" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg><span id="plugin-wizard-vfxinfo-label">Crear vfxinfo.txt desde Wizard</span>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg><span id="plugin-wizard-vfxinfo-label" data-i18n="wizard.createVfxinfo">Create vfxinfo.txt from wizard</span>
             </button>
-            <button id="plugin-wizard-apply-btn" type="button" title="Aplica fabricante, género y notas al catálogo fxbLoader.meta.json del plugin">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg>Aplicar a Catálogo
+            <button id="plugin-wizard-apply-btn" type="button" title="Applies vendor, genre and notes to the plugin fxbLoader.meta.json catalog" data-i18n-title="wizard.applyTitle">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-tag"></use></svg data-i18n="wizard.apply">Apply to catalog
             </button>
-            <button id="plugin-wizard-install-btn" type="button" title="Instala o reinstala este instrumento en la librería activa desde el Wizard">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Instalar con DLL…
+            <button id="plugin-wizard-install-btn" type="button" title="Installs or reinstalls this instrument in the active library from the wizard" data-i18n-title="wizard.installTitle">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="wizard.install">Install with DLL…
             </button>
           </div>
         </div>
@@ -727,9 +726,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="log-drawer-title">Historial de <span id="log-plugin"></span></h2>
+          <h2 id="log-drawer-title" data-i18n="log.title">History of <span id="log-plugin"></span></h2>
           <button id="log-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -742,12 +741,12 @@
         <section id="log-record-detail" class="log-record-detail" aria-labelledby="log-record-detail-title" hidden>
           <div class="log-record-detail-head">
             <h3 id="log-record-detail-title"></h3>
-            <button id="log-record-detail-close" type="button" aria-label="Cerrar detalle del registro">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <button id="log-record-detail-close" type="button" aria-label="Close record detail" data-i18n-label="log.closeDetail">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
             </button>
           </div>
           <dl id="log-record-detail-fields" class="log-record-detail-fields"></dl>
-          <p class="log-record-detail-foot">Solo lectura</p>
+          <p class="log-record-detail-foot" data-i18n="common.readOnly">Read-only</p>
         </section>
         <p id="log-rotated" class="note"></p>
 
@@ -764,9 +763,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="audit-drawer-title">Auditoría durable de asociaciones</h2>
+          <h2 id="audit-drawer-title" data-i18n="audit.title">Durable association audit</h2>
           <button id="audit-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -783,9 +782,9 @@
           <button
             id="audit-refresh"
             type="button"
-            title="Volver a leer el almacén de auditoría"
+            title="Re-read the audit store" data-i18n-title="audit.refreshTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>Actualizar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg data-i18n="common.refresh">Refresh
           </button>
         </div>
 
@@ -794,12 +793,12 @@
         <section id="audit-record-detail" class="log-record-detail" aria-labelledby="audit-record-detail-title" hidden>
           <div class="log-record-detail-head">
             <h3 id="audit-record-detail-title"></h3>
-            <button id="audit-record-detail-close" type="button" aria-label="Cerrar detalle del evento">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <button id="audit-record-detail-close" type="button" aria-label="Close event detail" data-i18n-label="audit.closeDetail">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
             </button>
           </div>
           <dl id="audit-record-detail-fields" class="log-record-detail-fields"></dl>
-          <p class="log-record-detail-foot">Solo lectura</p>
+          <p class="log-record-detail-foot" data-i18n="common.readOnly">Read-only</p>
         </section>
 
         <p id="audit-status" class="status" role="status" aria-live="polite"></p>
@@ -815,9 +814,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="data-audit-drawer-title">Auditoría de datos de la librería</h2>
+          <h2 id="data-audit-drawer-title" data-i18n="dataAudit.title">Library data audit</h2>
           <button id="data-audit-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -835,9 +834,9 @@
           <button
             id="data-audit-refresh"
             type="button"
-            title="Volver a auditar la librería activa"
+            title="Re-audit the active library" data-i18n-title="dataAudit.refreshTitle"
           >
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>Actualizar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg data-i18n="common.refresh">Refresh
           </button>
         </div>
 
@@ -851,14 +850,40 @@
         >
           <div class="log-record-detail-head">
             <h3 id="data-audit-detail-title"></h3>
-            <button id="data-audit-detail-close" type="button" aria-label="Cerrar detalle del plugin">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <button id="data-audit-detail-close" type="button" aria-label="Close plugin detail" data-i18n-label="dataAudit.closeDetail">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
             </button>
           </div>
           <dl id="data-audit-detail-fields" class="log-record-detail-fields"></dl>
           <div id="data-audit-detail-gaps" class="data-audit-block"></div>
           <div id="data-audit-detail-proposals" class="data-audit-block"></div>
-          <p class="log-record-detail-foot">Solo lectura · nada se escribe en disco</p>
+
+          <div class="row data-audit-apply-row">
+            <button
+              id="data-audit-apply"
+              type="button"
+              title="Writes the proposed values into vfxinfo.txt and fxbLoader.meta.json" data-i18n-title="dataAudit.applyTitle"
+            >
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="dataAudit.apply">Apply proposals
+            </button>
+          </div>
+
+          <div id="data-audit-apply-confirm" class="data-audit-confirm" hidden>
+            <p id="data-audit-apply-note" class="note"></p>
+            <ul id="data-audit-apply-list" class="data-audit-list"></ul>
+            <div class="row">
+              <button id="data-audit-apply-confirm-btn" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg data-i18n="dataAudit.confirm">Confirm and write
+              </button>
+              <button id="data-audit-apply-cancel" type="button" data-i18n="common.cancel">Cancel</button>
+            </div>
+            <p id="data-audit-apply-status" class="status" role="status" aria-live="polite"></p>
+          </div>
+
+          <p class="log-record-detail-foot">
+            La auditoría no escribe nada por sí sola: al aplicar se respalda cada archivo como
+            <code>.bak</code> y solo se tocan los campos propuestos.
+          </p>
         </section>
 
         <p id="data-audit-status" class="status" role="status" aria-live="polite"></p>
@@ -874,14 +899,14 @@
         hidden
       >
         <div class="summary">
-          <h2 id="settings-drawer-title">Ajustes generales</h2>
+          <h2 id="settings-drawer-title" data-i18n="settings.title">General settings</h2>
           <button id="settings-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
         <form id="scan-form" class="settings-form">
-          <label for="library-root">Carpeta de la librería</label>
+          <label for="library-root" data-i18n="settings.libraryRoot">Library folder</label>
           <div class="row">
             <input
               id="library-root"
@@ -896,17 +921,17 @@
             <button
               id="root-browse"
               type="button"
-              title="Elegir la carpeta con el diálogo del sistema"
+              title="Choose the folder with the system dialog" data-i18n-title="settings.chooseRootTitle"
             >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Elegir carpeta…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg data-i18n="settings.chooseFolder">Choose folder…
             </button>
             <button id="scan-button" class="primary" type="submit">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Escanear
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg data-i18n="settings.scan">Scan
             </button>
           </div>
           <datalist id="library-root-recents"></datalist>
           <div id="library-root-recent-wrap" class="recent-select-wrap" hidden>
-            <label for="library-root-recent-select">Carpetas usadas</label>
+            <label for="library-root-recent-select" data-i18n="settings.usedFolders">Used folders</label>
             <select id="library-root-recent-select"></select>
           </div>
           <p id="root-warning" class="warning" hidden>
@@ -917,9 +942,9 @@
 
           <details open>
             <summary>
-              <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>Opciones avanzadas
+              <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg data-i18n="settings.advanced">Advanced options
             </summary>
-            <label for="dll-source">DLL del cargador (vacío = la del servidor)</label>
+            <label for="dll-source" data-i18n="settings.dllSource">Loader DLL (empty = the server one)</label>
             <div class="row">
               <input
                 id="dll-source"
@@ -931,48 +956,91 @@
               <button
                 id="dll-browse"
                 type="button"
-                title="Elegir el fxbLoader.dll con el diálogo del sistema"
+                title="Choose fxbLoader.dll with the system dialog" data-i18n-title="settings.chooseDllTitle"
               >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg>Elegir DLL…
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg data-i18n="settings.chooseDll">Choose DLL…
               </button>
             </div>
             <datalist id="dll-source-recents"></datalist>
             <div id="dll-source-recent-wrap" class="recent-select-wrap" hidden>
-              <label for="dll-source-recent-select">DLL usadas</label>
+              <label for="dll-source-recent-select" data-i18n="settings.usedDlls">Used DLLs</label>
               <select id="dll-source-recent-select"></select>
             </div>
             <div class="row">
-              <span class="note">Las rutas usadas se guardan solo en este navegador.</span>
+              <span class="note" data-i18n="settings.recentsNote">Used paths are stored only in this browser.</span>
               <button
                 id="recents-clear"
                 type="button"
-                title="Olvidar las rutas sugeridas; lo escrito en los campos no cambia"
+                title="Forget the suggested paths; what is typed in the fields does not change" data-i18n-title="settings.clearRecentsTitle"
               >
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>Vaciar historial de rutas
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg data-i18n="settings.clearRecents">Clear path history
               </button>
             </div>
           </details>
         </form>
+
+        <div class="settings-theme">
+          <span class="settings-theme-title" data-i18n="settings.theme">Theme</span>
+          <div class="theme-options" role="radiogroup" aria-label="Interface theme" data-i18n-label="settings.themeGroup">
+            <label class="theme-option">
+              <input type="radio" name="theme-mode" value="auto" />
+              <span data-i18n="theme.auto">System</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="theme-mode" value="dark" />
+              <span data-i18n="theme.dark">Dark</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="theme-mode" value="light" />
+              <span data-i18n="theme.light">Light</span>
+            </label>
+          </div>
+          <p class="note" data-i18n="theme.note">“System” follows the operating system’s light or dark theme.</p>
+        </div>
+
+        <div class="settings-theme">
+          <span class="settings-theme-title" data-i18n="settings.language">Language</span>
+          <div class="theme-options" role="radiogroup" aria-label="Interface language">
+            <label class="theme-option">
+              <input type="radio" name="ui-locale" value="en" />
+              <span>English</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="ui-locale" value="es" />
+              <span>Español</span>
+            </label>
+          </div>
+          <p class="note" data-i18n="settings.langNote">
+            The change applies immediately; the interface is redrawn, nothing is reloaded.
+          </p>
+        </div>
+
+        <div class="row settings-api">
+          <span class="note" data-i18n="settings.apiNote">Interactive server documentation (Swagger UI).</span>
+          <a class="settings-link" href="/docs" target="_blank" rel="noreferrer">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg data-i18n="settings.apiLink">OpenAPI API
+          </a>
+        </div>
       </section>
 
       <section id="wizards" class="card drawer" hidden aria-labelledby="wizards-title">
         <div class="summary">
-          <h2 id="wizards-title">Repositorio de Wizards</h2>
+          <h2 id="wizards-title" data-i18n="wizards.title">Wizard repository</h2>
           <button id="wizards-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
-        <p class="note">268 wizards oficiales certificados de SM Pro Audio / VFX con metadatos VST, configuraciones y Wine.</p>
+        <p class="note" data-i18n="wizards.note">268 official certified SM Pro Audio / VFX wizards with VST metadata, configurations and Wine.</p>
 
         <div class="filter-bar">
           <input
             id="wizards-filter"
             type="search"
-            placeholder="Buscar por nombre, fabricante, DLL o ID…"
+            placeholder="Search by name, vendor, DLL or ID…" data-i18n-placeholder="wizards.search"
             autocomplete="off"
             spellcheck="false"
-            aria-label="Filtrar wizards"
+            aria-label="Filter wizards" data-i18n-label="wizards.filterLabel"
           />
           <span id="wizards-count" class="filter-count"></span>
         </div>
@@ -992,9 +1060,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="import-package-title">Importar instrumentos (.vfxlibrary)</h2>
+          <h2 id="import-package-title" data-i18n="importPackage.title">Import instruments (.vfxlibrary)</h2>
           <button id="import-package-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -1003,7 +1071,7 @@
         </p>
 
         <div class="field">
-          <label for="import-package-path">Ruta del paquete o carpeta a importar</label>
+          <label for="import-package-path" data-i18n="importPackage.path">Package or folder path to import</label>
           <div class="row">
             <input
               id="import-package-path"
@@ -1016,10 +1084,10 @@
               type="button"
               title="Elegir carpeta con el diálogo del sistema"
             >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Elegir carpeta…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg data-i18n="settings.chooseFolder">Choose folder…
             </button>
             <button id="import-package-inspect-btn" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Inspeccionar
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg data-i18n="importPackage.inspect">Inspect
             </button>
           </div>
         </div>
@@ -1032,9 +1100,9 @@
 
           <div id="import-package-plugins-wrap" class="field">
             <div class="row" style="justify-content: space-between; align-items: center;">
-              <label>Plugins detectados</label>
+              <label data-i18n="importPackage.plugins">Detected plugins</label>
               <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
-                <input id="import-package-all-plugs" type="checkbox" checked title="Seleccionar todos los plugins" /> Seleccionar todos
+                <input id="import-package-all-plugs" type="checkbox" checked title="Select all plugins" data-i18n-title="importPackage.selectAllPlugins" / data-i18n="importPackage.selectAll"> Select all
               </label>
             </div>
             <div id="import-package-plugins-table" class="import-package-plugins-table"></div>
@@ -1042,9 +1110,9 @@
 
           <div id="import-package-banks-wrap" class="field">
             <div class="row" style="justify-content: space-between; align-items: center;">
-              <label>Bancos detectados</label>
+              <label data-i18n="importPackage.banks">Detected banks</label>
               <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
-                <input id="import-package-all-banks" type="checkbox" checked title="Seleccionar todos los bancos" /> Seleccionar todos
+                <input id="import-package-all-banks" type="checkbox" checked title="Select all banks" data-i18n-title="importPackage.selectAllBanks" / data-i18n="importPackage.selectAll"> Select all
               </label>
             </div>
             <div id="import-package-banks-table" class="import-package-banks-table"></div>
@@ -1052,10 +1120,10 @@
 
           <div class="row">
             <div class="field">
-              <label for="import-package-policy">En caso de conflicto con plugins o bancos existentes</label>
+              <label for="import-package-policy" data-i18n="importPackage.policy">On conflict with existing plugins or banks</label>
               <select id="import-package-policy">
-                <option value="skip" selected>Omitir existentes (conservar los de la librería)</option>
-                <option value="overwrite">Sobrescribir existentes con los del paquete</option>
+                <option value="skip" selected data-i18n="importPackage.policySkip">Skip existing (keep the library ones)</option>
+                <option value="overwrite" data-i18n="importPackage.policyOverwrite">Overwrite existing with the package ones</option>
               </select>
             </div>
           </div>
@@ -1063,13 +1131,13 @@
           <div class="row">
             <label class="check" for="import-package-repair">
               <input id="import-package-repair" type="checkbox" checked />
-              <span>Reparar bancos (alinear IDs de chunks y descriptores con el plugin destino)</span>
+              <span data-i18n="importPackage.repair">Repair banks (align chunk IDs and descriptors with the target plugin)</span>
             </label>
           </div>
 
           <div class="row">
             <button id="import-package-execute-btn" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Importar a la librería
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="importPackage.execute">Import into the library
             </button>
           </div>
         </div>
@@ -1087,9 +1155,9 @@
         hidden
       >
         <div class="summary">
-          <h2 id="custom-plugin-title">Plugin nuevo sin wizard</h2>
+          <h2 id="custom-plugin-title" data-i18n="nav.newPlugin">New plugin without wizard</h2>
           <button id="custom-plugin-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
@@ -1101,7 +1169,7 @@
         </p>
 
         <div class="field">
-          <label for="custom-plugin-path">Archivo DLL del plugin</label>
+          <label for="custom-plugin-path" data-i18n="customPlugin.dllFile">Plugin DLL file</label>
           <div class="row">
             <input
               id="custom-plugin-path"
@@ -1112,12 +1180,12 @@
             <button
               id="custom-plugin-browse"
               type="button"
-              title="Elegir el archivo con el diálogo del sistema"
+              title="Choose the file with the system dialog" data-i18n-title="customPlugin.chooseFileTitle"
             >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Elegir DLL…
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg data-i18n="settings.chooseDll">Choose DLL…
             </button>
             <button id="custom-plugin-inspect-btn" class="primary" type="button">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>Analizar binario
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg data-i18n="customPlugin.analyze">Analyse binary
             </button>
           </div>
         </div>
@@ -1130,14 +1198,14 @@
           </div>
           <p id="custom-plugin-suggestion" class="note"></p>
           <p id="custom-plugin-wizard" class="note"></p>
-          <div id="custom-plugin-exports" class="note"></div>
-          <div id="custom-plugin-issues" class="warning"></div>
+          <div id="custom-plugin-exports" class="note custom-plugin-table"></div>
+          <div id="custom-plugin-issues" class="warning custom-plugin-table"></div>
           <p id="custom-plugin-bitness-warning" class="warning" hidden></p>
         </div>
 
-        <h3>Configuración del nuevo plugin</h3>
+        <h3 data-i18n="customPlugin.config">New plugin configuration</h3>
         <div class="field">
-          <label for="custom-plugin-root">Carpeta de la librería</label>
+          <label for="custom-plugin-root" data-i18n="settings.libraryRoot">Library folder</label>
           <input
             id="custom-plugin-root"
             placeholder="C:\\VFX\\Library"
@@ -1147,7 +1215,7 @@
         </div>
         <div class="row">
           <div class="field">
-            <label for="custom-plugin-folder">Nombre de nuevo plugin</label>
+            <label for="custom-plugin-folder" data-i18n="customPlugin.folder">New plugin folder name</label>
             <input
               id="custom-plugin-folder"
               placeholder="NewSynth"
@@ -1156,7 +1224,7 @@
             />
           </div>
           <div class="field">
-            <label for="custom-plugin-name">Nombre interno (vfxinfo)</label>
+            <label for="custom-plugin-name" data-i18n="customPlugin.name">Internal name (vfxinfo)</label>
             <input
               id="custom-plugin-name"
               placeholder="NewSynth"
@@ -1165,7 +1233,7 @@
             />
           </div>
           <div class="field">
-            <label for="custom-plugin-id">Identificador VST (id numérico)</label>
+            <label for="custom-plugin-id" data-i18n="customPlugin.id">VST identifier (numeric id)</label>
             <input
               id="custom-plugin-id"
               placeholder="1313820828"
@@ -1174,17 +1242,17 @@
             />
           </div>
           <div class="field">
-            <label for="custom-plugin-vendor">Fabricante</label>
+            <label for="custom-plugin-vendor" data-i18n="meta.vendor">Vendor</label>
             <input id="custom-plugin-vendor" placeholder="Custom Audio" autocomplete="off" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="custom-plugin-genre">Género o categoría</label>
+            <label for="custom-plugin-genre" data-i18n="customPlugin.genreLabel">Genre or category</label>
             <input id="custom-plugin-genre" placeholder="Synth" autocomplete="off" spellcheck="false" />
           </div>
         </div>
         <div class="row">
           <div class="field">
-            <label for="custom-plugin-params">Parámetros VST</label>
+            <label for="custom-plugin-params" data-i18n="customPlugin.params">VST parameters</label>
             <input
               id="custom-plugin-params"
               type="number"
@@ -1194,7 +1262,7 @@
             />
           </div>
           <div class="field">
-            <label for="custom-plugin-programs">Programas VST</label>
+            <label for="custom-plugin-programs" data-i18n="customPlugin.programs">VST programs</label>
             <input
               id="custom-plugin-programs"
               type="number"
@@ -1207,48 +1275,48 @@
         <div class="row">
           <label class="check" for="custom-plugin-synth">
             <input id="custom-plugin-synth" type="checkbox" checked />
-            <span>Es un sintetizador o generador (no solo un efecto)</span>
+            <span data-i18n="customPlugin.isSynth">It is a synth or generator (not just an effect)</span>
           </label>
         </div>
         <div class="row">
           <label class="check" for="custom-plugin-editor">
             <input id="custom-plugin-editor" type="checkbox" />
-            <span>Tiene editor gráfico de dimensiones concretas</span>
+            <span data-i18n="customPlugin.hasEditor">It has a graphical editor with a fixed size</span>
           </label>
         </div>
         <div class="row" id="custom-plugin-editor-row" hidden>
           <div class="field">
-            <label for="custom-plugin-width">Ancho del editor (px)</label>
+            <label for="custom-plugin-width" data-i18n="customPlugin.width">Editor width (px)</label>
             <input id="custom-plugin-width" type="number" min="0" max="4096" placeholder="800" />
           </div>
           <div class="field">
-            <label for="custom-plugin-height">Alto del editor (px)</label>
+            <label for="custom-plugin-height" data-i18n="customPlugin.height">Editor height (px)</label>
             <input id="custom-plugin-height" type="number" min="0" max="4096" placeholder="600" />
           </div>
         </div>
         <div class="row">
           <label class="check" for="custom-plugin-save-wizard">
             <input id="custom-plugin-save-wizard" type="checkbox" />
-            <span>Guardar además un .vfxwizard reutilizable en el catálogo local</span>
+            <span data-i18n="customPlugin.saveWizard">Also save a reusable .vfxwizard in the local catalog</span>
           </label>
         </div>
         <div class="row">
           <label class="check" for="custom-plugin-overwrite">
             <input id="custom-plugin-overwrite" type="checkbox" />
-            <span>Sobrescribir si la carpeta del plugin ya existe</span>
+            <span data-i18n="customPlugin.overwrite">Overwrite if the plugin folder already exists</span>
           </label>
         </div>
 
         <div class="row">
           <button id="custom-plugin-create-btn" class="primary" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>Crear plugin en la librería
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg data-i18n="customPlugin.create">Create plugin in the library
           </button>
         </div>
 
         <div id="custom-plugin-created" hidden>
-          <div class="summary"><h3>Plugin creado</h3></div>
-          <div id="custom-plugin-created-paths" class="note"></div>
-          <div id="custom-plugin-created-warnings" class="warning"></div>
+          <div class="summary"><h3 data-i18n="customPlugin.created">Plugin created</h3></div>
+          <div id="custom-plugin-created-paths" class="note custom-plugin-table"></div>
+          <div id="custom-plugin-created-warnings" class="warning custom-plugin-table"></div>
         </div>
 
         <p id="custom-plugin-status" class="status" role="status" aria-live="polite"></p>
@@ -1264,21 +1332,20 @@
         hidden
       >
         <div class="summary">
-          <h2 id="capture-drawer-title">Capturar instalación de plugin</h2>
+          <h2 id="capture-drawer-title" data-i18n="capture.title">Capture plugin installation</h2>
           <button id="capture-close" type="button">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Cerrar
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
           </button>
         </div>
 
-        <p class="note">
-          Captura automáticamente archivos y claves de registro creados/modificados al instalar un plugin.
-          Al finalizar obtendrás un banco listo para V-Machine y/o un wizard para el software original.
+        <p class="note" data-i18n="capture.note">
+          Automatically captures the files and registry keys created or changed while installing a plugin. When it finishes you get a bank ready for V-Machine and/or a wizard for the original software.
         </p>
 
         <div class="capture-log-section">
           <div class="capture-log-heading">
-            <h3>Actividad de la captura</h3>
-            <span id="capture-log-state" class="capture-log-state">En espera</span>
+            <h3 data-i18n="capture.activity">Capture activity</h3>
+            <span id="capture-log-state" class="capture-log-state" data-i18n="capture.waiting">Waiting</span>
           </div>
           <div id="capture-log" class="capture-log" role="log" aria-live="polite" aria-relevant="additions"></div>
         </div>
@@ -1286,10 +1353,12 @@
         <dialog id="capture-snapshot-dialog" class="capture-snapshot-dialog" aria-labelledby="capture-snapshot-dialog-title">
           <div class="capture-snapshot-dialog-header">
             <div>
-              <h2 id="capture-snapshot-dialog-title">Resultado del snapshot inicial</h2>
+              <h2 id="capture-snapshot-dialog-title" data-i18n="capture.snapshotResult">Initial snapshot result</h2>
               <p id="capture-snapshot-dialog-summary" class="note"></p>
             </div>
-            <button id="capture-snapshot-dialog-close" type="button" aria-label="Cerrar resultado">Cerrar</button>
+            <button id="capture-snapshot-dialog-close" type="button" aria-label="Close result" data-i18n-label="capture.closeResult">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="common.close">Close
+            </button>
           </div>
           <pre id="capture-snapshot-content" class="capture-snapshot-content" tabindex="0"></pre>
         </dialog>
@@ -1298,17 +1367,17 @@
           <div class="capture-step">
             <div class="capture-step-header">
               <span class="capture-step-num">1</span>
-              <strong>Snapshot inicial</strong>
-              <span id="capture-step1-status" class="capture-step-badge">Pendiente</span>
+              <strong data-i18n="capture.step1">Initial snapshot</strong>
+              <span id="capture-step1-status" class="capture-step-badge" data-i18n="capture.pending">Pending</span>
             </div>
             <div class="capture-step-body">
               <p class="note">Toma una instantánea del estado actual del sistema antes de instalar el plugin.</p>
               <div class="row">
                 <button id="capture-start-btn" class="primary" type="button">
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>Iniciar captura
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg data-i18n="capture.start">Start capture
                 </button>
                 <button id="capture-stop-btn" class="danger" type="button" hidden>
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>Parar escaneo
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg data-i18n="capture.stop">Stop scan
                 </button>
                 <span id="capture-live-indicator" class="capture-live-indicator" role="status" aria-live="polite" hidden>
                   <span class="capture-spinner" aria-hidden="true"></span>
@@ -1321,16 +1390,16 @@
                   <span id="capture-progress-count">Preparando…</span>
                   <span id="capture-progress-root"></span>
                 </div>
-                <progress id="capture-progress-native" class="capture-progress-native" aria-label="Progreso de la captura"></progress>
+                <progress id="capture-progress-native" class="capture-progress-native" aria-label="Capture progress" data-i18n-label="capture.progressLabel"></progress>
               </div>
               <div id="capture-start-info" class="capture-info" hidden>
                 <div class="note"><strong>ID Snapshot:</strong> <code id="capture-snapshot-before"></code></div>
                 <div class="row">
                   <button id="capture-view-snapshot-btn" type="button">
-                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg>Ver resultado completo
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-file"></use></svg data-i18n="capture.viewSnapshot">View full result
                   </button>
                   <button id="capture-download-snapshot-btn" type="button">
-                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Descargar .txt
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="capture.downloadSnapshot">Download .txt
                   </button>
                 </div>
                 <p id="capture-snapshot-summary" class="note"></p>
@@ -1341,14 +1410,14 @@
           <div class="capture-step">
             <div class="capture-step-header">
               <span class="capture-step-num">2</span>
-              <strong>Instalar plugin</strong>
-              <span id="capture-step2-status" class="capture-step-badge">Pendiente</span>
+              <strong data-i18n="capture.step2">Install plugin</strong>
+              <span id="capture-step2-status" class="capture-step-badge" data-i18n="capture.pending">Pending</span>
             </div>
             <div class="capture-step-body">
               <p class="note">Instala o ejecuta el instalador del plugin manualmente. Cuando termines, pulsa "Finalizar captura".</p>
               <div class="row">
                 <button id="capture-finish-btn" type="button" disabled>
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg>Finalizar captura
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg data-i18n="capture.finish">Finish capture
                 </button>
               </div>
               <div id="capture-finish-info" class="capture-info" hidden>
@@ -1366,25 +1435,40 @@
           <div class="capture-step">
             <div class="capture-step-header">
               <span class="capture-step-num">3</span>
-              <strong>Revisar y editar</strong>
-              <span id="capture-step3-status" class="capture-step-badge">Pendiente</span>
+              <strong data-i18n="capture.step3">Review and edit</strong>
+              <span id="capture-step3-status" class="capture-step-badge" data-i18n="capture.pending">Pending</span>
             </div>
             <div class="capture-step-body">
               <p class="note">Copia los archivos detectados a una zona de staging editable. Puedes eliminar archivos innecesarios antes de generar.</p>
               <div class="row">
                 <button id="capture-package-btn" type="button" disabled>
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>Preparar staging
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg data-i18n="capture.prepareStaging">Prepare staging
                 </button>
               </div>
               <div id="capture-staging-info" class="capture-info" hidden>
-                <div class="row" style="justify-content: space-between; align-items: center;">
-                  <span class="note"><strong>Archivos en staging:</strong> <span id="capture-staging-count">0</span></span>
-                  <button id="capture-refresh-staging-btn" type="button">
-                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>Actualizar
-                  </button>
+                <div class="capture-staging-toolbar">
+                  <span class="note capture-staging-count"><strong>Archivos en staging:</strong> <span id="capture-staging-count">0</span></span>
+                  <div class="capture-staging-actions">
+                    <button id="capture-restore-pre-existing-btn" type="button" hidden>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-undo"></use></svg><span id="capture-restore-pre-existing-label" data-i18n="capture.restoreExisting">Restore previous</span>
+                    </button>
+                    <button id="capture-remove-pre-existing-btn" type="button" hidden>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg><span id="capture-remove-pre-existing-label" data-i18n="capture.removeExisting">Remove previous</span>
+                    </button>
+                    <button id="capture-refresh-staging-btn" type="button">
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg data-i18n="common.refresh">Refresh
+                    </button>
+                  </div>
                 </div>
                 <div id="capture-staging-list" class="capture-staging-list"></div>
-                <p class="note" style="font-size: 11px;">Para eliminar un archivo del staging, pulsa el botón × junto a él.</p>
+                <p class="note" style="font-size: 11px;">
+                  Los marcados como «ya existía» son los que el plugin tenía antes de la captura y
+                  recupera el snapshot inicial. Para eliminar un archivo del staging, pulsa el botón ×
+                  junto a él; los quitados con «Quitar previos» vuelven con «Recuperar previos» —también
+                  si quedan otros previos en el staging—, sin preparar el staging otra vez. El botón
+                  «Abrir» de cada fila muestra ese archivo en el Explorador de Windows, para revisarlo
+                  antes de generar el banco.
+                </p>
               </div>
             </div>
           </div>
@@ -1392,24 +1476,41 @@
           <div class="capture-step">
             <div class="capture-step-header">
               <span class="capture-step-num">4</span>
-              <strong>Generar banco para V-Machine</strong>
-              <span id="capture-step4-status" class="capture-step-badge">Pendiente</span>
+              <strong data-i18n="capture.step4">Generate V-Machine bank</strong>
+              <span id="capture-step4-status" class="capture-step-badge" data-i18n="capture.pending">Pending</span>
             </div>
             <div class="capture-step-body">
               <p class="note">Genera la estructura de banco y wizard compatibles con V-Machine.</p>
               <div class="row">
                 <div class="field" style="flex: 1; min-width: 200px;">
-                  <label for="capture-plugin-name">Nombre del plugin</label>
+                  <label for="capture-plugin-name" data-i18n="capture.pluginName">Plugin name</label>
                   <input id="capture-plugin-name" placeholder="Mi Plugin" autocomplete="off" />
                 </div>
                 <div class="field" style="flex: 1; min-width: 150px;">
-                  <label for="capture-plugin-vendor">Fabricante (opcional)</label>
+                  <label for="capture-plugin-vendor" data-i18n="capture.pluginVendor">Vendor (optional)</label>
                   <input id="capture-plugin-vendor" placeholder="Vendor" autocomplete="off" />
                 </div>
               </div>
               <div class="row">
+                <label class="check" for="capture-include-existing">
+                  <input id="capture-include-existing" type="checkbox" checked />
+                  <span>Incluir los archivos del plugin que ya existían antes de la captura</span>
+                </label>
+              </div>
+              <p id="capture-pre-existing-summary" class="note" role="status" aria-live="polite" hidden></p>
+              <details id="capture-pre-existing-details" class="capture-pre-existing-details" hidden>
+                <summary id="capture-pre-existing-details-label" data-i18n="capture.viewPrevious">View the previous files</summary>
+                <ul id="capture-pre-existing-list" class="capture-pre-existing-list"></ul>
+              </details>
+              <p class="note" style="font-size: 11px;">
+                Se recuperan del snapshot inicial (DLL, carpetas de datos y presets que la captura no
+                llegó a tocar), sin arrastrar otros plugins de la misma carpeta. Al desmarcarlo, el
+                paquete se queda solo con lo que cambió durante la captura. El botón «Abrir» de cada
+                fila muestra ese archivo en el Explorador de Windows, para comprobarlo antes de generar.
+              </p>
+              <div class="row">
                 <button id="capture-vmachine-btn" type="button" disabled>
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>Generar banco + wizard
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg data-i18n="capture.generate">Generate bank + wizard
                 </button>
               </div>
               <div id="capture-vmachine-info" class="capture-info" hidden>
@@ -1430,16 +1531,13 @@
         aria-labelledby="dialog-dll-draft-title"
         aria-describedby="dialog-dll-draft-text"
       >
-        <h3 id="dialog-dll-draft-title">Preferencia de DLL sin guardar</h3>
-        <p id="dialog-dll-draft-text">
-          El catálogo tiene una preferencia de DLL modificada que todavía no está guardada.
-          «Continuar sin cambios» la descarta y usa la preferencia guardada; «Cancelar»
-          conserva el borrador. Desde aquí no se guarda: vuelve al catálogo y usa Guardar
-          preferencia.
+        <h3 id="dialog-dll-draft-title" data-i18n="dialog.dllDraftTitle">Unsaved DLL preference</h3>
+        <p id="dialog-dll-draft-text" data-i18n="dialog.dllDraftText">
+          The catalog has a modified DLL preference that has not been saved yet. “Continue without changes” discards it and uses the saved one; “Cancel” keeps the draft. Nothing is saved from here: go back to the catalog and use Save preference.
         </p>
         <div class="row">
-          <button id="dialog-dll-draft-continue" class="primary" type="button">Continuar sin cambios</button>
-          <button id="dialog-dll-draft-cancel" type="button">Cancelar</button>
+          <button id="dialog-dll-draft-continue" class="primary" type="button" data-i18n="dialog.dllDraftContinue">Continue without changes</button>
+          <button id="dialog-dll-draft-cancel" type="button" data-i18n="common.cancel">Cancel</button>
         </div>
       </dialog>
 
@@ -1447,8 +1545,17 @@
     </main>
 
     <noscript>
-      <p class="status error">Esta página necesita JavaScript.</p>
+      <p class="status error" data-i18n="app.needsJs">This page needs JavaScript.</p>
     </noscript>
+    <!-- Motor i18n de la suite ABDSynths, servido desde @abdsynths/i18n. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@abdsynths/i18n": "/vendor/abdsynths/index.js",
+          "@abdsynths/shared/i18n": "/vendor/abdsynths/index.js"
+        }
+      }
+    </script>
     <!-- UI en TypeScript, compilada a ESM por tsconfig.ui.json (`npm run build`). -->
     <script type="module" src="/js/ui/browser/main.js"></script>
   </body>

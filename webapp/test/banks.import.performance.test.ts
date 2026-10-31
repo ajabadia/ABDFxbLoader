@@ -11,10 +11,12 @@ import { parseFxbBank } from '../src/library/fxb-bank';
 import { LibraryService } from '../src/library/library.service';
 import type { BankImportInput, BankImportResponse } from '../src/library/library.types';
 import {
+  checkBudget,
   describeTiming,
   measureAsync,
   measureSync,
   timingFromSamples,
+  type Timing,
 } from './helpers/timing';
 
 /**
@@ -83,12 +85,23 @@ const BATCH_ITERATIONS = 11;
  */
 const ONE_REQUEST_BUDGET_MS = 1500;
 const NINE_REQUESTS_BUDGET_MS = 2500;
+/**
+ * Tope de la razón entre las dos estrategias. A diferencia de los milisegundos,
+ * no depende de la máquina —las dos se frenan igual— así que es el guardián que
+ * sigue cazando una regresión de coste por petición aunque el runner esté
+ * ocupado. Medido: 3,4–3,7×.
+ */
+const MAX_NINE_OVER_ONE = 8;
 
 /**
- * Techos amplios, por operación y mediana: buscan un salto de orden, no un
+ * Techos amplios, por operación y muestra: buscan un salto de orden, no un
  * récord. `npm test` ejecuta los archivos en paralelo, así que la importación
  * compite por el disco con el resto de tests; para leer cifras comparables hay
  * que ejecutar solo los de rendimiento (`npm run test:perf`).
+ *
+ * Se comparan contra la mejor muestra, no contra la mediana (ver
+ * `checkBudget`): la carga de un runner solo suma tiempo, y con la mediana un
+ * pico de disco ajeno hacía fallar el test sin que nada hubiera empeorado.
  */
 const PARSE_BUDGET_MS = 25;
 const SERVICE_BUDGET_MS = 1500;
@@ -241,21 +254,18 @@ test('la importación por HTTP tarda milisegundos y el parser microsegundos', as
         `la petición HTTP añade la ida y vuelta y el JSON de la respuesta`,
     );
 
-    assert.ok(
-      parse.medianMs < PARSE_BUDGET_MS,
-      `${bank.label}: el parser tardó ${parse.medianMs.toFixed(3)} ms de mediana, ` +
-        `presupuesto ${PARSE_BUDGET_MS} ms`,
-    );
-    assert.ok(
-      inProcess.medianMs < SERVICE_BUDGET_MS,
-      `${bank.label}: la importación tardó ${inProcess.medianMs.toFixed(3)} ms de mediana, ` +
-        `presupuesto ${SERVICE_BUDGET_MS} ms`,
-    );
-    assert.ok(
-      http.medianMs < HTTP_BUDGET_MS,
-      `${bank.label}: la importación por HTTP tardó ${http.medianMs.toFixed(3)} ms de mediana, ` +
-        `presupuesto ${HTTP_BUDGET_MS} ms`,
-    );
+    const budgets: [Timing, number, string][] = [
+      [parse, PARSE_BUDGET_MS, `${bank.label}: el parser`],
+      [inProcess, SERVICE_BUDGET_MS, `${bank.label}: la importación`],
+      [http, HTTP_BUDGET_MS, `${bank.label}: la importación por HTTP`],
+    ];
+    for (const [timing, budgetMs, label] of budgets) {
+      const result = checkBudget(timing, budgetMs, label);
+      if (result.loadSuspected) {
+        t.diagnostic(`${label}: la mediana pasó del presupuesto por carga, la mejor muestra no`);
+      }
+      assert.ok(result.ok, result.message);
+    }
 
     // Los 40 imports reescribieron el mismo archivo: sigue siendo el original.
     assert.equal(
@@ -385,13 +395,23 @@ test('los nueve bancos reales: una petición frente a nueve', async (t) => {
       'configuración del plugin, referencia del destino y JSON)',
   );
 
+  const oneBudget = checkBudget(one, ONE_REQUEST_BUDGET_MS, 'el lote único');
+  const nineBudget = checkBudget(nine, NINE_REQUESTS_BUDGET_MS, 'las nueve peticiones');
+  for (const [result, label] of [
+    [oneBudget, 'el lote único'],
+    [nineBudget, 'las nueve peticiones'],
+  ] as const) {
+    if (result.loadSuspected) {
+      t.diagnostic(`${label}: la mediana pasó del presupuesto por carga, la mejor muestra no`);
+    }
+  }
+  assert.ok(oneBudget.ok, oneBudget.message);
+  assert.ok(nineBudget.ok, nineBudget.message);
+  // Con la razón no hace falta holgura: si trocear la lista empieza a costar el
+  // triple de lo que costaba por petición, el test lo dice aunque el equipo sea
+  // lento o esté cargado.
   assert.ok(
-    one.medianMs < ONE_REQUEST_BUDGET_MS,
-    `el lote único tardó ${one.medianMs.toFixed(3)} ms de mediana, presupuesto ${ONE_REQUEST_BUDGET_MS} ms`,
-  );
-  assert.ok(
-    nine.medianMs < NINE_REQUESTS_BUDGET_MS,
-    `las nueve peticiones tardaron ${nine.medianMs.toFixed(3)} ms de mediana, ` +
-      `presupuesto ${NINE_REQUESTS_BUDGET_MS} ms`,
+    factor < MAX_NINE_OVER_ONE,
+    `nueve peticiones cuestan ${factor.toFixed(2)}× el lote único, máximo ${MAX_NINE_OVER_ONE}×`,
   );
 });

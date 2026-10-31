@@ -6,8 +6,12 @@
 /** Gravedad de un hueco. `note` no impide considerar completo al plugin. */
 export type LibraryAuditIssueSeverity = 'missing' | 'invalid' | 'note';
 
-/** De dónde sale el valor propuesto. */
-export type LibraryAuditProposalSource = 'vfxinfo' | 'meta' | 'dll' | 'derived';
+/**
+ * De dónde sale el valor propuesto. `wizard` es el catálogo de wizards: la
+ * única fuente que declara fabricante, URL, notas, versión y los campos de
+ * ejecución que el análisis estático del DLL no puede ver.
+ */
+export type LibraryAuditProposalSource = 'vfxinfo' | 'meta' | 'dll' | 'derived' | 'wizard';
 
 export interface LibraryAuditIssue {
   /** Campo afectado con prefijo de origen: `vfxinfo.id`, `meta.vendor`, `dll`. */
@@ -57,4 +61,32 @@ export interface LibraryAuditResult {
   issueCount: number;
   proposalCount: number;
   plugins: LibraryAuditPlugin[];
+}
+
+/** Valor propuesto que se ha escrito en disco. */
+export interface LibraryAuditApplied {
+  field: string;
+  value: string;
+}
+
+/** Propuesta pedida que no se aplicó, con el motivo. */
+export interface LibraryAuditApplySkipped {
+  field: string;
+  reason: string;
+}
+
+export interface LibraryAuditApplyResult {
+  /** Carpeta del plugin bajo `plugs\`. */
+  plugin: string;
+  /** Valores escritos. */
+  applied: LibraryAuditApplied[];
+  /** Propuestas pedidas que no se pudieron o no hacía falta escribir. */
+  skipped: LibraryAuditApplySkipped[];
+  /** `vfxinfo.txt` reescrito, o `null` si no se tocó. */
+  vfxinfoPath: string | null;
+  /** `fxbLoader.meta.json` escrito, o `null` si no se tocó. */
+  metaPath: string | null;
+  /** Respaldos creados antes de escribir (`*.bak`). */
+  backups: string[];
+  warnings: string[];
 }

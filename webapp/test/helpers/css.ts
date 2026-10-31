@@ -40,6 +40,8 @@ export interface CssRule {
   selector: string;
   /** Línea (1-based) donde empieza el selector. */
   line: number;
+  /** Propiedad (en minúsculas) → valor, sin `!important`. */
+  declarations: Map<string, string>;
 }
 
 export interface DeadSelector {
@@ -64,6 +66,54 @@ export interface CssAudit {
 const AT_RULE_WITHOUT_SELECTORS = /^@(?:keyframes|-webkit-keyframes|font-face)\b/;
 
 /**
+ * Declaraciones de un bloque (`property: value; …`), partiendo por `;` fuera de
+ * paréntesis y comillas: los valores con `min(88vh, 900px)` o una fuente con
+ * comas no deben romper la lectura. La última declaración de una propiedad gana,
+ * como en el navegador.
+ */
+function parseDeclarations(body: string): Map<string, string> {
+  const declarations = new Map<string, string>();
+  let current = '';
+  let parens = 0;
+  let quote: string | null = null;
+
+  const commit = (chunk: string): void => {
+    const colon = chunk.indexOf(':');
+    if (colon === -1) return;
+    const property = chunk.slice(0, colon).trim().toLowerCase();
+    const value = chunk
+      .slice(colon + 1)
+      .trim()
+      .replace(/\s*!important$/i, '');
+    if (property !== '') declarations.set(property, value);
+  };
+
+  for (const character of body) {
+    if (quote !== null) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === '(') parens += 1;
+    if (character === ')') parens -= 1;
+    if (character === ';' && parens === 0) {
+      commit(current);
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+
+  commit(current);
+  return declarations;
+}
+
+/**
  * Atributos booleanos que el navegador mantiene sin que estén en el marcado:
  * al abrir un `<details>` aparece `open` y al cerrarlo desaparece. Un selector
  * que los usa no se puede comprobar contra el HTML estático, pero tampoco es
@@ -82,7 +132,7 @@ export function parseCssSelectors(css: string): CssRule[] {
   // para que los números de línea sigan siendo los del archivo.
   const text = css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '));
   const rules: CssRule[] = [];
-  const blocks: ('at' | 'style' | 'skip')[] = [];
+  const blocks: { kind: 'at' | 'style' | 'skip'; bodyStart: number; rule: CssRule | null }[] = [];
   let preludeStart = 0;
 
   const lineAt = (offset: number): number => text.slice(0, offset).split('\n').length;
@@ -95,15 +145,21 @@ export function parseCssSelectors(css: string): CssRule[] {
       const parent = blocks[blocks.length - 1];
 
       if (prelude.startsWith('@')) {
-        blocks.push(AT_RULE_WITHOUT_SELECTORS.test(prelude) ? 'skip' : 'at');
+        blocks.push({
+          kind: AT_RULE_WITHOUT_SELECTORS.test(prelude) ? 'skip' : 'at',
+          bodyStart: index + 1,
+          rule: null,
+        });
       } else {
         // Solo los bloques de declaraciones de una regla (o de una regla dentro
         // de un at-rule) son selectores; el resto es cuerpo de declaraciones.
-        if (prelude !== '' && (parent === undefined || parent === 'at')) {
+        let rule: CssRule | null = null;
+        if (prelude !== '' && (parent === undefined || parent.kind === 'at')) {
           const offset = preludeStart + (raw.length - raw.trimStart().length);
-          rules.push({ selector: prelude, line: lineAt(offset) });
+          rule = { selector: prelude, line: lineAt(offset), declarations: new Map() };
+          rules.push(rule);
         }
-        blocks.push('style');
+        blocks.push({ kind: 'style', bodyStart: index + 1, rule });
       }
 
       preludeStart = index + 1;
@@ -111,7 +167,10 @@ export function parseCssSelectors(css: string): CssRule[] {
     }
 
     if (character === '}') {
-      blocks.pop();
+      const block = blocks.pop();
+      if (block?.rule != null) {
+        block.rule.declarations = parseDeclarations(text.slice(block.bodyStart, index));
+      }
       preludeStart = index + 1;
       continue;
     }
@@ -355,6 +414,17 @@ export interface MarkupAudit {
 }
 
 /**
+ * Atributos `data-*` puramente declarativos que consume el motor transversal
+ * de internacionalización de `@abdsynths/shared/i18n` (`applyI18n()`).
+ */
+const DECLARATIVE_DATA_ATTRIBUTES = new Set([
+  'data-i18n',
+  'data-i18n-title',
+  'data-i18n-placeholder',
+  'data-i18n-label',
+]);
+
+/**
  * Estados ARIA que la interfaz tiene que mantener al día. El resto de ARIA
  * (roles, nombres accesibles, descripciones, live regions, relaciones y
  * propiedades fijas) lo consume el árbol de accesibilidad sin que haga falta
@@ -501,6 +571,7 @@ export function auditMarkup(
     ...new Set(
       attributes
         .filter(({ attribute, value }) => {
+          if (DECLARATIVE_DATA_ATTRIBUTES.has(attribute)) return false;
           const references = dataReferences.filter(
             (reference) => reference.attribute === attribute,
           );
@@ -625,4 +696,320 @@ export function auditCss(
   }
 
   return audit;
+}
+
+/**
+ * Alto compartido de los controles de formulario.
+ *
+ * `input`, `select` y `button` tienen que sacar el `height` de la misma
+ * variable: con valores propios, el mismo botón mide distinto según la fila y
+ * el campo de al lado se desalinea. Se resuelve la cascada para un control
+ * "a secas" —sin clases ni atributos que lo especialicen—, que es el caso de
+ * los formularios; los controles compactos (chips, × de fila, filtros de la
+ * tabla) fijan su alto con reglas propias y quedan fuera a propósito.
+ */
+
+/** Controles cuyo alto comparten formularios y filas de acciones. */
+const CONTROL_TAGS = ['input', 'select', 'button'] as const;
+
+export type ControlTag = (typeof CONTROL_TAGS)[number];
+
+/** Motivo por el que un control no comparte el alto de la variable. */
+export type ControlHeightProblem = 'variable-undefined' | 'missing-height' | 'fixed-height';
+
+export interface ControlHeightOffender {
+  control: ControlTag;
+  problem: ControlHeightProblem;
+  /** `height` que gana para ese control; `null` si ninguna regla lo fija. */
+  value: string | null;
+  /** Línea de la regla que fija ese `height`. */
+  line: number | null;
+}
+
+export interface ControlHeightAudit {
+  /** Definición de la variable, o `null` si nadie la declara. */
+  variable: { value: string; line: number } | null;
+  /** `height` que gana para cada control, con o sin desalineación. */
+  controls: { control: ControlTag; value: string | null; line: number | null }[];
+  offenders: ControlHeightOffender[];
+}
+
+/**
+ * Comprueba que `input`, `select` y `button` llevan `height: var(<variable>)`.
+ *
+ * Solo cuentan las reglas que pintan el control a secas: un `height` dentro de
+ * `.fila button` o `input[type='date']` es un override contextual legítimo y no
+ * cambia el alto de un control normal. Entre las reglas que sí aplican gana la
+ * de más especificidad y, a igualdad, la última, como en el navegador.
+ */
+export function auditControlHeight(
+  css: string,
+  variable = '--control-height',
+): ControlHeightAudit {
+  const name = variable.trim().toLowerCase();
+  const rules = parseCssSelectors(css);
+
+  let definition: { value: string; line: number } | null = null;
+  for (const rule of rules) {
+    const value = rule.declarations.get(name);
+    if (value !== undefined && value.trim() !== '') definition = { value: value.trim(), line: rule.line };
+  }
+
+  // `var(--control-height)` con o sin valor de reserva: las dos formas dejan el
+  // alto en manos de la misma variable.
+  const usesVariable = new RegExp(`^var\\(\\s*${name}\\s*(?:,[\\s\\S]*)?\\)$`, 'i');
+
+  const controls = CONTROL_TAGS.map((control) => {
+    let best: { value: string; weight: number; order: number; line: number } | null = null;
+    for (const [order, rule] of rules.entries()) {
+      for (const selector of splitSelectorList(rule.selector)) {
+        if (baseSelector(selector) !== control) continue;
+        const height = rule.declarations.get('height');
+        if (height === undefined) continue;
+        const weight = specificity(selector);
+        if (
+          best === null ||
+          weight > best.weight ||
+          (weight === best.weight && order >= best.order)
+        ) {
+          best = { value: height.trim(), weight, order, line: rule.line };
+        }
+      }
+    }
+    return { control, value: best?.value ?? null, line: best?.line ?? null };
+  });
+
+  const offenders: ControlHeightOffender[] = [];
+  for (const entry of controls) {
+    if (definition === null) {
+      offenders.push({
+        control: entry.control,
+        problem: 'variable-undefined',
+        value: entry.value,
+        line: entry.line,
+      });
+    } else if (entry.value === null) {
+      offenders.push({
+        control: entry.control,
+        problem: 'missing-height',
+        value: null,
+        line: null,
+      });
+    } else if (!usesVariable.test(entry.value)) {
+      offenders.push({
+        control: entry.control,
+        problem: 'fixed-height',
+        value: entry.value,
+        line: entry.line,
+      });
+    }
+  }
+
+  return { variable: definition, controls, offenders };
+}
+
+/**
+ * Auditoría del scroll interno de las tablas paginadas.
+ *
+ * Un cajón se desplaza solo (`.drawer { overflow-y: auto }`), y por eso la
+ * regla genérica `.drawer .table-wrap` recorta cualquier tabla a 260 px. Una
+ * tabla que pagina ya limita su alto con el paginador: recortarla además deja
+ * dos barras verticales y esconde filas que el usuario no puede ver de otra
+ * forma. Aquí se recorre el CSS que gana para el `.table-wrap` de cada tabla
+ * paginada que vive dentro de un cajón y se falla si vuelve a recortarse o a
+ * desplazarse por dentro.
+ *
+ * La cascada se resuelve de forma mínima pero suficiente para estas reglas:
+ * especificidad y orden del archivo, y el emparejamiento de los compuestos del
+ * selector contra el contenedor y sus ancestros en el HTML.
+ */
+
+/** Contenedor de tabla: la clase con la que `mountTable` monta cada vista. */
+const TABLE_CONTAINER = /-table$/;
+
+/** Valores que no limitan el alto ni crean caja de desplazamiento. */
+const NEUTRAL_VALUES = new Set(['none', 'initial', 'unset', 'revert', 'revert-layer', 'visible']);
+
+interface ElementFacts {
+  tag: string;
+  id: string;
+  classes: Set<string>;
+}
+
+function facts(node: HtmlNode): ElementFacts {
+  return {
+    tag: node.tagName.toLowerCase(),
+    id: node.attributes['id'] ?? '',
+    classes: new Set(
+      (node.attributes['class'] ?? '').split(/\s+/).filter((token) => token !== ''),
+    ),
+  };
+}
+
+/** ¿El compuesto (`div`, `.card`, `#audit-table`) describe a este elemento? */
+function matchesCompound(compound: string, element: ElementFacts): boolean {
+  const tokens = compound.match(/[#.]?[\w-]+/g);
+  if (tokens === null) return false;
+  return tokens.every((token) => {
+    const name = token.slice(1);
+    if (token.startsWith('#')) return element.id === name;
+    if (token.startsWith('.')) return element.classes.has(name);
+    return element.tag === name.toLowerCase();
+  });
+}
+
+/** Ancestros del `.table-wrap` que la vista inserta dentro del contenedor. */
+function wrapAncestors(container: HtmlNode): ElementFacts[] {
+  const ancestors: ElementFacts[] = [];
+  for (let node: HtmlNode | null = container; node !== null; node = node.parent) {
+    ancestors.push(facts(node));
+  }
+  return ancestors;
+}
+
+/**
+ * ¿La regla pinta el `.table-wrap` de este contenedor? La parte derecha del
+ * selector tiene que ser exactamente `.table-wrap`; el resto se empareja contra
+ * los ancestros, de derecha a izquierda y con combinador de descendiente.
+ */
+function targetsWrap(selector: string, ancestors: ElementFacts[]): boolean {
+  const base = baseSelector(selector);
+  if (base === null) return false;
+
+  const compounds = base.split(/\s*>\s*|\s+/).filter((part) => part !== '');
+  if (compounds[compounds.length - 1] !== '.table-wrap') return false;
+
+  let index = 0;
+  for (let position = compounds.length - 2; position >= 0; position -= 1) {
+    const compound = compounds[position]!;
+    let found = false;
+    while (index < ancestors.length) {
+      const element = ancestors[index]!;
+      index += 1;
+      if (matchesCompound(compound, element)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+
+  return true;
+}
+
+/** Especificidad aproximada: ids > clases/atributos > etiquetas. */
+function specificity(selector: string): number {
+  const ids = (selector.match(/#[\w-]+/g) ?? []).length;
+  const classes =
+    (selector.match(/\.[\w-]+/g) ?? []).length + (selector.match(/\[[^\]]*\]/g) ?? []).length;
+  const tags = (selector.match(/(?:^|[\s>])[a-zA-Z][\w-]*/g) ?? []).length;
+  return ids * 100 + classes * 10 + tags;
+}
+
+export interface TableScrollOffender {
+  /** Contenedor de la tabla, por su id (`#audit-table`). */
+  table: string;
+  /** `max-height`, `overflow-y` o `overflow`. */
+  property: string;
+  value: string;
+  /** Línea de la regla que gana en `styles.css`. */
+  line: number;
+}
+
+export interface TableScrollAudit {
+  /** Tablas paginadas que viven dentro de un cajón: las auditadas. */
+  tables: string[];
+  offenders: TableScrollOffender[];
+}
+
+/** Contenedores `*-table` del marcado, que son los que monta `mountTable`. */
+function tableContainers(root: HtmlNode): HtmlNode[] {
+  const found: HtmlNode[] = [];
+  const visit = (node: HtmlNode): void => {
+    const classes = (node.attributes['class'] ?? '').split(/\s+/);
+    if (classes.some((name) => TABLE_CONTAINER.test(name))) found.push(node);
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return found;
+}
+
+function label(container: HtmlNode): string {
+  const id = container.attributes['id'];
+  if (id !== undefined && id !== '') return `#${id}`;
+  return `.${(container.attributes['class'] ?? '').split(/\s+/)[0] ?? container.tagName}`;
+}
+
+/**
+ * Comprueba que ninguna tabla paginada de un cajón recupere scroll propio.
+ * Devuelve las tablas auditadas (para que el test no pase por vacuidad) y las
+ * declaraciones que las recortan o las desplazan.
+ */
+export function auditPaginatedTableScroll(root: HtmlNode, css: string): TableScrollAudit {
+  const rules = parseCssSelectors(css);
+  const tables: string[] = [];
+  const offenders: TableScrollOffender[] = [];
+
+  for (const container of tableContainers(root)) {
+    const ancestors = wrapAncestors(container);
+    if (!ancestors.some((element) => element.classes.has('drawer'))) continue;
+
+    const name = label(container);
+    tables.push(name);
+
+    // Reglas que pueden aplicar al `.table-wrap`, con su peso en la cascada.
+    const candidates: { property: string; value: string; specificity: number; order: number; line: number }[] = [];
+    rules.forEach((rule, order) => {
+      for (const selector of splitSelectorList(rule.selector)) {
+        if (!targetsWrap(selector, ancestors)) continue;
+        const weight = specificity(selector);
+        for (const [property, value] of rule.declarations) {
+          candidates.push({ property, value, specificity: weight, order, line: rule.line });
+        }
+      }
+    });
+
+    /** La declaración que gana para una propiedad, o `null` si nadie la fija. */
+    const winner = (
+      property: string,
+    ): { value: string; line: number } | null => {
+      let best: (typeof candidates)[number] | null = null;
+      for (const candidate of candidates) {
+        if (candidate.property !== property) continue;
+        if (
+          best === null ||
+          candidate.specificity > best.specificity ||
+          (candidate.specificity === best.specificity && candidate.order >= best.order)
+        ) {
+          best = candidate;
+        }
+      }
+      return best === null ? null : { value: best.value.toLowerCase(), line: best.line };
+    };
+
+    const height = winner('max-height');
+    if (height !== null && !NEUTRAL_VALUES.has(height.value)) {
+      offenders.push({ table: name, property: 'max-height', value: height.value, line: height.line });
+    }
+
+    // `overflow-y` manda; si nadie la escribe, vale el eje vertical del atajo
+    // `overflow` (segundo valor, o el primero si es único).
+    const vertical = winner('overflow-y');
+    if (vertical !== null) {
+      if (vertical.value !== 'visible' && vertical.value !== 'initial' && vertical.value !== 'unset' && vertical.value !== 'revert' && vertical.value !== 'revert-layer') {
+        offenders.push({ table: name, property: 'overflow-y', value: vertical.value, line: vertical.line });
+      }
+    } else {
+      const shorthand = winner('overflow');
+      if (shorthand !== null) {
+        const parts = shorthand.value.split(/\s+/);
+        const value = (parts[1] ?? parts[0] ?? '').toLowerCase();
+        if (!NEUTRAL_VALUES.has(value)) {
+          offenders.push({ table: name, property: 'overflow', value: shorthand.value, line: shorthand.line });
+        }
+      }
+    }
+  }
+
+  return { tables, offenders };
 }

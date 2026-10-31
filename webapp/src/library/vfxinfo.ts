@@ -89,6 +89,93 @@ export function analyzeVfxinfo(text: string): VfxinfoAnalysis | null {
   };
 }
 
+/** Bloques multilínea que no se tocan al rellenar campos del encabezado. */
+const BLOCK_KEYS = new Set([
+  'files_to_copy',
+  'dirs_to_copy',
+  'files_to_create',
+  'symlinks',
+  'registry_keys',
+  'notes',
+  'vendor_notes',
+  'license_sequence',
+  'readme',
+]);
+
+/**
+ * Índice donde acaba el encabezado `clave: valor` y empiezan los bloques: el
+ * primero de la clave que abre un bloque (`files_to_copy:`) o de su `...`
+ * terminador. Mirar solo el `...` insertaría campos dentro del bloque.
+ */
+function headerEndIndex(lines: readonly VfxinfoLine[]): number {
+  const terminator = lines.findIndex((line) => line.content.trim() === '...');
+  const block = lines.findIndex((line) => {
+    const match = /^([a-z_]+)\s*:\s*$/.exec(line.content.trim());
+    return match !== null && BLOCK_KEYS.has(match[1]!.toLowerCase());
+  });
+  const candidates = [terminator, block].filter((index) => index !== -1);
+  return candidates.length === 0 ? lines.length : Math.min(...candidates);
+}
+
+export interface VfxinfoFieldUpdate {
+  /** Nombre de la clave tal cual (`dll_name`, `id`…), sin prefijo. */
+  key: string;
+  value: string;
+}
+
+/**
+ * Rellena claves del encabezado conservando el resto del archivo: los bloques
+ * multilínea, los comentarios y los finales de línea se quedan como estaban.
+ * Devuelve qué claves cambiaron de verdad; una clave ausente se añade al final
+ * del encabezado, nunca dentro de un bloque.
+ */
+export function writeVfxinfoFields(
+  text: string,
+  updates: ReadonlyArray<VfxinfoFieldUpdate>,
+): { text: string; changed: string[] } {
+  const lines = splitLines(text);
+  const eol = lines.find((line) => line.eol !== '')?.eol ?? '\r\n';
+  const pending = new Map<string, VfxinfoFieldUpdate>();
+  for (const update of updates) {
+    const key = update.key.trim().toLowerCase();
+    if (key !== '' && !pending.has(key)) pending.set(key, { key: update.key.trim(), value: update.value });
+  }
+
+  const changed: string[] = [];
+  const end = headerEndIndex(lines);
+  for (let index = 0; index < end; index += 1) {
+    const line = lines[index]!;
+    const colon = line.content.indexOf(':');
+    if (colon <= 0) continue;
+    const key = line.content.slice(0, colon).trim().toLowerCase();
+    const update = pending.get(key);
+    if (update === undefined) continue;
+    pending.delete(key);
+    if (line.content.slice(colon + 1).trim() === update.value) continue;
+    lines[index] = {
+      content: `${line.content.slice(0, colon)}: ${update.value}`,
+      eol: line.eol === '' ? eol : line.eol,
+    };
+    changed.push(update.key);
+  }
+
+  if (pending.size > 0) {
+    // Tras la última línea del encabezado, para no romper el primer bloque.
+    let insertAt = 0;
+    for (let index = 0; index < end; index += 1) {
+      if (lines[index]!.content.trim() !== '') insertAt = index + 1;
+    }
+    const additions = [...pending.values()].map((update) => ({
+      content: `${update.key}: ${update.value}`,
+      eol,
+    }));
+    lines.splice(insertAt, 0, ...additions);
+    changed.push(...[...pending.values()].map((update) => update.key));
+  }
+
+  return { text: joinLines(lines), changed };
+}
+
 export interface VfxinfoPatch {
   text: string;
   analysis: VfxinfoAnalysis;

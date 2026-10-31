@@ -19,6 +19,7 @@ import type {
   PluginLogSnapshotResponse,
   PluginMetaSnapshotResponse,
   RequestBody,
+  SystemCapabilitiesResponse,
   WizardListResponse,
   WizardMatchResponse,
 } from '../../client/fxb-client.js';
@@ -56,9 +57,34 @@ import {
   rememberRecent,
   rememberRecentPaths,
 } from '../recents.js';
+import {
+  classifyStagingFiles,
+  formatPreExistingSummary,
+  formatRemovePreExistingResult,
+  formatRestorePreExistingResult,
+  formatRestoreStagedFileResult,
+  formatRevealPreExistingResult,
+  preExistingListLabel,
+  removedStagingNote,
+  removePreExistingLabel,
+  restorePreExistingLabel,
+  restoreStagedFileLabel,
+  revealPreExistingLabel,
+} from '../capture.js';
 import { client, describeError, isFxbApiError } from './api.js';
 import { byId } from './dom.js';
 import { mountTable, closeAllRowMenus, type TableController, type TableView } from '../table.js';
+
+import {
+  applyI18n,
+  getLocale,
+  initAppI18n,
+  onLocaleChange,
+  setLocale,
+  syncDocumentLang,
+  t,
+  type Locale,
+} from '../i18n/index.js';
 
 const STORAGE_ROOT = 'fxbLoader.libraryRoot';
 const STORAGE_DLL = 'fxbLoader.dllSource';
@@ -288,6 +314,13 @@ const els = {
   dataAuditDetailGaps: byId<HTMLElement>('data-audit-detail-gaps'),
   dataAuditDetailProposals: byId<HTMLElement>('data-audit-detail-proposals'),
   dataAuditDetailClose: byId<HTMLButtonElement>('data-audit-detail-close'),
+  dataAuditApply: byId<HTMLButtonElement>('data-audit-apply'),
+  dataAuditApplyConfirm: byId<HTMLElement>('data-audit-apply-confirm'),
+  dataAuditApplyNote: byId<HTMLElement>('data-audit-apply-note'),
+  dataAuditApplyList: byId<HTMLElement>('data-audit-apply-list'),
+  dataAuditApplyConfirmBtn: byId<HTMLButtonElement>('data-audit-apply-confirm-btn'),
+  dataAuditApplyCancel: byId<HTMLButtonElement>('data-audit-apply-cancel'),
+  dataAuditApplyStatus: byId<HTMLParagraphElement>('data-audit-apply-status'),
   customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
   customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
   customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
@@ -340,7 +373,16 @@ const els = {
   captureFinishBtn: byId<HTMLButtonElement>('capture-finish-btn'),
   capturePackageBtn: byId<HTMLButtonElement>('capture-package-btn'),
   captureVmachineBtn: byId<HTMLButtonElement>('capture-vmachine-btn'),
+  captureIncludeExisting: byId<HTMLInputElement>('capture-include-existing'),
+  capturePreExistingSummary: byId<HTMLElement>('capture-pre-existing-summary'),
+  capturePreExistingDetails: byId<HTMLDetailsElement>('capture-pre-existing-details'),
+  capturePreExistingDetailsLabel: byId<HTMLElement>('capture-pre-existing-details-label'),
+  capturePreExistingList: byId<HTMLUListElement>('capture-pre-existing-list'),
   captureRefreshStagingBtn: byId<HTMLButtonElement>('capture-refresh-staging-btn'),
+  captureRemovePreExistingBtn: byId<HTMLButtonElement>('capture-remove-pre-existing-btn'),
+  captureRemovePreExistingLabel: byId<HTMLElement>('capture-remove-pre-existing-label'),
+  captureRestorePreExistingBtn: byId<HTMLButtonElement>('capture-restore-pre-existing-btn'),
+  captureRestorePreExistingLabel: byId<HTMLElement>('capture-restore-pre-existing-label'),
   captureStep1Status: byId<HTMLElement>('capture-step1-status'),
   captureStep2Status: byId<HTMLElement>('capture-step2-status'),
   captureStep3Status: byId<HTMLElement>('capture-step3-status'),
@@ -479,6 +521,18 @@ let captureTaskKind: 'start' | 'finish' | null = null;
 let captureSessionInitialized = false;
 let captureSnapshotText = '';
 let captureStagingLoaded = false;
+/** Archivos previos del snapshot inicial que entrarían en el paquete; `null` hasta consultarlo. */
+let capturePreExistingCount: number | null = null;
+/** Aviso del servidor al contar los previos (snapshot inicial perdido, por ejemplo). */
+let capturePreExistingWarning = '';
+/** Rutas de esos archivos previos, para marcarlos en el staging. */
+let capturePreExistingFiles: string[] = [];
+/** De los anteriores, los que siguen en el staging: es lo que quita «Quitar previos». */
+let captureStagedPreExisting: string[] = [];
+/** De los anteriores, los que se quitaron y aún se pueden devolver con «Recuperar previos». */
+let captureRestorablePreExisting = 0;
+/** Rutas de esos previos quitados, para poder devolver uno solo desde su fila. */
+let captureRestorableFiles: string[] = [];
 
 els.root.value = libraryRoot;
 els.dll.value = lastDll;
@@ -584,8 +638,8 @@ function renderRecentBanks(): void {
       els.importPaths.value = appendPaths(before, [bankPath]);
       setBanksStatus(
         els.importPaths.value === before
-          ? 'Ese banco ya está en la lista.'
-          : `Añadido ${chip.textContent} a la lista.`,
+          ? t('ui.recents.alreadyInList')
+          : t('ui.recents.added', { 0: chip.textContent }),
         els.importPaths.value === before ? 'info' : 'ok',
       );
       els.importPaths.focus();
@@ -596,7 +650,7 @@ function renderRecentBanks(): void {
     forget.type = 'button';
     forget.className = 'recent-chip-remove';
     forget.textContent = '×';
-    forget.title = `Olvidar ${name} de los recientes`;
+    forget.title = t('ui.recents.forgetTitle', { 0: name });
     forget.setAttribute('aria-label', `Olvidar ${name} de los recientes`);
     forget.addEventListener('click', () => forgetRecentBank(bankPath));
 
@@ -611,7 +665,7 @@ function renderRecentBanks(): void {
   clear.className = 'recent-clear';
   clear.textContent = 'Olvidar';
   clear.prepend(createIcon('trash'));
-  clear.title = 'Olvidar los bancos recientes; la lista escrita no cambia';
+  clear.title = t('ui.recents.forgetAllTitle');
   clear.addEventListener('click', () => clearRecentBanks());
   els.recentBanks.append(clear);
 }
@@ -634,7 +688,7 @@ function forgetRecentBank(bankPath: string): void {
   recentBanks = remaining;
   writeRecentList(STORAGE_RECENT_BANKS, recentBanks);
   renderRecents();
-  setBanksStatus(`Olvidado ${bankName(bankPath)} de los recientes.`, 'ok');
+  setBanksStatus(t('ui.recents.forgotten', { 0: bankName(bankPath) }), 'ok');
 }
 
 /**
@@ -648,7 +702,7 @@ function clearRecentBanks(): void {
   recentBanks = [];
   writeRecentList(STORAGE_RECENT_BANKS, recentBanks);
   renderRecents();
-  setBanksStatus('Bancos recientes olvidados.', 'ok');
+  setBanksStatus(t('ui.recents.allForgotten'), 'ok');
 }
 
 function renderRecents(): void {
@@ -659,14 +713,14 @@ function renderRecents(): void {
     els.rootRecentSelect,
     recentRoots,
     els.root.value.trim(),
-    'Elegir una carpeta usada…',
+    t('ui.recents.chooseRoot'),
   );
   renderRecentSelect(
     els.dllRecentWrap,
     els.dllRecentSelect,
     recentDlls,
     els.dll.value.trim(),
-    'Elegir una DLL usada…',
+    t('ui.recents.chooseDll'),
   );
   renderRecentBanks();
   els.recentsClear.disabled = recentRoots.length + recentDlls.length + recentBanks.length === 0;
@@ -681,8 +735,7 @@ function clearRecents(): void {
   if (recentRoots.length + recentDlls.length + recentBanks.length === 0) return;
   if (
     !window.confirm(
-      'Se olvidarán las rutas sugeridas en esta página: carpetas de librería, ' +
-        'DLL y bancos recientes. Lo escrito en los campos no cambia. ¿Vaciar el historial?',
+      t('msg.recentsClearConfirm'),
     )
   ) {
     return;
@@ -695,7 +748,7 @@ function clearRecents(): void {
   writeRecentList(STORAGE_RECENT_DLLS, recentDlls);
   writeRecentList(STORAGE_RECENT_BANKS, recentBanks);
   renderRecents();
-  setStatus('Historial de rutas recientes vaciado.', 'ok');
+  setStatus(t('ui.recents.cleared'), 'ok');
 }
 
 function rememberRoot(value: string): void {
@@ -781,15 +834,15 @@ function updateBatchControls(): void {
   setButtonLabel(
     els.installAll,
     installable === 0
-      ? 'Poner cargador a todos'
-      : `Poner cargador a todos (${installable})`,
+      ? t('ui.batch.installAll')
+      : t('ui.batch.installAllCount', { 0: installable }),
   );
   els.installAll.disabled = busy || installable === 0;
   setButtonLabel(
     els.uninstallAll,
     installed === 0
-      ? 'Quitar cargador a todos'
-      : `Quitar cargador a todos (${installed})`,
+      ? t('ui.batch.uninstallAll')
+      : t('ui.batch.uninstallAllCount', { 0: installed }),
   );
   els.uninstallAll.disabled = busy || installed === 0;
 
@@ -807,25 +860,24 @@ function updateBatchControls(): void {
   els.batchResume.title =
     resume === null
       ? ''
-      : `Reanudar solo los ${resume.plugins.length} plugin(s) que quedaron sin confirmar` +
+      : t('ui.batch.resumeTitle', { 0: resume.plugins.length }) +
         ' al cortarse el lote';
   els.batchResume.disabled = busy || resume === null;
 
   // Reintentar todos aparece solo mientras queden fallos del lote; el texto
   // lleva la cuenta para no tener que abrir el desplegable de errores.
   els.retryAll.hidden = batchFailures.length === 0;
-  setButtonLabel(els.retryAll, `Reintentar fallidos (${batchFailures.length})`);
+  setButtonLabel(els.retryAll, t('ui.batch.retryFailedCount', { 0: batchFailures.length }));
   els.retryAll.disabled = busy || batchFailures.length === 0;
   els.retryAll.title =
     batchFailures.length === 0
       ? ''
-      : `Reintenta en orden los ${batchFailures.length} plugin(s) que fallaron, ` +
-        'cada uno con su acción';
+      : t('msg.retryTitle', { 0: batchFailures.length });
 
   els.batchErrors.hidden = batchFailures.length === 0;
   // El texto va en su propio nodo: el chevrón del summary no se puede pisar.
   els.batchErrorsLabel.textContent =
-    batchFailures.length === 1 ? '1 error' : `${batchFailures.length} errores`;
+    batchFailures.length === 1 ? t('ui.batch.errorOne') : t('ui.batch.errorMany', { 0: batchFailures.length });
   for (const button of els.batchErrorList.querySelectorAll<HTMLButtonElement>('button')) {
     button.disabled = busy;
   }
@@ -928,7 +980,7 @@ function captureLog(message: string, kind: 'info' | 'ok' | 'error' | 'busy' = 'i
   text.textContent = message;
   entry.append(time, text);
   if (els.captureLogState) {
-    els.captureLogState.textContent = kind === 'busy' ? 'En curso' : kind === 'error' ? 'Requiere atención' : kind === 'ok' ? 'Actualizado' : 'Actividad';
+    els.captureLogState.textContent = kind === 'busy' ? t('ui.capture.logInProgress') : kind === 'error' ? t('ui.capture.logNeedsAttention') : kind === 'ok' ? 'Actualizado' : 'Actividad';
     els.captureLogState.className = `capture-log-state ${kind}`;
   }
   if (els.captureLog) {
@@ -977,8 +1029,8 @@ function renderCaptureTask(task: {
   }
   if (els.captureProgressCount) {
     els.captureProgressCount.textContent = task.phase === 'registry'
-      ? `Registro ${task.registryRootsCompleted}/${task.registryRootsTotal} · ${task.message}`
-      : `${task.filesFound.toLocaleString()} archivos · ${task.entriesVisited.toLocaleString()} elementos revisados`;
+      ? t('ui.capture.progressRegistry', { 0: task.registryRootsCompleted, 1: task.registryRootsTotal, 2: task.message })
+      : t('ui.capture.progressFiles', { 0: task.filesFound.toLocaleString(), 1: task.entriesVisited.toLocaleString() });
   }
   if (els.captureProgressRoot) {
     const path = task.phase === 'registry' ? task.currentRegistryRoot : (task.currentPath || task.currentRoot);
@@ -1106,8 +1158,8 @@ function renderLoader(loader: LibraryScanResponse['loader'] | null): void {
   }
 
   els.loaderStatus.textContent = loader.valid
-    ? `fxbLoader.dll: PE32 ${loader.machine} (${loader.bitness} bits)`
-    : `fxbLoader.dll incompatible: ${loader.issues.join('; ')}`;
+    ? t('ui.loader.okTitle', { 0: loader.machine ?? '', 1: loader.bitness ?? '' })
+    : t('ui.loader.incompatibleTitle', { 0: loader.issues.join('; ') });
   els.loaderStatus.className = `loader-status ${loader.valid ? 'ok' : 'error'}`;
   els.loaderStatus.title = loader.path;
 }
@@ -1115,10 +1167,10 @@ function renderLoader(loader: LibraryScanResponse['loader'] | null): void {
 /** Nombres que se listan en el tooltip de la pastilla de bancos. */
 const MAX_BANK_NAMES_IN_TITLE = 12;
 
-/** `1 banco`, `N bancos` o `sin bancos`. */
+/** t('ui.banks.countOne'), t('ui.banks.countMany') o t('ui.banks.countNone'). */
 function bankCountLabel(count: number): string {
   if (count === 0) return 'sin bancos';
-  return count === 1 ? '1 banco' : `${count} bancos`;
+  return count === 1 ? t('ui.banks.countOne') : t('ui.banks.countMany', { 0: count });
 }
 
 /**
@@ -1134,17 +1186,17 @@ function paintBanksBadge(
   const label = bankCountLabel(count);
   badge.textContent = label;
   badge.classList.toggle('on', count > 0);
-  badge.setAttribute('aria-label', `Bancos de ${pluginName}: ${label}. Abrir el panel`);
+  badge.setAttribute('aria-label', t('ui.banks.rowTitle', { 0: pluginName, 1: label }));
 
   if (count === 0) {
-    badge.title = `Abrir el panel de bancos de ${pluginName} (sin bancos)`;
+    badge.title = t('ui.banks.rowTitleEmpty', { 0: pluginName });
     return;
   }
 
   const names = banks?.names ?? [];
   const shown = names.slice(0, MAX_BANK_NAMES_IN_TITLE);
   const rest = count - shown.length;
-  const list = rest > 0 ? [...shown, `… y ${rest} más`].join('\n') : shown.join('\n');
+  const list = rest > 0 ? [...shown, t('ui.banks.moreNames', { 0: rest })].join('\n') : shown.join('\n');
   badge.title = `Bancos de ${pluginName}:\n${list}\n\nAbrir el panel de bancos`;
 }
 
@@ -1195,12 +1247,12 @@ const catalogTableView: TableView<ScanPlugin> = {
       id: 'status',
       label: 'Estado',
       sortType: 'text',
-      getValue: (plugin) => (plugin.hasLoader ? 'con cargador' : 'sin cargador'),
+      getValue: (plugin) => (plugin.hasLoader ? t('ui.table.withLoader') : t('ui.table.noLoader')),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = plugin.hasLoader ? 'badge on' : 'badge';
         badge.dataset['field'] = 'status';
-        badge.textContent = plugin.hasLoader ? 'con cargador' : 'sin cargador';
+        badge.textContent = plugin.hasLoader ? t('ui.table.withLoader') : t('ui.table.noLoader');
         return badge;
       },
     },
@@ -1209,13 +1261,13 @@ const catalogTableView: TableView<ScanPlugin> = {
       label: 'Compatibilidad',
       sortType: 'text',
       getValue: (plugin) =>
-        plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : 'sin verificar',
+        plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : t('ui.table.unverified'),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = plugin.compatible === true ? 'badge on' : plugin.compatible === false ? 'badge bad' : 'badge';
         badge.dataset['field'] = 'compatibility';
         badge.textContent =
-          plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : 'sin verificar';
+          plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : t('ui.table.unverified');
         badge.title = plugin.compatibilityIssues.join('\n');
         return badge;
       },
@@ -1256,8 +1308,8 @@ const catalogTableView: TableView<ScanPlugin> = {
         badge.dataset['field'] = 'wizard';
         badge.textContent = plugin.hasWizard ? 'disponible' : '—';
         badge.title = plugin.hasWizard
-          ? `Wizard oficial disponible (${plugin.wizardId}). Abrir panel del wizard`
-          : `Sin wizard oficial para ${plugin.name}. Abrir panel del wizard`;
+          ? t('ui.wizard.badgeTitle', { 0: plugin.wizardId ?? '' })
+          : t('ui.wizard.badgeTitleNone', { 0: plugin.name });
         badge.setAttribute(
           'aria-label',
           `Wizard de ${plugin.name}: ${plugin.hasWizard ? 'disponible' : 'no disponible'}. Abrir el panel`,
@@ -1292,7 +1344,7 @@ const catalogTableView: TableView<ScanPlugin> = {
     },
     {
       id: 'meta',
-      label: 'Catálogo',
+      label: t('ui.table.catalogBadge'),
       sortType: 'text',
       sortable: false,
       getValue: (plugin) => (plugin.hasMeta ? 'presente' : 'falta'),
@@ -1303,11 +1355,14 @@ const catalogTableView: TableView<ScanPlugin> = {
         badge.dataset['field'] = 'meta';
         badge.textContent = plugin.hasMeta ? 'presente' : 'falta';
         badge.title = plugin.hasMeta
-          ? `Abrir el catálogo de ${plugin.name}`
-          : `Crear el catálogo de ${plugin.name}`;
+          ? t('ui.meta.openTitle', { 0: plugin.name })
+          : t('ui.meta.createTitle', { 0: plugin.name });
         badge.setAttribute(
           'aria-label',
-          `Catálogo de ${plugin.name}: ${plugin.hasMeta ? 'presente' : 'falta'}. Abrir el panel`,
+          t('msg.metaPanelLabel', {
+            0: plugin.name,
+            1: plugin.hasMeta ? t('msg.metaPresent') : t('msg.metaMissing'),
+          }),
         );
         badge.addEventListener('click', () => {
           closeAllRowMenus();
@@ -1319,79 +1374,78 @@ const catalogTableView: TableView<ScanPlugin> = {
   ],
   getRowId: (plugin) => plugin.name,
   initialSort: { columnId: 'name', direction: 'asc' },
-  pageSize: 25,
   searchId: 'plugin-filter',
   // El texto de fila cubre lo que buscaba antes el filtro a mano: nombre,
   // `pluginName` y la ruta de la carpeta.
   searchText: (plugin) => [plugin.name, plugin.pluginName ?? '', plugin.path].join('\n'),
-  emptyText: 'Ningún plugin coincide con el filtro.',
+  emptyText: t('ui.table.emptyFilter'),
   filters: [
     {
       id: 'install',
-      label: 'Filtro del cargador',
+      label: t('ui.filter.loaderTitle'),
       columnId: 'status',
       type: 'chip',
       icon: 'check',
       options: [
-        { value: 'installed', label: 'Con cargador', tone: 'positive', predicate: (plugin) => plugin.hasLoader },
-        { value: 'uninstalled', label: 'Sin cargador', tone: 'negative', predicate: (plugin) => !plugin.hasLoader },
-        { value: 'all', label: 'Con y sin cargador', tone: 'neutral' },
+        { value: 'installed', label: t('ui.filter.withLoader'), tone: 'positive', predicate: (plugin) => plugin.hasLoader },
+        { value: 'uninstalled', label: t('ui.filter.withoutLoader'), tone: 'negative', predicate: (plugin) => !plugin.hasLoader },
+        { value: 'all', label: t('ui.filter.anyLoader'), tone: 'neutral' },
       ],
     },
     {
       id: 'banks',
-      label: 'Filtro de bancos',
+      label: t('ui.filter.banksTitle'),
       columnId: 'banks',
       type: 'chip',
       icon: 'banks',
       options: [
         {
           value: 'with-banks',
-          label: 'Con bancos',
+          label: t('ui.filter.withBanks'),
           tone: 'positive',
           predicate: (plugin) => (plugin.banks?.count ?? 0) > 0,
         },
         {
           value: 'without-banks',
-          label: 'Sin bancos',
+          label: t('ui.filter.withoutBanks'),
           tone: 'negative',
           predicate: (plugin) => (plugin.banks?.count ?? 0) === 0,
         },
-        { value: 'all', label: 'Con y sin bancos', tone: 'neutral' },
+        { value: 'all', label: t('ui.filter.anyBanks'), tone: 'neutral' },
       ],
     },
     {
       id: 'wizard',
-      label: 'Filtro de wizard',
+      label: t('ui.filter.wizardTitle'),
       columnId: 'wizard',
       type: 'chip',
       icon: 'tag',
       options: [
-        { value: 'with-wizard', label: 'Con wizard', tone: 'positive', predicate: (plugin) => plugin.hasWizard },
-        { value: 'without-wizard', label: 'Sin wizard', tone: 'negative', predicate: (plugin) => !plugin.hasWizard },
-        { value: 'all', label: 'Con y sin wizard', tone: 'neutral' },
+        { value: 'with-wizard', label: t('ui.filter.withWizard'), tone: 'positive', predicate: (plugin) => plugin.hasWizard },
+        { value: 'without-wizard', label: t('ui.filter.withoutWizard'), tone: 'negative', predicate: (plugin) => !plugin.hasWizard },
+        { value: 'all', label: t('ui.filter.anyWizard'), tone: 'neutral' },
       ],
     },
     {
       id: 'compat',
-      label: 'Filtro de compatibilidad',
+      label: t('ui.filter.compatTitle'),
       columnId: 'compatibility',
       type: 'chip',
       icon: 'ban',
       options: [
         {
           value: 'compatible',
-          label: 'Ningún incompatible',
+          label: t('ui.filter.noIncompatible'),
           tone: 'positive',
           predicate: (plugin) => plugin.compatible !== false,
         },
         {
           value: 'incompatible',
-          label: 'Solo incompatibles',
+          label: t('ui.filter.onlyIncompatible'),
           tone: 'negative',
           predicate: (plugin) => plugin.compatible === false,
         },
-        { value: 'all', label: 'Compatibles e incompatibles', tone: 'neutral' },
+        { value: 'all', label: t('ui.filter.anyCompat'), tone: 'neutral' },
       ],
     },
   ],
@@ -1399,7 +1453,7 @@ const catalogTableView: TableView<ScanPlugin> = {
     actions: (plugin) => [
       {
         id: 'toggle',
-        label: plugin.hasLoader ? 'Quitar cargador' : 'Poner cargador',
+        label: plugin.hasLoader ? t('ui.table.actionUninstall') : t('ui.table.actionInstall'),
         icon: plugin.hasLoader ? 'trash' : 'download',
         tone: plugin.hasLoader ? 'danger' : 'primary',
         disabled: () => !plugin.hasLoader && plugin.compatible === false,
@@ -1413,7 +1467,7 @@ const catalogTableView: TableView<ScanPlugin> = {
       },
       {
         id: 'meta',
-        label: 'Catálogo',
+        label: t('ui.table.catalogBadge'),
         icon: 'tag',
         onSelect: (_plugin, trigger) => void openMeta(plugin, trigger),
       },
@@ -1437,7 +1491,7 @@ const catalogTableView: TableView<ScanPlugin> = {
     const filtering =
       info.query.trim() !== '' || Object.values(info.filters).some((value) => value !== 'all');
     els.filterCount.textContent = filtering
-      ? `${info.total} de ${scanData?.plugins.length ?? info.total} plugin(s)`
+      ? t('ui.table.range', { 0: info.total, 1: scanData?.plugins.length ?? info.total })
       : '';
   },
 };
@@ -1471,9 +1525,9 @@ function render(data: LibraryScanResponse, options?: { resetPage?: boolean }): v
   const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
   els.summary.textContent =
     data.plugins.length === 0
-      ? 'No hay plugins en la librería'
+      ? t('ui.table.emptyLibrary')
       : `${installed} de ${data.plugins.length} con el cargador${
-          incompatible === 0 ? '' : ` · ${incompatible} incompatible(s)`
+          incompatible === 0 ? '' : t('ui.table.incompatibleSuffix', { 0: incompatible })
         }`;
   els.plugsPath.textContent = data.plugsPath;
   renderLoader(data.loader);
@@ -1482,7 +1536,7 @@ function render(data: LibraryScanResponse, options?: { resetPage?: boolean }): v
   catalogTableView.emptyText =
     data.plugins.length === 0
       ? 'La carpeta plugs\\ no contiene subdirectorios.'
-      : 'Ningún plugin coincide con el filtro.';
+      : t('ui.table.emptyFilter');
 
   if (catalogTable === null) {
     catalogTable = mountTable(els.pluginsTable, catalogTableView, data.plugins);
@@ -1512,7 +1566,7 @@ async function scan(): Promise<boolean> {
   if (busy) return false;
   if (!libraryRoot) {
     setRootWarning(true);
-    setStatus('Introduce la carpeta de la librería.', 'error');
+    setStatus(t('ui.settings.needRoot'), 'error');
     els.root.focus();
     return false;
   }
@@ -1568,6 +1622,35 @@ async function scanFromSettings(): Promise<void> {
  * dejó el motivo en el estado) y `[]` si la persona canceló, que no es un
  * error: el servidor no toca nada y la vista deja los campos como estaban.
  */
+let appCapabilities: SystemCapabilitiesResponse = {
+  mode: 'web-local',
+  canCaptureRegistry: true,
+  canTrash: true,
+  canRevealInExplorer: true,
+  canNativePick: true,
+  canFileSystemAccess: false,
+};
+
+async function initCapabilities(): Promise<void> {
+  try {
+    appCapabilities = await client.system.capabilities();
+  } catch {
+    appCapabilities = {
+      mode: 'web-remote',
+      canCaptureRegistry: false,
+      canTrash: false,
+      canRevealInExplorer: false,
+      canNativePick: false,
+      canFileSystemAccess: typeof window !== 'undefined' && 'showDirectoryPicker' in window,
+    };
+  }
+
+  if (!appCapabilities.canCaptureRegistry && els.captureNavBtn) {
+    els.captureNavBtn.disabled = true;
+    els.captureNavBtn.title = 'Función de captura de registro solo disponible en Windows (.exe o local)';
+  }
+}
+
 async function pickPaths(
   body: RequestBody<'/system/pick', 'post'>,
   where: 'library' | 'banks',
@@ -1587,11 +1670,11 @@ async function chooseLibraryRoot(): Promise<void> {
   if (busy) return;
 
   els.rootBrowse.disabled = true;
-  setStatus('Elige la carpeta de la librería en el diálogo…', 'busy');
+  setStatus(t('ui.picker.choosingRoot'), 'busy');
   try {
     const body: RequestBody<'/system/pick', 'post'> = {
       kind: 'folder',
-      title: 'Elige la carpeta de la librería VFX (la que contiene plugs)',
+      title: t('ui.picker.chooseRoot'),
     };
     if (libraryRoot !== '') body.initialDir = libraryRoot;
 
@@ -1599,7 +1682,7 @@ async function chooseLibraryRoot(): Promise<void> {
     if (picked === null) return; // El motivo ya está en el estado.
     const chosen = picked[0];
     if (chosen === undefined) {
-      setStatus('No se cambió nada: el diálogo se canceló.', 'info');
+      setStatus(t('ui.picker.cancelled'), 'info');
       return;
     }
 
@@ -1618,11 +1701,11 @@ async function chooseDll(): Promise<void> {
   if (busy) return;
 
   els.dllBrowse.disabled = true;
-  setStatus('Elige el fxbLoader.dll en el diálogo…', 'busy');
+  setStatus(t('ui.picker.choosingDll'), 'busy');
   try {
     const body: RequestBody<'/system/pick', 'post'> = {
       kind: 'file',
-      title: 'Elige el fxbLoader.dll',
+      title: t('ui.picker.chooseDll'),
       extensions: ['dll'],
     };
     const start = parentDir(currentDll() || recentDlls[0] || '');
@@ -1632,7 +1715,7 @@ async function chooseDll(): Promise<void> {
     if (picked === null) return; // El motivo ya está en el estado.
     const chosen = picked[0];
     if (chosen === undefined) {
-      setStatus('No se cambió nada: el diálogo se canceló.', 'info');
+      setStatus(t('ui.picker.cancelled'), 'info');
       return;
     }
 
@@ -1640,7 +1723,7 @@ async function chooseDll(): Promise<void> {
     writeStorage(STORAGE_DLL, chosen);
     rememberDll(chosen);
     if (libraryRoot === '') {
-      setStatus('DLL elegido. Falta la carpeta de la librería para validarlo.', 'ok');
+      setStatus(t('ui.settings.dllChosenNeedRoot'), 'ok');
       return;
     }
     await scanFromSettings();
@@ -1657,11 +1740,11 @@ async function chooseImportFiles(): Promise<void> {
   if (banks === null || banksBusy) return;
 
   els.importBrowse.disabled = true;
-  setBanksStatus('Elige los bancos .fxb en el diálogo…', 'busy');
+  setBanksStatus(t('ui.picker.choosingBanks'), 'busy');
   try {
     const body: RequestBody<'/system/pick', 'post'> = {
       kind: 'files',
-      title: 'Elige los bancos .fxb para importar',
+      title: t('ui.picker.chooseBanks'),
       extensions: ['fxb'],
     };
     const start = parentDir(readImportPaths().at(-1) ?? recentBanks[0] ?? '');
@@ -1670,7 +1753,7 @@ async function chooseImportFiles(): Promise<void> {
     const picked = await pickPaths(body, 'banks');
     if (picked === null) return; // El motivo ya está en el estado.
     if (picked.length === 0) {
-      setBanksStatus('No se cambió nada: el diálogo se canceló.', 'info');
+      setBanksStatus(t('ui.picker.cancelled'), 'info');
       return;
     }
 
@@ -1680,8 +1763,8 @@ async function chooseImportFiles(): Promise<void> {
     const total = readImportPaths().length;
     setBanksStatus(
       total === before
-        ? `Esos archivo(s) ya estaban en la lista (${total}).`
-        : `${total - before} archivo(s) añadidos; ${total} en la lista.`,
+        ? t('ui.banks.alreadyInList', { 0: total })
+        : t('ui.banks.addedToList', { 0: total - before, 1: total }),
       'ok',
     );
     els.importPaths.focus();
@@ -1763,7 +1846,7 @@ const batchErrorsTableView: TableView<BatchFailure> = {
     },
     {
       id: 'action',
-      label: 'Acción',
+      label: t('ui.table.action'),
       sortType: 'text',
       getValue: batchActionLabel,
       renderNode: (failure) => {
@@ -1800,9 +1883,8 @@ const batchErrorsTableView: TableView<BatchFailure> = {
   ],
   getRowId: (failure) => failure.plugin.name,
   initialSort: { columnId: 'name', direction: 'asc' },
-  pageSize: 100,
   rowClass: () => 'batch-error',
-  emptyText: 'Ningún plugin del lote ha fallado.',
+  emptyText: t('ui.batch.noneFailed'),
 };
 
 function renderBatchErrors(): void {
@@ -1849,8 +1931,8 @@ async function runBatch(
   if (plugins.length === 0) {
     setBatchStatus(
       isInstall
-        ? 'No hay plugins a los que poner el cargador.'
-        : 'No hay plugins con cargador que quitar.',
+        ? t('ui.batch.noInstallTargets')
+        : t('ui.batch.noUninstallTargets'),
       'info',
     );
     return;
@@ -1917,7 +1999,7 @@ async function runBatch(
     render(data);
   } catch (error) {
     setBatchStatus(
-      `Terminó el lote, pero no se pudo refrescar la lista: ${describeError(error)}`,
+      t('ui.batch.finishedNoRefresh', { 0: describeError(error) }),
       'error',
     );
     clearBatchMarks();
@@ -1936,7 +2018,7 @@ async function runBatch(
     // Una petición se cortó: lo anterior ya está hecho en disco, así que se
     // resume lo confirmado, se marcan los pendientes y se deja el motivo.
     const pending = run.unreported === 0 ? '' : ` ${run.unreported} plugin(s) sin confirmar.`;
-    const message = `El lote se cortó: ${describeError(run.error)} ${summarize(run)}${pending}`;
+    const message = t('ui.batch.aborted', { 0: describeError(run.error), 1: summarize(run), 2: pending });
     setBatchStatus(message, 'error');
     setStatus(message, 'error');
   } else {
@@ -1982,7 +2064,7 @@ async function retryAllFailures(): Promise<void> {
       clock.startStep();
       showBatchProgress(retryProgress(failure, index, total, retryFailed));
       setBatchStatus(
-        `Reintentando ${index + 1} de ${total}: ${failure.plugin.name}…`,
+        t('ui.batch.retrying', { 0: index + 1, 1: total, 2: failure.plugin.name }),
         'busy',
       );
 
@@ -2015,8 +2097,8 @@ async function retryAllFailures(): Promise<void> {
     const pending = batchFailures.length;
     const message =
       pending === 0
-        ? `${resolved} de ${total} reintentado(s); sin errores pendientes.`
-        : `${resolved} de ${total} reintentado(s); ${pending} sigue(n) fallando.`;
+        ? t('ui.batch.retryDone', { 0: resolved, 1: total })
+        : t('ui.batch.retryPending', { 0: resolved, 1: total, 2: pending });
     setBatchStatus(message, pending === 0 ? 'ok' : 'error');
     setStatus(message, pending === 0 ? 'ok' : 'error');
   } catch (error) {
@@ -2037,7 +2119,7 @@ async function retryFailure(failure: BatchFailure): Promise<void> {
   if (busy) return;
 
   setBusy(true);
-  setBatchStatus(`Reintentando ${failure.plugin.name}…`, 'busy');
+  setBatchStatus(t('ui.batch.retryingOne', { 0: failure.plugin.name }), 'busy');
 
   try {
     await callAction(failure.plugin, failure.action);
@@ -2048,19 +2130,19 @@ async function retryFailure(failure: BatchFailure): Promise<void> {
     renderBatchErrors();
 
     const message = `${failure.plugin.name} ${
-      failure.action === 'add' ? 'con cargador' : 'sin cargador'
+      failure.action === 'add' ? t('ui.table.withLoader') : t('ui.table.noLoader')
     } tras reintentar.`;
     setStatus(message, 'ok');
     setBatchStatus(
       batchFailures.length === 0
-        ? 'Sin errores pendientes.'
-        : `${batchFailures.length} error(es) pendientes.`,
+        ? t('ui.batch.noErrorsLeft')
+        : t('ui.batch.errorsLeft', { 0: batchFailures.length }),
       batchFailures.length === 0 ? 'ok' : 'error',
     );
   } catch (error) {
     failure.message = describeError(error);
     renderBatchErrors();
-    setBatchStatus(`Sigue fallando ${failure.plugin.name}.`, 'error');
+    setBatchStatus(t('ui.batch.stillFailing', { 0: failure.plugin.name }), 'error');
   } finally {
     setBusy(false);
   }
@@ -2225,25 +2307,26 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
       cellTitle: (entry) =>
         entry.bank.kind === 'FBCh'
           ? [
-            `Banco CcnK/FBCh con chunk opaco`,
-            `versión del formato ${entry.bank.version}`,
-            `chunk de ${entry.bank.chunkSize ?? 0} bytes`,
+            t('msg.bankTitleFbch'),
+            t('msg.bankTitleFormat', { 0: entry.bank.version }),
+            t('msg.bankTitleChunk', { 0: entry.bank.chunkSize ?? 0 }),
             entry.bank.version >= 2 && entry.bank.currentProgram !== null
-              ? `programa activo ${entry.bank.currentProgram}`
+              ? t('msg.bankTitleActiveProgram', { 0: entry.bank.currentProgram })
               : undefined,
-            `numPrograms informativo: ${entry.bank.numPrograms}`,
+            t('msg.bankTitleInfoPrograms', { 0: entry.bank.numPrograms }),
           ]
             .filter((part) => part !== undefined)
             .join('\n')
           : [
-            `Banco CcnK/FxBk con programas`,
-            `orden de bytes ${
-              entry.bank.endianness === 'little'
-                ? 'little-endian (legacy de Windows)'
-                : 'big-endian (estándar VST2)'
-            }`,
-            `versión del formato ${entry.bank.version}`,
-            `${entry.bank.numPrograms} programa(s)`,
+            t('msg.bankTitleFxbk'),
+            t('msg.bankTitleOrder', {
+              0:
+                entry.bank.endianness === 'little'
+                  ? t('msg.bankTitleLittle')
+                  : t('msg.bankTitleBig'),
+            }),
+            t('msg.bankTitleFormat', { 0: entry.bank.version }),
+            t('msg.bankTitlePrograms', { 0: entry.bank.numPrograms }),
           ].join('\n'),
     },
     {
@@ -2275,7 +2358,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
     },
     {
       id: 'size',
-      label: 'Tamaño',
+      label: t('ui.banks.size'),
       sortType: 'number',
       getValue: (entry) => entry.size,
       renderCell: (entry) => formatBytes(entry.size),
@@ -2294,7 +2377,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
         use.prepend(createIcon('check'));
         const current = banks?.data.config.config.defaultFxbName;
         if (entry.fileName === current) use.dataset['default'] = 'true';
-        use.title = `Elegir ${entry.fileName} como banco por defecto`;
+        use.title = t('ui.banks.chooseDefault', { 0: entry.fileName });
         use.addEventListener('click', () => {
           els.defaultBank.value = entry.fileName;
           void saveDefault(entry.fileName);
@@ -2305,20 +2388,19 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
   ],
   getRowId: (entry) => entry.fileName,
   initialSort: { columnId: 'fileName', direction: 'asc' },
-  pageSize: 100,
   searchColumns: ['fileName', 'kind', 'uniqueId'],
   tbodyId: 'banks-rows',
   rowClass: (entry) => {
     const current = banks?.data.config.config.defaultFxbName;
     return entry.fileName === current ? 'is-default' : undefined;
   },
-  emptyText: 'La carpeta de bancos está vacía; importa un .fxb.',
+  emptyText: t('ui.banks.emptyFolder'),
 };
 
 function renderBankRows(data: LibraryBanksListResponse): void {
   const emptyMessage = data.presetsDirExists
-    ? 'La carpeta de bancos está vacía; importa un .fxb.'
-    : 'La carpeta de bancos aún no existe; se crea al importar un .fxb.';
+    ? t('ui.banks.emptyFolder')
+    : t('ui.banks.missingFolder');
   banksTableView.emptyText = emptyMessage;
 
   if (banksTableController === null) {
@@ -2337,7 +2419,7 @@ function renderDefaultOptions(data: LibraryBanksListResponse, keepSelection: boo
 
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = '— Ninguno —';
+  none.textContent = t('ui.banks.noneOption');
   els.defaultBank.append(none);
 
   for (const name of names) {
@@ -2351,7 +2433,7 @@ function renderDefaultOptions(data: LibraryBanksListResponse, keepSelection: boo
   if (current !== '' && !names.includes(current)) {
     const missing = document.createElement('option');
     missing.value = current;
-    missing.textContent = `${current} (no está en la carpeta)`;
+    missing.textContent = t('ui.banks.notInFolder', { 0: current });
     els.defaultBank.append(missing);
   }
 
@@ -2375,7 +2457,7 @@ function renderExportOptions(data: LibraryBanksListResponse, keepSelection: bool
   if (names.length === 0) {
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = '— Sin bancos en la carpeta —';
+    empty.textContent = t('ui.banks.noBanksInFolder');
     els.exportBank.append(empty);
     return;
   }
@@ -2399,7 +2481,7 @@ function renderBanks(options: { keepSelection?: boolean } = {}): void {
   els.banksPresets.textContent = data.presetsDir;
   els.banksExists.textContent = data.presetsDirExists
     ? ''
-    : '(aún no existe: se crea al importar)';
+    : t('ui.banks.folderNotCreated');
 
   renderDefaultOptions(data, keepSelection);
   renderExportOptions(data, keepSelection);
@@ -2410,14 +2492,16 @@ function renderBanks(options: { keepSelection?: boolean } = {}): void {
   const defaultName = data.config.config.defaultFxbName.trim();
   els.defaultRestore.title =
     backup === null
-      ? 'No hay respaldo .orig del banco por defecto: solo se puede restaurar un banco convertido antes'
-      : `Devuelve ${defaultName} al contenido de ${backup.fileName} (${formatBytes(backup.size)}); ` +
-        'el respaldo se conserva';
+      ? t('ui.banks.noOrigBackup')
+      : t('msg.bankRestoreTitle', { 0: defaultName, 1: backup.fileName, 2: formatBytes(backup.size) });
   els.defaultDiscard.title =
     backup === null
-      ? 'No hay respaldo .orig que descartar: solo existe si el banco se convirtió antes'
-      : `Envía ${backup.fileName} (${formatBytes(backup.size)}) a la papelera; ` +
-        `${defaultName} queda como está y podrás recuperarlo`;
+      ? t('ui.banks.noOrigToDiscard')
+      : t('msg.bankDiscardTrashTitle', {
+          0: backup.fileName,
+          1: formatBytes(backup.size),
+          2: defaultName,
+        });
 
   syncBanksDisabled();
 }
@@ -2445,14 +2529,14 @@ async function openBanks(plugin: ScanPlugin, opener?: HTMLElement): Promise<void
   showPanel(els.banks, opener);
   clearBanksView(plugin.name);
   setBanksBusy(true);
-  setBanksStatus('Leyendo los bancos…', 'busy');
+  setBanksStatus(t('ui.banks.reading'), 'busy');
 
   try {
     await fetchBanks(plugin.name);
     setBanksStatus(
       plugin.hasLoader
         ? ''
-        : 'El plugin no tiene cargador: puedes importar bancos, pero no fijar el banco por defecto hasta ponérselo.',
+        : t('ui.banks.noLoaderNote'),
       plugin.hasLoader ? 'info' : 'busy',
     );
   } catch (error) {
@@ -2469,7 +2553,7 @@ async function saveDefault(fileName: string): Promise<void> {
 
   const { pluginName, data } = banks;
   setBanksBusy(true);
-  setBanksStatus('Guardando el banco por defecto…', 'busy');
+  setBanksStatus(t('ui.banks.savingDefault'), 'busy');
 
   try {
     const snapshot: ConfigSnapshot = await client.config.write({
@@ -2481,8 +2565,8 @@ async function saveDefault(fileName: string): Promise<void> {
     renderBanks();
     setBanksStatus(
       fileName === ''
-        ? 'Sin banco por defecto.'
-        : `Banco por defecto de ${pluginName}: ${fileName}.`,
+        ? t('ui.banks.noDefault')
+        : t('ui.banks.defaultSet', { 0: pluginName, 1: fileName }),
       'ok',
     );
   } catch (error) {
@@ -2515,20 +2599,19 @@ async function convertDefaultBank(): Promise<void> {
   const { pluginName, data } = banks;
   const fileName = data.config.config.defaultFxbName.trim();
   if (fileName === '') {
-    setBanksStatus('No hay un banco por defecto configurado para convertir.', 'error');
+    setBanksStatus(t('ui.banks.noDefaultToConvert'), 'error');
     return;
   }
   if (
     !window.confirm(
-      `Se reescribirá ${fileName} con el orden de bytes contrario. ` +
-        `El original se conserva como ${fileName}.orig. ¿Continuar?`,
+      t('msg.bankConvertConfirm', { 0: fileName }),
     )
   ) {
     return;
   }
 
   setBanksBusy(true);
-  setBanksStatus(`Convirtiendo ${fileName} en el sitio…`, 'busy');
+  setBanksStatus(t('ui.banks.converting', { 0: fileName }), 'busy');
 
   try {
     const result = await client.library.convertDefaultBank({ libraryRoot, plugin: pluginName });
@@ -2536,14 +2619,14 @@ async function convertDefaultBank(): Promise<void> {
 
     const order = result.target.bank.endianness === 'little' ? 'little-endian' : 'big-endian';
     if (!result.changed) {
-      setBanksStatus(`${result.fileName} ya estaba en ${order}; no había nada que convertir.`, 'ok');
+      setBanksStatus(t('ui.banks.alreadyOrder', { 0: result.fileName, 1: order }), 'ok');
       return;
     }
 
-    const backup = result.backup === null ? '' : ` y el original en ${result.backup.fileName}`;
+    const backup = result.backup === null ? '' : t('ui.banks.backupSuffix', { 0: result.backup.fileName });
     setBanksStatus(
-      `${result.fileName}: ${result.fields} campo(s) a ${order}${backup}` +
-        `${result.backupCreated ? '.' : ' (respaldo anterior).'}`,
+      t('ui.banks.converted', { 0: result.fileName, 1: result.fields, 2: order, 3: backup }) +
+        t('ui.banks.backupNote', { 0: result.backupCreated ? '.' : ' (respaldo anterior).' }),
       'ok',
     );
   } catch (error) {
@@ -2568,22 +2651,21 @@ async function restoreDefaultBank(): Promise<void> {
   const backup = data.defaultBackup;
   if (fileName === '' || backup === null) {
     setBanksStatus(
-      'No hay respaldo .orig del banco por defecto; convierte el banco antes de restaurarlo.',
+      t('ui.banks.noBackupToRestore'),
       'error',
     );
     return;
   }
   if (
     !window.confirm(
-      `Se reemplazará ${fileName} con el contenido de ${backup.fileName}. ` +
-        `El respaldo se conserva y no se toca. ¿Continuar?`,
+      t('msg.bankRestoreConfirm', { 0: fileName, 1: backup.fileName }),
     )
   ) {
     return;
   }
 
   setBanksBusy(true);
-  setBanksStatus(`Restaurando ${fileName} desde ${backup.fileName}…`, 'busy');
+  setBanksStatus(t('ui.banks.restoring', { 0: fileName, 1: backup.fileName }), 'busy');
 
   try {
     const result = await client.library.restoreDefaultBank({ libraryRoot, plugin: pluginName });
@@ -2591,8 +2673,8 @@ async function restoreDefaultBank(): Promise<void> {
 
     setBanksStatus(
       result.changed
-        ? `${result.fileName} restaurado desde ${result.backup.fileName}; el respaldo sigue intacto.`
-        : `${result.fileName} ya era el respaldo; no había nada que restaurar.`,
+        ? t('ui.banks.restored', { 0: result.fileName, 1: result.backup.fileName })
+        : t('ui.banks.alreadyBackup', { 0: result.fileName }),
       'ok',
     );
   } catch (error) {
@@ -2615,21 +2697,19 @@ async function discardDefaultBackup(): Promise<void> {
   const { pluginName, data } = banks;
   const backup = data.defaultBackup;
   if (backup === null) {
-    setBanksStatus('No hay respaldo .orig del banco por defecto que descartar.', 'error');
+    setBanksStatus(t('ui.banks.noBackupToDiscard'), 'error');
     return;
   }
   if (
     !window.confirm(
-      `Se enviará ${backup.fileName} (${formatBytes(backup.size)}) a la papelera del sistema. ` +
-        'El banco por defecto no cambia: el respaldo sale de su carpeta, pero podrás ' +
-        'recuperarlo desde la papelera. ¿Enviarlo a la papelera?',
+      t('msg.bankDiscardConfirm', { 0: backup.fileName, 1: formatBytes(backup.size) }),
     )
   ) {
     return;
   }
 
   setBanksBusy(true);
-  setBanksStatus(`Enviando ${backup.fileName} a la papelera…`, 'busy');
+  setBanksStatus(t('ui.banks.sendingToTrash', { 0: backup.fileName }), 'busy');
 
   try {
     const result = await client.library.discardDefaultBankBackup({
@@ -2638,9 +2718,13 @@ async function discardDefaultBackup(): Promise<void> {
     });
     await fetchBanks(pluginName, { keepSelection: true });
     setBanksStatus(
-      `${result.discarded.fileName} enviado a la ${result.trash.label} ` +
-        `(${formatBytes(result.discarded.size)}). ${result.fileName} queda como está, sin ` +
-        `respaldo. ${result.trash.hint}`,
+      t('msg.bankDiscarded', {
+        0: result.discarded.fileName,
+        1: result.trash.label,
+        2: formatBytes(result.discarded.size),
+        3: result.fileName,
+        4: result.trash.hint,
+      }),
       'ok',
     );
   } catch (error) {
@@ -2678,7 +2762,7 @@ function importCompatibilityLabel(result: ImportResult): string {
     ? 'compatible'
     : result.compatibility === 'incompatible'
       ? 'incompatible'
-      : 'sin verificar';
+      : t('ui.table.unverified');
 }
 
 /** Motivo del rechazo o los defectos de formato; `''` si no hay nada que contar. */
@@ -2708,7 +2792,7 @@ const importResultsTableView: TableView<ImportResult> = {
       getValue: importStatusLabel,
       renderNode: (result) => {
         const badge = document.createElement('span');
-        badge.className = result.status === 'rejected' ? 'badge' : 'badge on';
+        badge.className = result.status === 'rejected' ? 'badge' : t('ui.table.installedBadge');
         badge.textContent = importStatusLabel(result);
         return badge;
       },
@@ -2735,11 +2819,10 @@ const importResultsTableView: TableView<ImportResult> = {
   ],
   getRowId: (result) => result.source,
   initialSort: { columnId: 'fileName', direction: 'asc' },
-  pageSize: 100,
   // Concatenación y no plantilla: el escáner de clases del test de estilos
   // empareja literales y un apóstrofo anterior desplaza los backticks.
   rowClass: (result) => 'import-result ' + result.status,
-  emptyText: 'Sin resultados de importación.',
+  emptyText: t('ui.banks.noImportResults'),
 };
 
 function renderImportResults(results: ImportResults): void {
@@ -2771,7 +2854,7 @@ async function importBanks(): Promise<void> {
 
   const sourcePaths = readImportPaths();
   if (sourcePaths.length === 0) {
-    setBanksStatus('Escribe al menos una ruta absoluta de un .fxb.', 'error');
+    setBanksStatus(t('ui.banks.needPath'), 'error');
     els.importPaths.focus();
     return;
   }
@@ -2779,7 +2862,7 @@ async function importBanks(): Promise<void> {
   const { pluginName } = banks;
   rememberBanks(sourcePaths);
   setBanksBusy(true);
-  setBanksStatus(`Importando ${sourcePaths.length} archivo(s)…`, 'busy');
+  setBanksStatus(t('ui.banks.importingCount', { 0: sourcePaths.length }), 'busy');
   clearImportResults();
   showImportProgress({ done: 0, total: sourcePaths.length, requests: 0 });
   els.importCancel.hidden = false;
@@ -2824,18 +2907,26 @@ async function importBanks(): Promise<void> {
 
     await fetchBanks(pluginName, { keepSelection: true });
 
-    if (run.error !== null && !(run.error instanceof Error && run.error.message === 'Cancelado por el usuario')) {
+    if (run.error !== null && !(run.error instanceof Error && run.error.message === t('ui.banks.cancelledByUser'))) {
       setBanksStatus(
-        `La importación se cortó tras ${run.results.length} de ${sourcePaths.length} archivo(s): ` +
-          `${describeError(run.error)} ${imported} importado(s), ${rejected} rechazado(s).`,
+        t('msg.importAborted', {
+          0: run.results.length,
+          1: sourcePaths.length,
+          2: describeError(run.error),
+          3: imported,
+          4: rejected,
+        }),
         'error',
       );
       return;
     }
 
-    if (run.error instanceof Error && run.error.message === 'Cancelado por el usuario') {
+    if (run.error instanceof Error && run.error.message === t('ui.banks.cancelledByUser')) {
       setBanksStatus(
-        `Importación cancelada: ${run.results.length} archivo(s) importados, ${sourcePaths.length - run.results.length} pendiente(s).`,
+        t('msg.importCancelled', {
+          0: run.results.length,
+          1: sourcePaths.length - run.results.length,
+        }),
         'info',
       );
       return;
@@ -2843,13 +2934,13 @@ async function importBanks(): Promise<void> {
 
     setBanksStatus(
       rejected === 0
-        ? `${imported} banco(s) importados.`
-        : `${imported} importado(s), ${rejected} rechazado(s).`,
+        ? t('ui.banks.importedCount', { 0: imported })
+        : t('ui.banks.importedRejected', { 0: imported, 1: rejected }),
       rejected === 0 ? 'ok' : 'error',
     );
   } catch (error) {
     // Falló el refresco de la lista o algo anterior al primer trozo.
-    if (!(error instanceof Error && error.message === 'Cancelado por el usuario')) {
+    if (!(error instanceof Error && error.message === t('ui.banks.cancelledByUser'))) {
       setBanksStatus(describeError(error), 'error');
     }
   } finally {
@@ -2871,14 +2962,14 @@ async function exportBank(): Promise<void> {
   const fileName = els.exportBank.value;
   const endianness = els.exportOrder.value as ExportOrder;
   if (fileName === '') {
-    setBanksStatus('No hay ningún banco en la carpeta del plugin para exportar.', 'error');
+    setBanksStatus(t('ui.banks.noBanksToExport'), 'error');
     return;
   }
 
   const { pluginName } = banks;
   const order = endianness === 'little' ? 'little-endian' : 'big-endian';
   setBanksBusy(true);
-  setBanksStatus(`Exportando ${fileName} a ${order}…`, 'busy');
+  setBanksStatus(t('ui.banks.exporting', { 0: fileName, 1: order }), 'busy');
 
   try {
     const result = await client.library.exportBank({
@@ -2892,9 +2983,9 @@ async function exportBank(): Promise<void> {
     await fetchBanks(pluginName, { keepSelection: true });
     setBanksStatus(
       result.changed
-        ? `${result.target.fileName}: ${result.fields} campo(s) en ${order}` +
+        ? t('ui.banks.exportedFields', { 0: result.target.fileName, 1: result.fields, 2: order }) +
             `${result.chunks === 0 ? '' : ` y ${result.chunks} chunk(s)`}.`
-        : `${result.source.fileName} ya estaba en ${order}; no había nada que convertir.`,
+        : t('ui.banks.alreadyOrder', { 0: result.source.fileName, 1: order }),
       'ok',
     );
   } catch (error) {
@@ -2943,7 +3034,7 @@ async function createBank(): Promise<void> {
   if (els.createMode.value === 'chunk') {
     const chunkHex = els.createChunkHex.value.trim();
     if (chunkHex === '') {
-      setBanksStatus('Escribe el contenido del chunk en hexadecimal para crear un banco FBCh.', 'error');
+      setBanksStatus(t('ui.banks.needChunkHex'), 'error');
       return;
     }
     body.mode = 'chunk';
@@ -2962,7 +3053,7 @@ async function createBank(): Promise<void> {
       .map((name) => name.trim())
       .filter((name) => name !== '');
     if (names.length === 0) {
-      setBanksStatus('Escribe al menos un nombre de programa para crear un banco FxBk.', 'error');
+      setBanksStatus(t('ui.banks.needProgramNames'), 'error');
       return;
     }
     body.programNames = names;
@@ -2982,7 +3073,7 @@ async function createBank(): Promise<void> {
     const result = await client.library.createBank(body);
     await fetchBanks(pluginName, { keepSelection: true });
     setBanksStatus(
-      `Banco ${result.bank.kind} creado en ${result.target}.`,
+      t('ui.banks.created', { 0: result.bank.kind, 1: result.target }),
       'ok',
     );
   } catch (error) {
@@ -3039,17 +3130,17 @@ function metaOriginText(snapshot: PluginMetaSnapshotResponse): string {
   ].filter((field): field is string => field !== null);
 
   if (missing.length === 0) {
-    return 'Id y nombre tomados de vfxinfo.txt; al guardar se crea fxbLoader.meta.json.';
+    return t('ui.meta.idFromVfxinfo');
   }
   if (snapshot.source?.vfxinfo === true) {
-    return `vfxinfo.txt no trae ${missing.join(' ni ')}; el catálogo necesita id y nombre.`;
+    return t('ui.meta.missingFields', { 0: missing.join(' ni ') });
   }
-  return 'Sin datos de vfxinfo.txt: escribe el id y el nombre para poder guardar el catálogo.';
+  return t('ui.meta.noVfxinfoData');
 }
 
 function renderMeta(snapshot: PluginMetaSnapshotResponse): void {
   els.metaPath.textContent = snapshot.metaPath;
-  els.metaExists.textContent = snapshot.exists ? '' : '(aún no existe: se crea al guardar)';
+  els.metaExists.textContent = snapshot.exists ? '' : t('ui.meta.notCreatedYet');
   els.metaOrigin.textContent = metaOriginText(snapshot);
   els.metaId.value = snapshot.common.id;
   els.metaName.value = snapshot.common.name;
@@ -3092,7 +3183,7 @@ function resetDllPreference(): void {
   els.metaDll.value = dllPrefDraft ?? '';
   els.metaDllSave.disabled = true;
   els.metaDllCancel.disabled = true;
-  els.metaDllNote.textContent = dllPrefDraft === null ? '' : 'Borrador sin guardar.';
+  els.metaDllNote.textContent = dllPrefDraft === null ? '' : t('ui.meta.dllDraft');
   els.metaDllActions.classList.toggle('draft', dllPrefDraft !== null);
 }
 
@@ -3129,15 +3220,15 @@ function updateDllPreferenceNote(): void {
   const current = dllPreferenceInput();
   if (current === '') {
     els.metaDllNote.textContent = dirty
-      ? 'Borrador sin guardar: un valor vacío no es válida preferencia.'
-      : 'vfxinfo.txt no declara dll_name. Indica la DLL del plugin y guarda la preferencia.';
+      ? t('ui.meta.dllDraftInvalid')
+      : t('ui.meta.dllNotDeclared');
     return;
   }
   if (dirty) {
-    els.metaDllNote.textContent = 'Borrador sin guardar del valor mostrado.';
+    els.metaDllNote.textContent = t('ui.meta.dllDraftShown');
     return;
   }
-  els.metaDllNote.textContent = `Preferencia guardada en vfxinfo.txt: ${dllPrefSaved}`;
+  els.metaDllNote.textContent = t('ui.meta.dllPreferenceSaved', { 0: dllPrefSaved });
 }
 
 /** Cancelar restaura el valor guardado y descarta el borrador en memoria. */
@@ -3146,7 +3237,7 @@ function cancelDllPreferenceDraft(): void {
   dllPrefDraft = null;
   els.metaDll.value = dllPrefSaved;
   updateDllPreferenceNote();
-  setMetaStatus('Preferencia de DLL restablecida al valor guardado.');
+  setMetaStatus(t('ui.meta.dllPreferenceReset'));
 }
 
 async function saveDllPreference(): Promise<void> {
@@ -3156,7 +3247,7 @@ async function saveDllPreference(): Promise<void> {
   const { plugin, dir } = metaState;
   dllPrefBusy = true;
   updateDllPreferenceNote();
-  setMetaStatus('Guardando la preferencia de DLL…', 'busy');
+  setMetaStatus(t('ui.meta.dllSaving'), 'busy');
 
   try {
     const result = await client.library.updateDllPreference({
@@ -3174,9 +3265,9 @@ async function saveDllPreference(): Promise<void> {
       : value;
     updateDllPreferenceNote();
     if (result.changed) {
-      setMetaStatus(`Preferencia de DLL guardada: ${result.dllName}`, 'ok');
+      setMetaStatus(t('ui.meta.dllSaved', { 0: result.dllName }), 'ok');
     } else {
-      setMetaStatus(`La preferencia de DLL ya era "${result.dllName}".`);
+      setMetaStatus(t('ui.meta.dllAlready', { 0: result.dllName }));
     }
   } catch (error) {
     setMetaStatus(describeError(error), 'error');
@@ -3216,9 +3307,7 @@ function requestOpenImportPackageDrawer(opener?: HTMLElement): void {
   if (dllPreferenceHasDraft()) {
     const pluginName = dllPrefPluginName ?? 'el plugin';
     els.dialogDllDraftText.textContent =
-      `El catálogo de ${pluginName} tiene una preferencia de DLL modificada que todavía no está guardada. ` +
-      '«Continuar sin cambios» la descarta y usa la preferencia guardada; «Cancelar» conserva el borrador. ' +
-      'Desde aquí no se guarda: vuelve al catálogo y usa Guardar preferencia.';
+      t('msg.dllDraftText', { 0: pluginName });
     pendingImportOpener = opener ?? null;
     els.dialogDllDraft.showModal();
     return;
@@ -3239,21 +3328,20 @@ function logTimestamp(timestamp: string): string {
 const pluginHistoryTableView: TableView<PluginLogSnapshotResponse['entries'][number]> = {
   columns: [
     { id: 'timestamp', label: 'Fecha', getValue: entry => entry.timestamp, sortType: 'date', cellClass: 'table-date', cellTitle: entry => entry.raw, renderCell: entry => logTimestamp(entry.timestamp) || '—' },
-    { id: 'action', label: 'Acción', getValue: entry => entry.action, sortType: 'text', cellClass: 'table-action', cellTitle: entry => entry.raw },
+    { id: 'action', label: t('ui.log.action'), getValue: entry => entry.action, sortType: 'text', cellClass: 'table-action', cellTitle: entry => entry.raw },
     { id: 'summary', label: 'Resumen', getValue: entry => entry.summary, sortType: 'text', cellTitle: entry => entry.raw },
     { id: 'detail', label: 'Detalle', getValue: entry => entry.detail ?? '', sortType: 'text', cellTitle: entry => entry.raw },
   ],
   getRowId: entry => `${entry.timestamp}-${entry.action}-${entry.raw}`,
   initialSort: { columnId: 'timestamp', direction: 'desc' },
-  pageSize: 100,
   searchColumns: ['timestamp', 'action', 'summary', 'detail'],
   filters: [
-    { id: 'actions', label: 'Acción', columnId: 'action', type: 'multi-select' },
+    { id: 'actions', label: t('ui.log.action'), columnId: 'action', type: 'multi-select' },
     { id: 'period', label: 'Fecha', columnId: 'timestamp', type: 'date-range' },
   ],
-  emptyText: 'No hay entradas que coincidan con la búsqueda.',
+  emptyText: t('ui.log.noMatches'),
   rowActions: {
-    actions: [{ id: 'view-record', label: 'Ver registro', icon: 'file', onSelect: (entry, trigger) => openLogRecordDetail(entry, trigger) }],
+    actions: [{ id: 'view-record', label: t('ui.log.viewRecord'), icon: 'file', onSelect: (entry, trigger) => openLogRecordDetail(entry, trigger) }],
   },
 };
 
@@ -3278,14 +3366,14 @@ function openLogRecordDetail(
   trigger: HTMLButtonElement,
 ): void {
   logDetailOpener = trigger;
-  els.logDetailTitle.textContent = `Registro · ${entry.action || 'sin acción'}`;
+  els.logDetailTitle.textContent = t('ui.log.recordHead', { 0: entry.action || 'sin acción' });
   const timestamp = logTimestamp(entry.timestamp) || entry.timestamp || '—';
   els.logDetailFields.replaceChildren(
-    renderLogDetailField('Fecha y hora', timestamp),
-    renderLogDetailField('Acción', entry.action),
+    renderLogDetailField(t('ui.log.timestamp'), timestamp),
+    renderLogDetailField(t('ui.log.action'), entry.action),
     renderLogDetailField('Resumen', entry.summary),
     renderLogDetailField('Detalle', entry.detail ?? ''),
-    renderLogDetailField('Línea original', entry.raw, 'log-record-raw'),
+    renderLogDetailField(t('ui.log.rawLine'), entry.raw, 'log-record-raw'),
   );
   els.logDetail.hidden = false;
   els.logDetailClose.focus({ preventScroll: true });
@@ -3305,24 +3393,24 @@ function closeLogRecordDetail(): void {
 function renderPluginLog(snapshot: PluginLogSnapshotResponse): void {
   if (els.logDetail.hidden === false && logDetailOpener?.isConnected !== true) closeLogRecordDetail();
   els.logPath.textContent = snapshot.logPath;
-  els.logExists.textContent = snapshot.exists ? '' : '(todavía no existe)';
+  els.logExists.textContent = snapshot.exists ? '' : t('ui.log.notYet');
   els.logSummary.textContent = `${snapshot.totalEntries} entrada(s) · ${formatBytes(
     snapshot.size,
   )} en el archivo activo`;
   els.logRotated.textContent =
     snapshot.rotatedFiles.length === 0
-      ? 'Sin archivos rotados.'
-      : `Rotados (${snapshot.rotatedFiles.length}): ${snapshot.rotatedFiles.join(', ')}`;
+      ? t('ui.log.noRotated')
+      : t('ui.log.rotated', { 0: snapshot.rotatedFiles.length, 1: snapshot.rotatedFiles.join(', ') });
 
   // Estado vacío unificado: como en el catálogo, se fija el `emptyText` de la
   // vista y quien pinta el aviso es `mountTable` (su párrafo y su fila vacía),
   // no un `<p class="table-empty">` escrito a mano en el contenedor.
   pluginHistoryTableView.emptyText =
     snapshot.entries.length > 0
-      ? 'No hay entradas que coincidan con la búsqueda.'
+      ? t('ui.log.noMatches')
       : snapshot.exists
-        ? 'El log no tiene entradas legibles.'
-        : 'El plugin todavía no ha escrito nada en su log.';
+        ? t('ui.log.noReadable')
+        : t('ui.log.emptyLog');
   if (logTableController === null) {
     logTableController = mountTable(els.logTable, pluginHistoryTableView, snapshot.entries);
   } else {
@@ -3338,7 +3426,7 @@ async function readPluginLog(pluginName: string, dir: string): Promise<void> {
   } catch (error) {
     els.logPath.textContent = '';
     els.logExists.textContent = '';
-    els.logSummary.textContent = `No se pudo leer el log: ${describeError(error)}`;
+    els.logSummary.textContent = t('ui.log.readError', { 0: describeError(error) });
     logTableController?.destroy();
     logTableController = null;
     els.logTable.replaceChildren();
@@ -3361,7 +3449,7 @@ async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<
   els.logPlugin.textContent = plugin.name;
   els.logPath.textContent = '';
   els.logExists.textContent = '';
-  els.logSummary.textContent = 'Leyendo historial…';
+  els.logSummary.textContent = t('ui.log.reading');
   logTableController?.destroy();
   logTableController = null;
   els.logTable.replaceChildren();
@@ -3380,7 +3468,7 @@ function closeLogDrawer(): void {
 /** Lee el catálogo de `dir` y deja el panel listo para guardar con ese `mtimeMs`. */
 async function readMeta(plugin: ScanPlugin): Promise<void> {
   setMetaBusy(true);
-  setMetaStatus('Leyendo el catálogo…', 'busy');
+  setMetaStatus(t('ui.meta.reading'), 'busy');
 
   try {
     const snapshot = await client.plugins.meta.read({ id: plugin.name, dir: plugin.path });
@@ -3413,6 +3501,10 @@ async function openMeta(plugin: ScanPlugin, opener?: HTMLElement): Promise<void>
   showPanel(els.meta, opener);
   metaState = null;
   clearMetaView(plugin.name);
+  // La preferencia de DLL ya se conoce por el escaneo: se pinta antes de pedir
+  // el catálogo para que escribir en el campo mientras tanto no quede como un
+  // borrador sin comparar (con la base en `null` los botones seguían apagados).
+  renderDllPreference(plugin, plugin.path);
   syncMetaDisabled();
   await readMeta(plugin);
 }
@@ -3435,13 +3527,13 @@ function readExtended(): Record<string, unknown> | null {
   try {
     parsed = JSON.parse(text) as unknown;
   } catch {
-    setMetaStatus('Los campos propios deben ser JSON válido.', 'error');
+    setMetaStatus(t('ui.meta.extendedInvalidJson'), 'error');
     els.metaExtended.focus();
     return null;
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    setMetaStatus('Los campos propios deben ser un objeto JSON.', 'error');
+    setMetaStatus(t('ui.meta.extendedNotObject'), 'error');
     els.metaExtended.focus();
     return null;
   }
@@ -3455,7 +3547,7 @@ async function saveMeta(): Promise<void> {
   const id = els.metaId.value.trim();
   const name = els.metaName.value.trim();
   if (id === '' || name === '') {
-    setMetaStatus('El id y el nombre no pueden quedar vacíos.', 'error');
+    setMetaStatus(t('ui.meta.idNameRequired'), 'error');
     (id === '' ? els.metaId : els.metaName).focus();
     return;
   }
@@ -3465,7 +3557,7 @@ async function saveMeta(): Promise<void> {
 
   const { pluginName, dir, plugin, snapshot } = metaState;
   setMetaBusy(true);
-  setMetaStatus('Guardando el catálogo…', 'busy');
+  setMetaStatus(t('ui.meta.saving'), 'busy');
 
   try {
     const written = await client.plugins.meta.write({
@@ -3487,7 +3579,7 @@ async function saveMeta(): Promise<void> {
     metaState = { pluginName, dir, plugin, snapshot: written };
     renderMeta(written);
     markPluginHasMeta(dir);
-    setMetaStatus('Catálogo guardado.', 'ok');
+    setMetaStatus(t('ui.meta.saved'), 'ok');
   } catch (error) {
     if (isFxbApiError(error) && error.status === 409) {
       // Otra escritura (otra pestaña o el propio plugin) adelantó el archivo:
@@ -3534,7 +3626,7 @@ async function checkWizardMatch(
     });
     if (match && metaState && metaState.dir === plugin.path) {
       matchedWizard = match;
-      els.metaWizardTitle.textContent = `${match.name} · ${match.vendor || 'Desconocido'} (${match.genre || 'VST'}, ID: ${match.id})`;
+      els.metaWizardTitle.textContent = t('ui.wizard.matchSummary', { 0: match.name, 1: match.vendor || 'Desconocido', 2: match.genre || 'VST', 3: match.id });
       els.metaWizardBanner.hidden = false;
     }
   } catch {
@@ -3545,7 +3637,7 @@ async function checkWizardMatch(
 async function applyWizardToMeta(): Promise<void> {
   if (metaState === null || metaBusy) return;
   setMetaBusy(true);
-  setMetaStatus('Aplicando metadatos del wizard…', 'busy');
+  setMetaStatus(t('ui.wizard.applyingMeta'), 'busy');
   try {
     const updated = await client.wizards.applyMeta({
       pluginDir: metaState.dir,
@@ -3555,7 +3647,7 @@ async function applyWizardToMeta(): Promise<void> {
     metaState.snapshot = updated;
     renderMeta(updated);
     markPluginHasMeta(metaState.dir);
-    setMetaStatus('Metadatos del wizard aplicados correctamente al catálogo.', 'ok');
+    setMetaStatus(t('ui.wizard.metaApplied'), 'ok');
   } catch (error) {
     setMetaStatus(describeError(error), 'error');
   } finally {
@@ -3605,7 +3697,7 @@ let wizardsLoading = false;
 async function loadWizards(query: string): Promise<void> {
   if (wizardsLoading) return;
   wizardsLoading = true;
-  els.wizardsStatus.textContent = 'Cargando wizards…';
+  els.wizardsStatus.textContent = t('ui.wizard.loading');
   els.wizardsStatus.className = 'status busy';
   try {
     // El servidor ordena y filtra: `sort`/`dir` van de la mano del orden que el
@@ -3633,7 +3725,7 @@ async function loadWizards(query: string): Promise<void> {
     els.wizardsStatus.textContent = '';
     els.wizardsStatus.className = 'status';
   } catch (error) {
-    els.wizardsStatus.textContent = `Error cargando wizards: ${describeError(error)}`;
+    els.wizardsStatus.textContent = t('ui.wizard.loadError', { 0: describeError(error) });
     els.wizardsStatus.className = 'status error';
   } finally {
     wizardsLoading = false;
@@ -3646,7 +3738,7 @@ async function promptAndInstallFromWizard(
   folderName?: string,
 ): Promise<void> {
   if (!libraryRoot) {
-    const msg = 'Debes seleccionar y escanear primero una librería VFX activa para instalar instrumentos.';
+    const msg = t('ui.wizard.needLibrary');
     setStatus(msg, 'error');
     if (!els.wizards.hidden) {
       els.wizardsStatus.textContent = msg;
@@ -3670,11 +3762,11 @@ async function promptAndInstallFromWizard(
     }
   };
 
-  setTargetStatus('Elige el DLL original en el diálogo del explorador…', 'status busy');
+  setTargetStatus(t('ui.wizard.choosingDll'), 'status busy');
 
   const body: RequestBody<'/system/pick', 'post'> = {
     kind: 'file',
-    title: `Elige el archivo DLL original para "${wizardName}"`,
+    title: t('ui.wizard.chooseDllFor', { 0: wizardName }),
     extensions: ['dll'],
   };
   const start = parentDir(currentDll() || recentDlls[0] || '');
@@ -3684,11 +3776,11 @@ async function promptAndInstallFromWizard(
   if (picked === null) return;
   const chosenDll = picked[0];
   if (!chosenDll) {
-    setTargetStatus('Instalación cancelada: no se seleccionó ningún archivo DLL.', 'status');
+    setTargetStatus(t('ui.wizard.installCancelled'), 'status');
     return;
   }
 
-  setTargetStatus(`Instalando "${wizardName}" desde wizard certificado…`, 'status busy');
+  setTargetStatus(t('ui.wizard.installing', { 0: wizardName }), 'status busy');
 
   try {
     const res = await client.wizards.install({
@@ -3704,8 +3796,8 @@ async function promptAndInstallFromWizard(
     });
 
     const warnText = res.warnings.length > 0 ? ` [Aviso: ${res.warnings.join('; ')}]` : '';
-    const regText = res.registryFileCreated ? ' Claves de registro guardadas.' : '';
-    const successMsg = `Instrumento "${res.pluginName}" instalado con éxito desde Wizard certificado.${warnText}${regText}`;
+    const regText = res.registryFileCreated ? t('ui.wizard.registrySaved') : '';
+    const successMsg = t('ui.wizard.installed', { 0: res.pluginName, 1: warnText, 2: regText });
 
     setTargetStatus(successMsg, 'status ok');
 
@@ -3713,7 +3805,7 @@ async function promptAndInstallFromWizard(
     const plugins = await fetchPlugins();
     render(plugins);
   } catch (error) {
-    setTargetStatus(`Error al instalar instrumento: ${describeError(error)}`, 'status error');
+    setTargetStatus(t('ui.wizard.installError', { 0: describeError(error) }), 'status error');
   }
 }
 
@@ -3748,7 +3840,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     },
     {
       id: 'genre',
-      label: 'Género',
+      label: t('ui.wizard.genre'),
       getValue: (w) => w.genre || 'VST',
       searchable: false,
     },
@@ -3777,7 +3869,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     },
     {
       id: 'config',
-      label: 'Configuración',
+      label: t('ui.wizard.configuration'),
       sortable: false,
       searchable: false,
       getValue: (w) =>
@@ -3788,7 +3880,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
           w.isSynth ? 'Sinte' : null,
         ]
           .filter((flag): flag is string => flag !== null)
-          .join(', ') || 'Estándar',
+          .join(', ') || t('ui.wizard.standard'),
     },
   ],
   rowActions: {
@@ -3817,13 +3909,12 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     void loadWizards(wizardsQuery);
   },
   initialSort: { columnId: 'name', direction: 'asc' },
-  pageSize: 100,
   searchColumns: [],
-  emptyText: 'No se encontraron wizards coincidentes.',
+  emptyText: t('ui.wizard.noneMatch'),
 };
 
 function renderWizardsList(items: WizardListResponse['items'], total: number): void {
-  els.wizardsCount.textContent = `${items.length} de ${total}`;
+  els.wizardsCount.textContent = t('ui.wizard.countOf', { 0: items.length, 1: total });
 
   if (wizardsTableController === null) {
     wizardsTableController = mountTable(els.wizardsTable, wizardsTableView, items);
@@ -3863,7 +3954,7 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
   showPanel(els.pluginWizard, opener);
 
   els.pluginWizardPlugin.textContent = plugin.name;
-  els.pluginWizardStatus.textContent = 'Buscando wizard…';
+  els.pluginWizardStatus.textContent = t('ui.wizard.searching');
   els.pluginWizardStatus.className = 'status busy';
   els.pluginWizardEmpty.hidden = true;
   els.pluginWizardContent.hidden = true;
@@ -3895,10 +3986,10 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
     els.pluginWizardSource.textContent = match.sourcePath;
     els.pluginWizardVendor.textContent = match.vendor || '—';
     els.pluginWizardGenre.textContent = match.genre || '—';
-    els.pluginWizardId.textContent = `${match.id} (FourCC: ${fourCcFromId(match.id)})`;
+    els.pluginWizardId.textContent = t('ui.wizard.vstIdLine', { 0: match.id, 1: fourCcFromId(match.id) });
     els.pluginWizardDll.textContent = match.dllName || '—';
     els.pluginWizardDimensions.textContent = `${match.editorWidth} × ${match.editorHeight} px (${match.hasEditor ? 'Con GUI' : 'Sin GUI'})`;
-    els.pluginWizardParams.textContent = `${match.parameterCount} parámetros · ${match.programCount} programas`;
+    els.pluginWizardParams.textContent = t('ui.wizard.paramsLine', { 0: match.parameterCount, 1: match.programCount });
 
     const flagsKeys = Object.keys(match.flags ?? {});
     els.pluginWizardFlags.textContent = flagsKeys.length > 0 ? JSON.stringify(match.flags) : '—';
@@ -3911,10 +4002,10 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
       fileParts.push('Directorios:\n  ' + match.dirsToCopy.join('\n  '));
     }
     if (match.symlinks && match.symlinks.length > 0) {
-      fileParts.push('Enlaces simbólicos:\n  ' + match.symlinks.join('\n  '));
+      fileParts.push(t('msg.wizardSymlinks') + '\n  ' + match.symlinks.join('\n  '));
     }
     if (match.filesToCreate && Object.keys(match.filesToCreate).length > 0) {
-      fileParts.push('Archivos creados: ' + Object.keys(match.filesToCreate).join(', '));
+      fileParts.push(t('ui.wizard.filesCreated') + Object.keys(match.filesToCreate).join(', '));
     }
     if (fileParts.length > 0) {
       els.pluginWizardFilesWrap.hidden = false;
@@ -3948,13 +4039,13 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
     }
 
     els.pluginWizardVfxinfoLabel.textContent = plugin.hasVfxinfo
-      ? 'Recrear vfxinfo.txt desde Wizard'
-      : 'Crear vfxinfo.txt desde Wizard';
+      ? t('ui.wizard.recreateVfxinfo')
+      : t('ui.wizard.createVfxinfo');
 
     els.pluginWizardStatus.textContent = '';
     els.pluginWizardStatus.className = 'status';
   } catch (error) {
-    els.pluginWizardStatus.textContent = `Error al buscar wizard: ${describeError(error)}`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.searchError', { 0: describeError(error) });
     els.pluginWizardStatus.className = 'status error';
   }
 }
@@ -3975,13 +4066,13 @@ async function createWizardFromPlugin(): Promise<void> {
   const plugin = state.plugin;
   const pluginDir = (plugin.path ?? '').trim();
   if (pluginDir === '') {
-    els.pluginWizardStatus.textContent = 'No se conoce la carpeta del plugin; vuelve a escanear la librería';
+    els.pluginWizardStatus.textContent = t('ui.wizard.unknownFolder');
     els.pluginWizardStatus.className = 'status error';
     return;
   }
 
   els.pluginWizardCreateBtn.disabled = true;
-  els.pluginWizardStatus.textContent = 'Creando wizard desde el plugin…';
+  els.pluginWizardStatus.textContent = t('ui.wizard.creating');
   els.pluginWizardStatus.className = 'status busy';
   try {
     const result = await client.wizards.createFromPlugin({ pluginDir });
@@ -3990,10 +4081,10 @@ async function createWizardFromPlugin(): Promise<void> {
     plugin.wizardId = result.record.id;
     await openPluginWizard(plugin);
     const warnings = result.warnings.length > 0 ? ` Avisos: ${result.warnings.join(' · ')}` : '';
-    els.pluginWizardStatus.textContent = `Wizard creado en ${result.wizardPath}.${warnings}`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.created', { 0: result.wizardPath, 1: warnings });
     els.pluginWizardStatus.className = 'status ok';
   } catch (error) {
-    els.pluginWizardStatus.textContent = `No se pudo crear el wizard: ${describeError(error)}`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.createError', { 0: describeError(error) });
     els.pluginWizardStatus.className = 'status error';
   } finally {
     els.pluginWizardCreateBtn.disabled = false;
@@ -4078,7 +4169,7 @@ els.batchCancel.addEventListener('click', () => {
   if (batchController === null || batchController.signal.aborted) return;
   batchController.abort();
   els.batchCancel.disabled = true;
-  setBatchStatus('Cancelando el lote…', 'busy');
+  setBatchStatus(t('ui.batch.cancelling'), 'busy');
 });
 
 els.batchResume.addEventListener('click', () => {
@@ -4160,12 +4251,12 @@ els.pluginWizardVfxinfoBtn.addEventListener('click', async () => {
   const { plugin, wizard } = pluginWizardState;
   const confirmed = plugin.hasVfxinfo
     ? window.confirm(
-        `¿Reemplazar vfxinfo.txt existente en "${plugin.name}" usando datos del wizard? Se creará respaldo vfxinfo.tx_.`,
+        t('ui.wizard.replaceVfxinfo', { 0: plugin.name }),
       )
     : true;
   if (!confirmed) return;
 
-  els.pluginWizardStatus.textContent = 'Generando vfxinfo.txt…';
+  els.pluginWizardStatus.textContent = t('ui.wizard.generatingVfxinfo');
   els.pluginWizardStatus.className = 'status busy';
   try {
     const res = await client.wizards.createVfxinfo({
@@ -4177,10 +4268,10 @@ els.pluginWizardVfxinfoBtn.addEventListener('click', async () => {
     els.pluginWizardVfxinfoLabel.textContent = 'Recrear vfxinfo.txt desde Wizard';
     const data = await fetchPlugins();
     render(data);
-    els.pluginWizardStatus.textContent = `vfxinfo.txt generado correctamente${res.backedUp ? ' (respaldo .tx_ creado)' : ''}.`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.vfxinfoGenerated', { 0: res.backedUp ? ' (respaldo .tx_ creado)' : '' });
     els.pluginWizardStatus.className = 'status ok';
   } catch (error) {
-    els.pluginWizardStatus.textContent = `No se pudo generar vfxinfo.txt: ${describeError(error)}`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.vfxinfoError', { 0: describeError(error) });
     els.pluginWizardStatus.className = 'status error';
   }
 });
@@ -4188,7 +4279,7 @@ els.pluginWizardVfxinfoBtn.addEventListener('click', async () => {
 els.pluginWizardApplyBtn.addEventListener('click', async () => {
   if (!pluginWizardState) return;
   const { plugin, wizard } = pluginWizardState;
-  els.pluginWizardStatus.textContent = 'Aplicando metadatos al catálogo…';
+  els.pluginWizardStatus.textContent = t('ui.wizard.applyingMetaShort');
   els.pluginWizardStatus.className = 'status busy';
   try {
     await client.wizards.applyMeta({
@@ -4198,10 +4289,10 @@ els.pluginWizardApplyBtn.addEventListener('click', async () => {
     });
     markPluginHasMeta(plugin.path);
     els.pluginWizardStatus.textContent =
-      'Metadatos del wizard aplicados correctamente al catálogo (fxbLoader.meta.json).';
+      t('ui.wizard.metaAppliedFile');
     els.pluginWizardStatus.className = 'status ok';
   } catch (error) {
-    els.pluginWizardStatus.textContent = `No se pudieron aplicar metadatos: ${describeError(error)}`;
+    els.pluginWizardStatus.textContent = t('ui.wizard.metaApplyError', { 0: describeError(error) });
     els.pluginWizardStatus.className = 'status error';
   }
 });
@@ -4252,9 +4343,9 @@ els.importButton.addEventListener('click', () => {
 
 els.importCancel.addEventListener('click', () => {
   if (importController === null || importController.signal.aborted) return;
-  importController.abort(new Error('Cancelado por el usuario'));
+  importController.abort(new Error(t('ui.banks.cancelledByUser')));
   els.importCancel.disabled = true;
-  setBanksStatus('Cancelando la importación…', 'busy');
+  setBanksStatus(t('ui.banks.cancellingImport'), 'busy');
 });
 
 els.exportButton.addEventListener('click', () => {
@@ -4274,18 +4365,20 @@ const STORAGE_THEME = 'fxbLoader.theme';
 type ThemeMode = 'auto' | 'dark' | 'light';
 
 const themeIcons = [...els.themeToggle.querySelectorAll<SVGElement>('[data-icon]')];
+// Los radios de Ajustes son otra vista del mismo estado, no un segundo tema.
+const themeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="theme-mode"]')];
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
 function applyTheme(mode: ThemeMode): void {
   if (mode === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-    els.themeToggle.title = 'Tema: Oscuro (clic para cambiar a Claro)';
+    els.themeToggle.title = t('title.themeDark');
   } else if (mode === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
-    els.themeToggle.title = 'Tema: Claro (clic para cambiar a Sistema)';
+    els.themeToggle.title = t('title.themeLight');
   } else {
     document.documentElement.removeAttribute('data-theme');
-    els.themeToggle.title = 'Tema: Sistema (clic para cambiar a Oscuro)';
+    els.themeToggle.title = t('title.themeAuto');
   }
 
   // Sol y luna son excluyentes. En «Sistema» se enseña el dibujo del tema que
@@ -4294,6 +4387,9 @@ function applyTheme(mode: ThemeMode): void {
   for (const icon of themeIcons) {
     icon.toggleAttribute('hidden', icon.dataset['icon'] !== shown);
   }
+
+  // Ajustes enseña siempre el modo vigente, también al recargar.
+  for (const input of themeInputs) input.checked = input.value === mode;
 }
 
 /**
@@ -4306,11 +4402,14 @@ function readTheme(): ThemeMode {
   return stored === 'dark' || stored === 'light' ? stored : 'auto';
 }
 
+function setTheme(mode: ThemeMode): void {
+  localStorage.setItem(STORAGE_THEME, mode);
+  applyTheme(mode);
+}
+
 function cycleTheme(): void {
   const current = readTheme();
-  const next: ThemeMode = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
-  localStorage.setItem(STORAGE_THEME, next);
-  applyTheme(next);
+  setTheme(current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto');
 }
 
 applyTheme(readTheme());
@@ -4321,6 +4420,12 @@ prefersDark.addEventListener('change', () => {
 });
 
 els.themeToggle.addEventListener('click', cycleTheme);
+
+for (const input of themeInputs) {
+  input.addEventListener('change', () => {
+    if (input.checked) setTheme(input.value as ThemeMode);
+  });
+}
 
 let importPackageInspection: LibraryInspectPackageResponse | null = null;
 let importPackageBusy = false;
@@ -4401,15 +4506,14 @@ function customPluginListView(emptyText: string): TableView<string> {
     ],
     getRowId: (line) => line,
     initialSort: { columnId: 'text', direction: 'asc' },
-    pageSize: 100,
     emptyText,
   };
 }
 
-const customPluginExportsView = customPluginListView('Sin símbolos exportados que mostrar.');
-const customPluginIssuesView = customPluginListView('Sin incidencias en la inspección.');
-const customPluginCreatedPathsView = customPluginListView('Sin rutas que mostrar.');
-const customPluginCreatedWarningsView = customPluginListView('Sin advertencias.');
+const customPluginExportsView = customPluginListView(t('ui.wizard.noExports'));
+const customPluginIssuesView = customPluginListView(t('ui.wizard.noIssues'));
+const customPluginCreatedPathsView = customPluginListView(t('ui.wizard.noPaths'));
+const customPluginCreatedWarningsView = customPluginListView(t('ui.wizard.noWarnings'));
 
 /** Tablas montadas de esas listas, por su contenedor. */
 const customPluginLists = new Map<HTMLElement, TableController<string>>();
@@ -4509,13 +4613,24 @@ function openCaptureDrawer(opener?: HTMLElement): void {
     if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = true;
     if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = true;
     captureStagingLoaded = false;
+    capturePreExistingCount = null;
+    capturePreExistingWarning = '';
+    capturePreExistingFiles = [];
+    captureStagedPreExisting = [];
+    captureRestorablePreExisting = 0;
+    captureRestorableFiles = [];
+    renderPreExistingButtons();
+    if (els.capturePreExistingSummary) {
+      els.capturePreExistingSummary.textContent = '';
+      els.capturePreExistingSummary.hidden = true;
+    }
     captureSessionInitialized = true;
     if (els.captureLog) els.captureLog.replaceChildren();
     setCaptureStatus('');
   }
 
   if (captureTaskId) {
-    setCaptureBusy('Recuperando estado del escaneo…', true);
+    setCaptureBusy(t('ui.capture.recovering'), true);
     if (captureTaskPoll === null) {
       captureTaskPoll = setInterval(() => void pollCaptureTask(), 700);
     }
@@ -4541,7 +4656,7 @@ function startCaptureTaskPolling(taskId: string, kind: 'start' | 'finish'): void
   captureTaskPoll = null;
   if (els.captureProgressWrap) els.captureProgressWrap.hidden = false;
   if (els.captureProgressNative) els.captureProgressNative.removeAttribute('value');
-  setCaptureBusy('Iniciando captura…', true);
+  setCaptureBusy(t('ui.capture.starting'), true);
   if (els.captureStartBtn) els.captureStartBtn.disabled = true;
   if (els.captureFinishBtn) els.captureFinishBtn.disabled = true;
   captureTaskPoll = setInterval(() => void pollCaptureTask(), 700);
@@ -4565,7 +4680,11 @@ async function pollCaptureTask(): Promise<void> {
     if (progressChanged && (now - captureLastProgressLogAt >= 1200 || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) {
       const location = task.phase === 'registry' ? task.currentRegistryRoot : (task.currentPath || task.currentRoot);
       const detail = task.phase === 'registry'
-        ? `${task.registryRootsCompleted}/${task.registryRootsTotal} raíces · ${task.message}`
+        ? t('msg.captureProgressRoots', {
+            0: task.registryRootsCompleted,
+            1: task.registryRootsTotal,
+            2: task.message,
+          })
         : `${Number(task.filesFound).toLocaleString()} archivos · ${scannedEntries.toLocaleString()} entradas · ${task.message}`;
       captureLog(location ? `${detail} · ${location}` : detail, task.status === 'running' || task.status === 'cancelling' ? 'busy' : 'info');
       captureLastProgressLogAt = now;
@@ -4583,8 +4702,8 @@ async function pollCaptureTask(): Promise<void> {
     if (task.status === 'completed' && kind === 'start') {
       captureSnapshotBeforeId = task.result?.snapshotId ?? null;
       if (!captureSnapshotBeforeId) {
-        captureLog('La tarea terminó sin devolver el ID del snapshot.', 'error');
-        setCaptureStatus('No se recibió el identificador del snapshot.', 'error');
+        captureLog(t('ui.capture.noSnapshotId'), 'error');
+        setCaptureStatus(t('ui.capture.noSnapshotId2'), 'error');
         return;
       }
       if (els.captureSnapshotBefore) els.captureSnapshotBefore.textContent = captureSnapshotBeforeId;
@@ -4594,11 +4713,11 @@ async function pollCaptureTask(): Promise<void> {
       els.captureStep1Status.textContent = 'Completado';
       els.captureStep1Status.className = 'capture-step-badge ok';
       els.captureFinishBtn.disabled = false;
-      captureLog(`Snapshot inicial guardado: ${captureSnapshotBeforeId} · ${task.filesFound.toLocaleString()} archivos`, 'ok');
-      setCaptureStatus('Snapshot guardado. Cargando el informe completo para que puedas revisarlo…', 'busy');
+      captureLog(t('ui.capture.snapshotSaved', { 0: captureSnapshotBeforeId, 1: task.filesFound.toLocaleString() }), 'ok');
+      setCaptureStatus(t('ui.capture.snapshotLoading'), 'busy');
       void loadCaptureSnapshot(captureSnapshotBeforeId).then(() => {
         if (captureSnapshotText) {
-          setCaptureStatus('Snapshot inicial completado. El resultado está listo para revisar antes de instalar el plugin.', 'ok');
+          setCaptureStatus(t('ui.capture.snapshotReady'), 'ok');
         }
       });
     } else if (task.status === 'completed' && kind === 'finish') {
@@ -4611,9 +4730,10 @@ async function pollCaptureTask(): Promise<void> {
       els.captureFinishInfo.hidden = false;
       els.captureStep2Status.textContent = 'Completado';
       els.captureStep2Status.className = 'capture-step-badge ok';
-      els.capturePackageBtn.disabled = false;
-      captureLog(`Diff listo: +${task.result?.filesAdded ?? 0} archivos, ${task.result?.filesModified ?? 0} modificados, ${(task.result?.registryAdded ?? 0) + (task.result?.registryModified ?? 0)} cambios de registro`, 'ok');
-      setCaptureStatus('Captura finalizada. Prepara el staging para revisar los archivos.', 'ok');
+      els.      capturePackageBtn.disabled = false;
+      void refreshCapturePreExisting();
+      captureLog(t('ui.capture.diffReady', { 0: task.result?.filesAdded ?? 0, 1: task.result?.filesModified ?? 0, 2: (task.result?.registryAdded ?? 0) + (task.result?.registryModified ?? 0) }), 'ok');
+      setCaptureStatus(t('ui.capture.finished'), 'ok');
     } else if (task.status === 'cancelled') {
       if (kind === 'start') {
         els.captureStartBtn.disabled = false;
@@ -4622,24 +4742,24 @@ async function pollCaptureTask(): Promise<void> {
       } else {
         els.captureFinishBtn.disabled = captureSnapshotBeforeId === null;
       }
-      captureLog('Escaneo detenido por el usuario. No se guardó un snapshot parcial.', 'info');
-      setCaptureStatus('Escaneo detenido. Puedes volver a intentarlo cuando quieras.', 'info');
+      captureLog(t('ui.capture.stopped'), 'info');
+      setCaptureStatus(t('ui.capture.stoppedRetry'), 'info');
     } else {
       if (kind === 'start') els.captureStartBtn.disabled = false;
       else els.captureFinishBtn.disabled = captureSnapshotBeforeId === null;
-      const message = task.error || 'La captura no pudo completarse.';
-      captureLog(`Error en captura: ${message}`, 'error');
-      setCaptureStatus(`Error: ${message}`, 'error');
+      const message = task.error || t('ui.capture.failed');
+      captureLog(t('ui.capture.error', { 0: message }), 'error');
+      setCaptureStatus(t('ui.capture.errorShort', { 0: message }), 'error');
     }
   } catch (error) {
     const message = describeError(error);
     const now = Date.now();
     if (now - captureLastPollErrorAt > 5000) {
-      captureLog(`No se pudo actualizar el progreso; se reintentará: ${message}`, 'error');
+      captureLog(t('ui.capture.progressRetry', { 0: message }), 'error');
       captureLastPollErrorAt = now;
     }
-    setCaptureStatus('Sin comunicación con el progreso; se reintentará. La tarea sigue activa y puedes detenerla.', 'error');
-    setCaptureBusy('Esperando respuesta del servidor…', true);
+    setCaptureStatus(t('ui.capture.progressOffline'), 'error');
+    setCaptureBusy(t('ui.capture.waitingServer'), true);
   } finally {
     capturePollInFlight = false;
   }
@@ -4648,24 +4768,24 @@ async function pollCaptureTask(): Promise<void> {
 async function stopCaptureTask(): Promise<void> {
   if (!captureTaskId) return;
   const taskId = captureTaskId;
-  setCaptureBusy('Deteniendo; espera un momento…', true, true);
-  captureLog('Solicitud de parada enviada…', 'info');
+  setCaptureBusy(t('ui.capture.stopping'), true, true);
+  captureLog(t('ui.capture.stopSent'), 'info');
   try {
     const response = await fetch(`/capture/tasks/${encodeURIComponent(taskId)}/cancel`, { method: 'POST' });
     if (!response.ok) throw new Error(await response.text());
     renderCaptureTask(await response.json());
   } catch (error) {
     if (els.captureStopBtn) els.captureStopBtn.disabled = false;
-    captureLog(`No se pudo detener el escaneo: ${describeError(error)}`, 'error');
-    setCaptureStatus(`No se pudo detener: ${describeError(error)}`, 'error');
+    captureLog(t('ui.capture.stopError', { 0: describeError(error) }), 'error');
+    setCaptureStatus(t('ui.capture.stopErrorShort', { 0: describeError(error) }), 'error');
   }
 }
 
 async function captureStart(): Promise<void> {
   try {
-    captureLog('Solicitando snapshot inicial…', 'busy');
-    setCaptureStatus('Preparando el escaneo del sistema…', 'busy');
-    setCaptureBusy('Creando tarea de escaneo…', true);
+    captureLog(t('ui.capture.requestingSnapshot'), 'busy');
+    setCaptureStatus(t('ui.capture.preparingScan'), 'busy');
+    setCaptureBusy(t('ui.capture.creatingTask'), true);
     const response = await fetch('/capture/start', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
     });
@@ -4674,8 +4794,8 @@ async function captureStart(): Promise<void> {
     startCaptureTaskPolling(task.taskId, 'start');
   } catch (error) {
     const message = describeError(error);
-    captureLog(`Error al iniciar: ${message}`, 'error');
-    setCaptureStatus(`Error: ${message}`, 'error');
+    captureLog(t('ui.capture.startError', { 0: message }), 'error');
+    setCaptureStatus(t('ui.capture.errorShort', { 0: message }), 'error');
     setCaptureBusy('', false);
     els.captureStartBtn.disabled = false;
   }
@@ -4683,13 +4803,13 @@ async function captureStart(): Promise<void> {
 
 async function captureFinish(): Promise<void> {
   if (!captureSnapshotBeforeId) {
-    setCaptureStatus('No hay snapshot inicial', 'error');
+    setCaptureStatus(t('ui.capture.noInitialSnapshot'), 'error');
     return;
   }
   try {
-    captureLog('Solicitando snapshot final y comparación…', 'busy');
-    setCaptureStatus('Preparando el escaneo final…', 'busy');
-    setCaptureBusy('Preparando escaneo final…', true);
+    captureLog(t('ui.capture.requestingFinal'), 'busy');
+    setCaptureStatus(t('ui.capture.preparingFinal'), 'busy');
+    setCaptureBusy(t('ui.capture.preparingFinal2'), true);
     const response = await fetch('/capture/finish', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ snapshotIdBefore: captureSnapshotBeforeId }),
@@ -4699,8 +4819,8 @@ async function captureFinish(): Promise<void> {
     startCaptureTaskPolling(task.taskId, 'finish');
   } catch (error) {
     const message = describeError(error);
-    captureLog(`Error al finalizar captura: ${message}`, 'error');
-    setCaptureStatus(`Error: ${message}`, 'error');
+    captureLog(t('ui.capture.finishError', { 0: message }), 'error');
+    setCaptureStatus(t('ui.capture.errorShort', { 0: message }), 'error');
     setCaptureBusy('', false);
     els.captureFinishBtn.disabled = false;
   }
@@ -4708,12 +4828,12 @@ async function captureFinish(): Promise<void> {
 
 async function capturePackage(): Promise<void> {
   if (!captureDiffId) {
-    setCaptureStatus('No hay diff generado', 'error');
+    setCaptureStatus(t('ui.capture.noDiff'), 'error');
     return;
   }
   try {
-    captureLog('Copiando archivos al staging editable...', 'busy');
-    setCaptureStatus('Preparando staging...', 'busy');
+    captureLog(t('ui.capture.copyingStaging'), 'busy');
+    setCaptureStatus(t('ui.capture.preparingStaging'), 'busy');
     els.capturePackageBtn.disabled = true;
     const res = await fetch('/capture/package', {
       method: 'POST',
@@ -4726,64 +4846,459 @@ async function capturePackage(): Promise<void> {
     els.captureStep3Status.className = 'capture-step-badge ok';
     els.captureVmachineBtn.disabled = false;
     await captureRefreshStaging();
-    captureLog(`Staging preparado (${data.filesCopied || 0} archivos)`, 'ok');
-    setCaptureStatus('Staging listo. Revisa y elimina archivos innecesarios.', 'ok');
+    const preExisting = Number(data.preExistingFiles ?? 0);
+    captureLog(
+      preExisting > 0
+        ? t('ui.capture.stagingReadyPre', { 0: data.filesCopied || 0, 1: preExisting })
+        : t('ui.capture.stagingReady', { 0: data.filesCopied || 0 }),
+      'ok',
+    );
+    // Sin snapshot inicial el staging puede venir incompleto: no es un error,
+    // pero conviene verlo antes de empaquetar.
+    for (const warning of (data.warnings ?? []) as string[]) captureLog(warning, 'info');
+    setCaptureStatus(t('ui.capture.stagingReview'), 'ok');
   } catch (error) {
     els.capturePackageBtn.disabled = false;
     const msg = describeError(error);
-    captureLog(`Error al preparar staging: ${msg}`, 'error');
-    setCaptureStatus(`Error: ${msg}`, 'error');
+    captureLog(t('ui.capture.stagingError', { 0: msg }), 'error');
+    setCaptureStatus(t('ui.capture.errorShort', { 0: msg }), 'error');
+  }
+}
+
+/** Pinta el recuento del paso 4 con el estado actual de la casilla. */
+function renderCapturePreExistingSummary(): void {
+  if (!els.capturePreExistingSummary) return;
+  const include = els.captureIncludeExisting.checked;
+  const text = formatPreExistingSummary({
+    count: capturePreExistingCount,
+    include,
+    warning: capturePreExistingWarning,
+  });
+  els.capturePreExistingSummary.textContent = text;
+  els.capturePreExistingSummary.hidden = text === '';
+  renderCapturePreExistingList(include);
+}
+
+/** Tope de filas del desplegable: más que eso no se lee, se dice cuántas faltan. */
+const PRE_EXISTING_LIST_LIMIT = 200;
+
+/**
+ * Despliega, en el paso 4, qué archivos previos van a entrar además del
+ * recuento. La lista sale del mismo `GET /capture/pre-existing/:diffId` que el
+ * número, así que no puede decir algo distinto de lo que se empaquetaría, y ya
+ * descuenta lo que se haya quitado del staging. Con la casilla desmarcada se
+ * esconde: lo que se enseña es lo que se incluye.
+ */
+function renderCapturePreExistingList(include: boolean): void {
+  const details = els.capturePreExistingDetails;
+  if (!details) return;
+  const files = capturePreExistingFiles;
+  const show = include && files.length > 0 && capturePreExistingWarning === '';
+  details.hidden = !show;
+  if (!show) {
+    els.capturePreExistingList?.replaceChildren();
+    return;
+  }
+  if (els.capturePreExistingDetailsLabel) {
+    els.capturePreExistingDetailsLabel.textContent = preExistingListLabel(files.length);
+  }
+  const list = els.capturePreExistingList;
+  if (!list) return;
+  list.replaceChildren();
+  const shown = files.slice(0, PRE_EXISTING_LIST_LIMIT);
+  for (const file of shown) {
+    const item = document.createElement('li');
+    item.className = 'capture-pre-existing-item';
+    // Relativa a la unidad de origen (`Program Files/VstPlugins/P8.dll`): se
+    // enseña tal cual llega, sin recortar, para poder buscarla en el disco.
+    const name = document.createElement('span');
+    name.className = 'capture-pre-existing-path';
+    name.textContent = file;
+    name.title = file;
+    item.append(name);
+    // Cada fila se puede abrir en el Explorador: la ruta relativa no le dice
+    // nada al navegador, así que la resuelve el servidor contra el snapshot.
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'capture-pre-existing-open';
+    open.textContent = 'Abrir';
+    open.title = revealPreExistingLabel(file);
+    open.setAttribute('aria-label', open.title);
+    open.addEventListener('click', async () => {
+      await captureRevealPreExisting(file);
+    });
+    item.append(open);
+    list.append(item);
+  }
+  if (files.length > shown.length) {
+    const rest = document.createElement('li');
+    rest.className = 'note';
+    rest.textContent = t('ui.capture.moreFiles', { 0: files.length - shown.length });
+    list.append(rest);
+  }
+}
+
+/**
+ * Abre un previo del paso 4 en el Explorador de Windows con el archivo
+ * resaltado (`POST /capture/pre-existing/:diffId/reveal?path=`). El servidor
+ * resuelve la ruta relativa contra el snapshot y la valida antes de abrir nada.
+ */
+async function captureRevealPreExisting(file: string): Promise<void> {
+  if (captureDiffId === null) return;
+  const diffId = captureDiffId;
+  try {
+    const res = await fetch(
+      `/capture/pre-existing/${encodeURIComponent(diffId)}/reveal?path=${encodeURIComponent(file)}`,
+      { method: 'POST' },
+    );
+    if (!res.ok) throw new Error(await res.text());
+    const data = (await res.json()) as { opened?: unknown };
+    if (captureDiffId !== diffId) return;
+    const opened = typeof data.opened === 'string' ? data.opened : '';
+    captureLog(formatRevealPreExistingResult(file, opened), 'ok');
+  } catch (error) {
+    captureLog(t('ui.capture.revealError', { 0: file, 1: describeError(error) }), 'error');
+  }
+}
+
+/**
+ * Abre en el Explorador un archivo del staging (`POST
+ * /capture/staging/:diffId/reveal?path=`). El servidor comprueba que la ruta
+ * siga dentro del staging y que el archivo exista antes de abrir la ventana.
+ */
+async function captureRevealStagingFile(file: string): Promise<void> {
+  if (captureDiffId === null) return;
+  const diffId = captureDiffId;
+  try {
+    const res = await fetch(
+      `/capture/staging/${encodeURIComponent(diffId)}/reveal?path=${encodeURIComponent(file)}`,
+      { method: 'POST' },
+    );
+    if (!res.ok) throw new Error(await res.text());
+    const data = (await res.json()) as { opened?: unknown };
+    if (captureDiffId !== diffId) return;
+    const opened = typeof data.opened === 'string' ? data.opened : '';
+    captureLog(formatRevealPreExistingResult(file, opened), 'ok');
+  } catch (error) {
+    captureLog(t('ui.capture.revealError', { 0: file, 1: describeError(error) }), 'error');
+  }
+}
+
+/**
+ * Consulta cuántos archivos previos del snapshot inicial entrarían en el
+ * paquete. Se hace antes de generar y se repite al revisar el staging, porque
+ * lo que se quite de ahí tampoco llega al banco.
+ */
+async function refreshCapturePreExisting(): Promise<void> {
+  if (captureDiffId === null) return;
+  const diffId = captureDiffId;
+  try {
+    const res = await fetch(`/capture/pre-existing/${encodeURIComponent(diffId)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    // Si mientras tanto llegó otro diff, su recuento no se puede pisar.
+    if (captureDiffId !== diffId) return;
+    const count = Number(data.count);
+    capturePreExistingCount = Number.isFinite(count) ? count : null;
+    capturePreExistingFiles = Array.isArray(data.files)
+      ? (data.files as unknown[]).filter((file): file is string => typeof file === 'string')
+      : [];
+    const restorable = Number(data.restorable);
+    captureRestorablePreExisting = Number.isFinite(restorable) && restorable > 0 ? restorable : 0;
+    captureRestorableFiles = Array.isArray(data.restorableFiles)
+      ? (data.restorableFiles as unknown[]).filter((file): file is string => typeof file === 'string')
+      : [];
+    const warnings = Array.isArray(data.warnings) ? (data.warnings as unknown[]) : [];
+    capturePreExistingWarning = warnings.length > 0 ? String(warnings[0]) : '';
+    renderCapturePreExistingSummary();
+    renderPreExistingButtons();
+  } catch (error) {
+    if (captureDiffId !== diffId) return;
+    capturePreExistingCount = null;
+    capturePreExistingWarning = '';
+    capturePreExistingFiles = [];
+    captureRestorablePreExisting = 0;
+    captureRestorableFiles = [];
+    renderCapturePreExistingSummary();
+    renderPreExistingButtons();
+    captureLog(t('ui.capture.snapshotQueryError', { 0: describeError(error) }), 'error');
   }
 }
 
 async function captureRefreshStaging(): Promise<void> {
   if (!captureDiffId) return;
   try {
+    // Primero el snapshot inicial: el listado marca qué archivos ya existían
+    // antes de la captura, y ese dato manda también para el recuento del paso 4.
+    await refreshCapturePreExisting();
     const res = await fetch(`/capture/staging/${captureDiffId}`);
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     const files: string[] = data.files || [];
+    const entries = classifyStagingFiles(files, capturePreExistingFiles);
+    captureStagedPreExisting = entries.filter((entry) => entry.preExisting).map((entry) => entry.path);
     if (els.captureStagingCount) els.captureStagingCount.textContent = String(files.length);
+    renderPreExistingButtons();
     els.captureStagingInfo.hidden = false;
     if (els.captureStagingList) {
       els.captureStagingList.replaceChildren();
       if (files.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'note';
-        empty.textContent = 'Staging vacío';
+        empty.textContent = t('ui.capture.stagingEmpty');
         els.captureStagingList.append(empty);
       } else {
-        for (const file of files.slice(0, 150)) {
+        const shown = entries.slice(0, 150);
+        for (const entry of shown) {
           const item = document.createElement('div');
           item.className = 'capture-staging-item';
+          if (entry.preExisting) item.classList.add('is-pre-existing');
           const name = document.createElement('span');
           name.className = 'capture-staging-name';
-          name.textContent = file;
-          name.title = file;
+          name.textContent = entry.path;
+          name.title = entry.path;
+          item.append(name);
+          if (entry.preExisting) {
+            const badge = document.createElement('span');
+            badge.className = 'capture-staging-badge';
+            badge.textContent = t('ui.capture.preExistingBadge');
+            badge.title = t('ui.capture.preExistingTitle');
+            item.append(badge);
+          }
+          // Cada archivo del staging se puede abrir en el Explorador para
+          // revisarlo antes de generar el banco, igual que los previos del
+          // paso 4. El servidor resuelve la ruta dentro del staging.
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.className = 'capture-staging-open';
+          open.textContent = 'Abrir';
+          open.title = revealPreExistingLabel(entry.path);
+          open.setAttribute('aria-label', open.title);
+          open.addEventListener('click', async () => {
+            await captureRevealStagingFile(entry.path);
+          });
+          item.append(open);
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.className = 'capture-staging-remove';
           remove.textContent = '×';
-          remove.title = 'Eliminar del staging';
-          remove.setAttribute('aria-label', `Eliminar ${file} del staging`);
+          remove.title = t('ui.capture.removeFromStaging');
+          remove.setAttribute('aria-label', t('ui.capture.removeFromStagingPath', { 0: entry.path }));
           remove.addEventListener('click', async () => {
             try {
-              const response = await fetch(`/capture/staging/${captureDiffId}?path=${encodeURIComponent(file)}`, { method: 'DELETE' });
+              const response = await fetch(`/capture/staging/${captureDiffId}?path=${encodeURIComponent(entry.path)}`, { method: 'DELETE' });
               if (!response.ok) throw new Error(await response.text());
-              captureLog(`Eliminado del staging: ${file}`, 'info');
+              captureLog(t('ui.capture.removedFromStaging', { 0: entry.path }), 'info');
               await captureRefreshStaging();
             } catch (error) {
-              captureLog(`Error al eliminar: ${describeError(error)}`, 'error');
+              captureLog(t('ui.capture.removeError', { 0: describeError(error) }), 'error');
             }
           });
-          item.append(name, remove);
+          item.append(remove);
           els.captureStagingList.append(item);
         }
+        // El recorte de la lista no puede ocultar archivos que sí se van a
+        // empaquetar: si sobran, se dicen.
+        if (entries.length > shown.length) {
+          const rest = document.createElement('div');
+          rest.className = 'note';
+          rest.textContent = t('ui.capture.moreStaging', { 0: entries.length - shown.length });
+          els.captureStagingList.append(rest);
+        }
       }
+      renderRestorableStagingEntries();
     }
   } catch (error) {
-    captureLog(`Error al cargar staging: ${describeError(error)}`, 'error');
+    captureLog(t('ui.capture.stagingLoadError', { 0: describeError(error) }), 'error');
   }
+}
+
+/**
+ * Filas de los previos que se quitaron con la ×: siguen en el manifiesto y el
+ * snapshot los tiene, así que cada una se puede devolver por separado sin
+ * recuperar las demás. Van al final de la lista, atenuadas y tachadas, para no
+ * confundirlas con lo que el paquete sí llevaría.
+ */
+function renderRestorableStagingEntries(): void {
+  const list = els.captureStagingList;
+  if (!list || captureRestorableFiles.length === 0) return;
+  const note = document.createElement('div');
+  note.className = 'note';
+  note.textContent = removedStagingNote(captureRestorableFiles.length);
+  list.append(note);
+  for (const file of captureRestorableFiles) {
+    const item = document.createElement('div');
+    item.className = 'capture-staging-item is-removed';
+    const name = document.createElement('span');
+    name.className = 'capture-staging-name';
+    name.textContent = file;
+    name.title = file;
+    item.append(name);
+    const badge = document.createElement('span');
+    badge.className = 'capture-staging-badge';
+    badge.textContent = 'quitado';
+    badge.title = t('ui.capture.removedPackage');
+    item.append(badge);
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'capture-staging-restore';
+    restore.textContent = '↺';
+    restore.title = t('ui.capture.restoreFile', { 0: file });
+    restore.setAttribute('aria-label', restoreStagedFileLabel(file));
+    restore.addEventListener('click', async () => {
+      await captureRestoreStagedFile(file);
+    });
+    item.append(restore);
+    list.append(item);
+  }
+}
+
+/**
+ * Devuelve al staging un único previo quitado con la ×, sin tocar los demás:
+ * `POST /capture/staging/:diffId/restore?path=` y refresco del listado.
+ */
+async function captureRestoreStagedFile(file: string): Promise<void> {
+  if (captureDiffId === null) return;
+  const diffId = captureDiffId;
+  setCaptureStatus(t('ui.capture.restoringFile', { 0: file }), 'busy');
+  try {
+    const response = await fetch(
+      `/capture/staging/${encodeURIComponent(diffId)}/restore?path=${encodeURIComponent(file)}`,
+      { method: 'POST' },
+    );
+    if (!response.ok) throw new Error(await response.text());
+    const data = (await response.json()) as { restored?: unknown; missing?: unknown };
+    if (captureDiffId !== diffId) return;
+    const missing = Array.isArray(data.missing) ? data.missing.map(String) : [];
+    const outcome =
+      Number(data.restored) === 1
+        ? 'restored'
+        : missing.some((entry) => entry.replaceAll('\\', '/') === file.replaceAll('\\', '/'))
+          ? 'missing'
+          : 'present';
+    const summary = formatRestoreStagedFileResult(file, outcome);
+    captureLog(summary, outcome === 'missing' ? 'error' : 'ok');
+    setCaptureStatus(
+      outcome === 'restored' ? t('ui.capture.restoredCounts', { 0: summary }) : summary,
+      outcome === 'missing' ? 'error' : 'ok',
+    );
+  } catch (error) {
+    captureLog(t('ui.capture.restoreError', { 0: file, 1: describeError(error) }), 'error');
+    setCaptureStatus(t('ui.capture.restoreFailed', { 0: file }), 'error');
+  }
+  await captureRefreshStaging();
+}
+
+/**
+ * Los dos botones de previos son independientes: «Quitar» aparece mientras
+ * queden previos en el staging y «Recuperar» siempre que el snapshot pueda
+ * devolver alguno de los quitados, aunque otros sigan ahí. Así se recupera lo
+ * borrado sin tener que vaciar el staging entero.
+ */
+function renderPreExistingButtons(): void {
+  const remove = els.captureRemovePreExistingBtn;
+  const total = captureStagedPreExisting.length;
+  if (remove) {
+    remove.hidden = total === 0;
+    remove.disabled = total === 0;
+    if (els.captureRemovePreExistingLabel) {
+      els.captureRemovePreExistingLabel.textContent = total === 0 ? t('ui.capture.removePrevious') : removePreExistingLabel(total);
+    }
+    remove.title =
+      total === 0
+        ? t('ui.capture.noPrevLeft')
+        : t('ui.capture.removePrevTitle', { 0: total });
+    remove.setAttribute('aria-label', remove.title);
+  }
+
+  const restore = els.captureRestorePreExistingBtn;
+  if (!restore) return;
+  const restorable = captureRestorablePreExisting;
+  restore.hidden = restorable === 0;
+  restore.disabled = restorable === 0;
+  if (els.captureRestorePreExistingLabel) {
+    els.captureRestorePreExistingLabel.textContent =
+      restorable === 0 ? t('ui.capture.restorePrevious') : restorePreExistingLabel(restorable);
+  }
+  restore.title =
+    restorable === 0
+      ? t('ui.capture.noPrevToRestore')
+      : t('ui.capture.restorePrevTitle', { 0: restorable });
+  restore.setAttribute('aria-label', restore.title);
+}
+
+/**
+ * Quita del staging todos los archivos previos a la captura de una vez. Se
+ * borra uno a uno con el mismo `DELETE` que el × de cada fila, así que si uno
+ * falla los demás siguen y el fallo queda en el registro.
+ */
+async function captureRemovePreExisting(): Promise<void> {
+  if (captureDiffId === null || captureStagedPreExisting.length === 0) return;
+  const diffId = captureDiffId;
+  const targets = [...captureStagedPreExisting];
+  if (els.captureRemovePreExistingBtn) els.captureRemovePreExistingBtn.disabled = true;
+  setCaptureStatus(t('ui.capture.removingPrev'), 'busy');
+  let removed = 0;
+  const failures: string[] = [];
+  for (const file of targets) {
+    try {
+      const response = await fetch(
+        `/capture/staging/${encodeURIComponent(diffId)}?path=${encodeURIComponent(file)}`,
+        { method: 'DELETE' },
+      );
+      if (!response.ok) throw new Error(await response.text());
+      removed += 1;
+    } catch (error) {
+      failures.push(t('ui.capture.fileError', { 0: file, 1: describeError(error) }));
+    }
+  }
+  if (captureDiffId !== diffId) return;
+  const summary = formatRemovePreExistingResult(removed, targets.length);
+  for (const failure of failures) captureLog(t('ui.capture.removePrevFailed', { 0: failure }), 'error');
+  captureLog(summary, failures.length === 0 ? 'ok' : 'error');
+  setCaptureStatus(
+    failures.length === 0
+      ? t('ui.capture.prevRemovedSummary', { 0: summary })
+      : t('ui.capture.prevRemovedPartial', { 0: summary, 1: failures.length }),
+    failures.length === 0 ? 'ok' : 'error',
+  );
+  await captureRefreshStaging();
+}
+
+/**
+ * Devuelve al staging los previos quitados sin repetir «Preparar staging»: el
+ * servidor vuelve a copiarlos del snapshot inicial y deja el resto intacto.
+ */
+async function captureRestorePreExisting(): Promise<void> {
+  if (captureDiffId === null || captureRestorablePreExisting === 0) return;
+  const diffId = captureDiffId;
+  if (els.captureRestorePreExistingBtn) els.captureRestorePreExistingBtn.disabled = true;
+  setCaptureStatus(t('ui.capture.recoveringPrev'), 'busy');
+  try {
+    const response = await fetch(`/capture/staging/${encodeURIComponent(diffId)}/restore`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = (await response.json()) as { restored?: unknown; missing?: unknown; warnings?: unknown };
+    if (captureDiffId !== diffId) return;
+    const restored = Number(data.restored);
+    const missing = Array.isArray(data.missing) ? (data.missing as unknown[]).map(String) : [];
+    const warnings = Array.isArray(data.warnings) ? (data.warnings as unknown[]).map(String) : [];
+    for (const warning of warnings) captureLog(warning, 'error');
+    for (const file of missing) captureLog(t('ui.capture.recoverFailed', { 0: file }), 'error');
+    const summary = formatRestorePreExistingResult(Number.isFinite(restored) ? restored : 0, missing.length);
+    captureLog(summary, missing.length === 0 && warnings.length === 0 ? 'ok' : 'error');
+    setCaptureStatus(
+      missing.length === 0
+        ? t('ui.capture.prevRestoredSummary', { 0: summary })
+        : t('ui.capture.prevRestoredPartial', { 0: summary }),
+      missing.length === 0 ? 'ok' : 'error',
+    );
+  } catch (error) {
+    captureLog(t('ui.capture.recoverPrevError', { 0: describeError(error) }), 'error');
+    setCaptureStatus(t('ui.capture.recoverPrevFailed'), 'error');
+  }
+  await captureRefreshStaging();
 }
 
 async function captureVmachine(): Promise<void> {
@@ -4793,14 +5308,21 @@ async function captureVmachine(): Promise<void> {
   }
   const pluginName = els.capturePluginName?.value.trim() || 'CapturedPlugin';
   const vendor = els.capturePluginVendor?.value.trim() || '';
+  const includePreExisting = els.captureIncludeExisting.checked;
   try {
-    captureLog(`Generando banco para V-Machine: ${pluginName}...`, 'busy');
+    captureLog(t('ui.capture.generatingBank', { 0: pluginName }), 'busy');
     setCaptureStatus('Generando...', 'busy');
     els.captureVmachineBtn.disabled = true;
     const res = await fetch(`/capture/vmachine/${captureDiffId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pluginName, vendor, generateBank: true, generateWizard: true }),
+      body: JSON.stringify({
+        pluginName,
+        vendor,
+        generateBank: true,
+        generateWizard: true,
+        includePreExisting,
+      }),
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
@@ -4809,13 +5331,13 @@ async function captureVmachine(): Promise<void> {
     if (els.captureVmachinePath) els.captureVmachinePath.textContent = data.bankDir || '';
     if (els.captureWizardPath) els.captureWizardPath.textContent = data.wizardPath || '';
     els.captureVmachineInfo.hidden = false;
-    captureLog(`Generado correctamente`, 'ok');
-    setCaptureStatus('Banco y wizard generados.', 'ok');
+    captureLog(t('ui.capture.generatedOk'), 'ok');
+    setCaptureStatus(t('ui.capture.bankWizardReady'), 'ok');
   } catch (error) {
     els.captureVmachineBtn.disabled = false;
     const msg = describeError(error);
-    captureLog(`Error al generar: ${msg}`, 'error');
-    setCaptureStatus(`Error: ${msg}`, 'error');
+    captureLog(t('ui.capture.generateError', { 0: msg }), 'error');
+    setCaptureStatus(t('ui.capture.errorShort', { 0: msg }), 'error');
   }
 }
 
@@ -4825,21 +5347,21 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
   els.customPluginResult.hidden = false;
   els.customPluginCreated.hidden = true;
 
-  els.customPluginValidPe.textContent = result.validPe ? 'PE válido' : 'No es un PE';
+  els.customPluginValidPe.textContent = result.validPe ? t('ui.customPlugin.validPe') : t('ui.customPlugin.notPe');
   els.customPluginValidPe.className = `badge ${result.validPe ? 'on' : 'off'}`;
-  els.customPluginBitness.textContent = result.bitness === null ? 'bits ?' : `${result.bitness} bits`;
+  els.customPluginBitness.textContent = result.bitness === null ? 'bits ?' : t('ui.customPlugin.bits', { 0: result.bitness });
   els.customPluginBitness.className = `badge ${result.is32BitCompatible ? 'on' : 'off'}`;
   if (result.vstEntrypoint !== null) {
-    els.customPluginVst.textContent = `VST: ${result.vstEntrypoint}`;
+    els.customPluginVst.textContent = t('ui.customPlugin.vstEntry', { 0: result.vstEntrypoint });
     els.customPluginVst.className = 'badge on';
   } else {
-    els.customPluginVst.textContent = 'sin VSTPluginMain/main';
+    els.customPluginVst.textContent = t('ui.customPlugin.noVstEntry');
     els.customPluginVst.className = 'badge off';
   }
 
-  const suggestionParts = [`Sugerido: ${result.suggestedName} · id ${result.suggestedId}`];
+  const suggestionParts = [t('ui.customPlugin.suggested', { 0: result.suggestedName, 1: result.suggestedId })];
   if (result.internalDllName !== null) {
-    suggestionParts.push(` · DLL interno ${result.internalDllName}`);
+    suggestionParts.push(t('ui.customPlugin.internalDll', { 0: result.internalDllName }));
   }
   els.customPluginSuggestion.textContent = suggestionParts.join('');
   els.customPluginName.value = result.suggestedName;
@@ -4849,8 +5371,8 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
   const wizard = result.matchingWizard;
   if (wizard !== null) {
     els.customPluginWizard.textContent =
-      `Hay un wizard oficial en el catálogo que coincide con este binario: ` +
-      `${wizard.name} (id ${wizard.id}, ${wizard.vendor}). Revisar «Wizards» antes de crear otro aparte.`;
+      t('ui.customPlugin.wizardAvailable') +
+      t('ui.customPlugin.wizardAvailableLine', { 0: wizard.name, 1: wizard.id, 2: wizard.vendor });
     els.customPluginWizard.hidden = false;
   } else {
     els.customPluginWizard.hidden = true;
@@ -4867,7 +5389,7 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
   if (!result.is32BitCompatible) {
     els.customPluginBitnessWarning.textContent =
       `El binario no es apto para el host de 32 bits: ${result.validPe ? `es ${result.bitness} bits` : 'ni siquiera es un PE valido'}. ` +
-      'Puedes crear el plugin igualmente, pero fxbLoader no cargara este DLL en una V-Machine / VFX Host de 32 bits.';
+      t('ui.customPlugin.not32Bit');
     els.customPluginBitnessWarning.hidden = false;
   } else {
     els.customPluginBitnessWarning.hidden = true;
@@ -4879,21 +5401,21 @@ async function inspectCustomPlugin(): Promise<void> {
   if (customPluginBusy) return;
   const dllPath = els.customPluginPath.value.trim();
   if (dllPath === '') {
-    setCustomPluginStatus('Indica la ruta del DLL a analizar.', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needDllPath'), 'error');
     return;
   }
 
   els.customPluginResult.hidden = true;
   els.customPluginBitnessWarning.hidden = true;
   setCustomPluginBusy(true);
-  setCustomPluginStatus('Analizando el binario…', 'busy');
+  setCustomPluginStatus(t('ui.customPlugin.analyzing'), 'busy');
   try {
     const body: RequestBody<'/library/inspect-dll', 'post'> = { dllPath };
     const result = await client.library.inspectDll(body);
     renderCustomPluginInspection(result);
-    setCustomPluginStatus('Binario analizado.', 'info');
+    setCustomPluginStatus(t('ui.customPlugin.analyzed'), 'info');
   } catch (error) {
-    setCustomPluginStatus(`No se pudo analizar el DLL: ${describeError(error)}`, 'error');
+    setCustomPluginStatus(t('ui.customPlugin.analyzeError', { 0: describeError(error) }), 'error');
   } finally {
     setCustomPluginBusy(false);
   }
@@ -4904,27 +5426,27 @@ async function createCustomPlugin(): Promise<void> {
   if (customPluginBusy) return;
   const libraryRootPath = els.customPluginRoot.value.trim();
   if (libraryRootPath === '') {
-    setCustomPluginStatus('Indica la carpeta de la librería VFX.', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'error');
     return;
   }
   const folderName = els.customPluginFolder.value.trim();
   if (folderName === '') {
-    setCustomPluginStatus('Indica el nombre de la carpeta del plugin.', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needFolder'), 'error');
     return;
   }
   const name = els.customPluginName.value.trim();
   if (name === '') {
-    setCustomPluginStatus('Indica el nombre interno del plugin (vfxinfo).', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needName'), 'error');
     return;
   }
   const id = els.customPluginId.value.trim();
   if (id === '') {
-    setCustomPluginStatus('Indica el identificador VST (id).', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needId'), 'error');
     return;
   }
   const sourceDllPath = els.customPluginPath.value.trim();
   if (sourceDllPath === '') {
-    setCustomPluginStatus('Indica la ruta del DLL origen.', 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needDll'), 'error');
     return;
   }
 
@@ -4955,33 +5477,45 @@ async function createCustomPlugin(): Promise<void> {
   }
 
   setCustomPluginBusy(true);
-  setCustomPluginStatus('Creando el plugin en la librería…', 'busy');
+  setCustomPluginStatus(t('ui.customPlugin.creating'), 'busy');
   try {
     const result: LibraryCreateCustomPluginResponse = await client.library.createCustomPlugin(body);
     els.customPluginCreated.hidden = false;
     setCustomPluginList(els.customPluginCreatedPaths, customPluginCreatedPathsView, [
-      `Carpeta: ${result.pluginDir}`,
-      `DLL: ${result.dllRelativePath}`,
-      `vfxinfo.txt: ${result.vfxinfoPath}`,
-      `fxbLoader.meta.json: ${result.metaPath}`,
-      ...(result.wizardPath !== null ? [`Wizard: ${result.wizardPath}`] : []),
+      t('ui.customPlugin.folderPath', { 0: result.pluginDir }),
+      t('ui.customPlugin.dllPath', { 0: result.dllRelativePath }),
+      t('ui.customPlugin.vfxinfoPath', { 0: result.vfxinfoPath }),
+      t('ui.customPlugin.metaPath', { 0: result.metaPath }),
+      ...(result.wizardPath !== null ? [t('ui.customPlugin.wizardPath', { 0: result.wizardPath })] : []),
     ]);
     setCustomPluginList(els.customPluginCreatedWarnings, customPluginCreatedWarningsView, result.warnings);
     els.customPluginCreatedWarnings.hidden = result.warnings.length === 0;
-    setCustomPluginStatus(result.created ? 'Plugin creado.' : 'No se creó el plugin.', 'info');
+    setCustomPluginStatus(result.created ? t('ui.customPlugin.created') : 'No se creó el plugin.', 'info');
   } catch (error) {
-    setCustomPluginStatus(`No se pudo crear el plugin: ${describeError(error)}`, 'error');
+    setCustomPluginStatus(t('ui.customPlugin.createError', { 0: describeError(error) }), 'error');
   } finally {
     setCustomPluginBusy(false);
   }
 }
 
+/**
+ * «Crear plugin» agrupa las dos altas en un desplegable: elegir una opción tiene
+ * que cerrarlo, o el menú se queda abierto por encima del cajón que acaba de
+ * abrir.
+ */
+function closeCreationMenu(): void {
+  const menu = els.customPluginNavBtn?.closest('details');
+  if (menu instanceof HTMLDetailsElement) menu.open = false;
+}
+
 els.customPluginNavBtn.addEventListener('click', () => {
+  closeCreationMenu();
   openCustomPluginDrawer(els.customPluginNavBtn);
 });
 
 if (els.captureNavBtn) {
   els.captureNavBtn.addEventListener('click', () => {
+    closeCreationMenu();
     openCaptureDrawer(els.captureNavBtn);
   });
 }
@@ -5041,11 +5575,11 @@ async function loadCaptureSnapshot(snapshotId: string): Promise<void> {
     if (els.captureSnapshotContent) els.captureSnapshotContent.textContent = captureSnapshotText;
     if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = false;
     if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = false;
-    captureLog(`Informe inicial listo: ${summary}`, 'ok');
+    captureLog(t('ui.capture.reportReady', { 0: summary }), 'ok');
   } catch (error) {
     const message = describeError(error);
-    captureLog(`No se pudo cargar el resultado del snapshot: ${message}`, 'error');
-    setCaptureStatus(`El snapshot se guardó, pero no se pudo cargar el informe: ${message}`, 'error');
+    captureLog(t('ui.capture.snapshotLoadError', { 0: message }), 'error');
+    setCaptureStatus(t('ui.capture.snapshotLoadedError', { 0: message }), 'error');
   }
 }
 
@@ -5099,6 +5633,24 @@ if (els.captureRefreshStagingBtn) {
   });
 }
 
+if (els.captureRemovePreExistingBtn) {
+  els.captureRemovePreExistingBtn.addEventListener('click', () => {
+    void captureRemovePreExisting();
+  });
+}
+
+if (els.captureRestorePreExistingBtn) {
+  els.captureRestorePreExistingBtn.addEventListener('click', () => {
+    void captureRestorePreExisting();
+  });
+}
+
+if (els.captureIncludeExisting) {
+  els.captureIncludeExisting.addEventListener('change', () => {
+    renderCapturePreExistingSummary();
+  });
+}
+
 if (els.captureVmachineBtn) {
   els.captureVmachineBtn.addEventListener('click', () => {
     void captureVmachine();
@@ -5130,7 +5682,7 @@ els.customPluginBrowse.addEventListener('click', async () => {
         : (libraryRoot ? (parentDir(libraryRoot) ?? undefined) : undefined);
     const res = await client.system.pick({
       kind: 'file',
-      title: 'Elige el DLL del plugin VST',
+      title: t('ui.picker.choosePluginDll'),
       extensions: ['dll'],
       initialDir: start,
     });
@@ -5140,7 +5692,7 @@ els.customPluginBrowse.addEventListener('click', async () => {
       void inspectCustomPlugin();
     }
   } catch (error) {
-    setCustomPluginStatus(`No se pudo abrir el selector: ${describeError(error)}`, 'error');
+    setCustomPluginStatus(t('ui.picker.openError', { 0: describeError(error) }), 'error');
   }
 });
 
@@ -5158,7 +5710,7 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
         chk.type = 'checkbox';
         const key = plug.sourceDir || plug.name;
         chk.checked = selectedImportPlugins.has(key);
-        chk.title = `Seleccionar ${plug.name}`;
+        chk.title = t('ui.importPackage.selectPlugin', { 0: plug.name });
         chk.addEventListener('change', () => {
           if (chk.checked) selectedImportPlugins.add(key);
           else selectedImportPlugins.delete(key);
@@ -5185,7 +5737,7 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
           const wizardSubtitle = document.createElement('div');
           wizardSubtitle.className = 'note';
           wizardSubtitle.style.color = 'var(--accent)';
-          wizardSubtitle.textContent = `Wizard: ${plugWizard.vendor} ${plugWizard.name}`;
+          wizardSubtitle.textContent = t('ui.importPackage.wizard', { 0: plugWizard.vendor, 1: plugWizard.name });
           wrap.append(wizardSubtitle);
         }
 
@@ -5209,31 +5761,31 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
       id: 'vfxinfo',
       label: 'vfxinfo.txt',
       sortType: 'text',
-      getValue: (plug) => (plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No'),
+      getValue: (plug) => (plug.hasVfxinfo ? (plug.vfxinfoId ? t('ui.importPackage.idLabel', { 0: plug.vfxinfoId }) : t('ui.common.yes')) : 'No'),
       renderNode: (plug) => {
         const badgeVfx = document.createElement('span');
         badgeVfx.className = plug.hasVfxinfo ? 'badge on' : 'badge off';
-        badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : 'Sí') : 'No';
+        badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : t('ui.common.yes')) : 'No';
         return badgeVfx;
       },
     },
     {
       id: 'size',
-      label: 'Tamaño',
+      label: t('ui.table.size'),
       sortType: 'number',
       getValue: (plug) => plug.totalSizeBytes,
       renderCell: (plug) => formatBytes(plug.totalSizeBytes),
     },
     {
       id: 'target',
-      label: 'En destino',
+      label: t('ui.importPackage.inTarget'),
       sortType: 'text',
-      getValue: (plug) => (plug.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo'),
+      getValue: (plug) => (plug.alreadyExistsInTarget ? t('ui.importPackage.exists') : 'Nuevo'),
       renderNode: (plug) => {
         const badgeTarget = document.createElement('span');
         if (plug.alreadyExistsInTarget) {
           badgeTarget.className = 'badge';
-          badgeTarget.textContent = 'Ya existe';
+          badgeTarget.textContent = t('ui.importPackage.exists');
         } else {
           badgeTarget.className = 'badge on';
           badgeTarget.textContent = 'Nuevo';
@@ -5244,19 +5796,18 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
   ],
   getRowId: (plug) => plug.sourceDir || plug.name,
   initialSort: { columnId: 'name', direction: 'asc' },
-  pageSize: 50,
   searchColumns: ['name', 'dllName'],
   tbodyId: 'import-package-plugins-rows',
-  emptyText: 'No se detectaron plugins en el origen.',
+  emptyText: t('ui.importPackage.noPlugins'),
   filters: [
     {
       id: 'targetFilter',
       label: 'Destino',
       columnId: 'target',
       options: [
-        { value: 'all', label: 'Todos los plugins', tone: 'neutral' },
-        { value: 'new', label: 'Solo nuevos', tone: 'positive', predicate: (p) => !p.alreadyExistsInTarget },
-        { value: 'exists', label: 'Solo ya existentes', tone: 'negative', predicate: (p) => p.alreadyExistsInTarget },
+        { value: 'all', label: t('ui.importPackage.allPlugins'), tone: 'neutral' },
+        { value: 'new', label: t('ui.importPackage.newPlugins'), tone: 'positive', predicate: (p) => !p.alreadyExistsInTarget },
+        { value: 'exists', label: t('ui.importPackage.existingPlugins'), tone: 'negative', predicate: (p) => p.alreadyExistsInTarget },
       ],
     },
   ],
@@ -5280,7 +5831,7 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
         const chk = document.createElement('input');
         chk.type = 'checkbox';
         chk.checked = selectedImportBanks.has(bankSelectionKey(bank));
-        chk.title = `Seleccionar ${bank.name}`;
+        chk.title = t('ui.importPackage.selectBank', { 0: bank.name });
         chk.addEventListener('change', () => {
           const key = bankSelectionKey(bank);
           if (chk.checked) selectedImportBanks.add(key);
@@ -5317,7 +5868,7 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
       label: 'Presets',
       sortType: 'number',
       getValue: (bank) => bank.presetCount,
-      renderCell: (bank) => `${bank.presetCount} presets`,
+      renderCell: (bank) => t('ui.importPackage.presets', { 0: bank.presetCount }),
     },
     {
       id: 'concordance',
@@ -5326,19 +5877,19 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
       getValue: (bank) => {
         const state = bankConcordance(bank);
         if (state === 'concordant') return 'Concordante';
-        if (state === 'repairable') return 'Carencias (reparable)';
+        if (state === 'repairable') return t('ui.importPackage.gaps');
         if (state === 'deficient') return 'Carencias';
-        return 'Sin datos';
+        return t('ui.importPackage.noData');
       },
       renderNode: (bank) => {
         const state = bankConcordance(bank);
         if (state === 'concordant') {
           const badge = document.createElement('span');
           badge.className = 'badge on';
-          const label = bank.chunkPluginFourCc || (bank.chunkPluginId ? `ID ${bank.chunkPluginId}` : 'OK');
-          badge.textContent = `Concordante (${label})`;
+          const label = bank.chunkPluginFourCc || (bank.chunkPluginId ? t('ui.importPackage.chunkId', { 0: bank.chunkPluginId }) : 'OK');
+          badge.textContent = t('ui.importPackage.matching', { 0: label });
           if (bank.matchedWizardName) {
-            badge.title = `Compatible con wizard: ${bank.matchedWizardName}`;
+            badge.title = t('ui.importPackage.wizardCompatible', { 0: bank.matchedWizardName });
           }
           return badge;
         }
@@ -5354,16 +5905,16 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
     },
     {
       id: 'size',
-      label: 'Tamaño',
+      label: t('ui.table.size'),
       sortType: 'number',
       getValue: (bank) => bank.totalSizeBytes,
       renderCell: (bank) => formatBytes(bank.totalSizeBytes),
     },
     {
       id: 'target',
-      label: 'En destino',
+      label: t('ui.importPackage.inTarget'),
       sortType: 'text',
-      getValue: (bank) => (bank.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo'),
+      getValue: (bank) => (bank.alreadyExistsInTarget ? t('ui.importPackage.exists') : 'Nuevo'),
       renderNode: (bank) => {
         const badge = document.createElement('span');
         badge.className = bank.alreadyExistsInTarget ? 'badge' : 'badge on';
@@ -5374,21 +5925,20 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
   ],
   getRowId: bankSelectionKey,
   initialSort: { columnId: 'name', direction: 'asc' },
-  pageSize: 50,
   searchColumns: ['name'],
   tbodyId: 'import-package-banks-rows',
-  emptyText: 'No se detectaron bancos en el origen.',
+  emptyText: t('ui.importPackage.noBanks'),
   filters: [
     {
       id: 'concordanceFilter',
       label: 'Concordancia',
       columnId: 'concordance',
       options: [
-        { value: 'all', label: 'Toda la concordancia', tone: 'neutral' },
+        { value: 'all', label: t('ui.importPackage.fullMatch'), tone: 'neutral' },
         { value: 'concordant', label: 'Concordante', tone: 'positive', predicate: (bank) => bankConcordance(bank) === 'concordant' },
-        { value: 'repairable', label: 'Carencias (reparable)', tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'repairable' },
+        { value: 'repairable', label: t('ui.importPackage.gaps'), tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'repairable' },
         { value: 'deficient', label: 'Carencias', tone: 'negative', predicate: (bank) => bankConcordance(bank) === 'deficient' },
-        { value: 'unknown', label: 'Sin datos', tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'unknown' },
+        { value: 'unknown', label: t('ui.importPackage.noData'), tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'unknown' },
       ],
     },
   ],
@@ -5413,7 +5963,7 @@ function bankConcordance(
 function renderImportPackageInspection(result: LibraryInspectPackageResponse): void {
   importPackageInspection = result;
   els.importPackagePreview.hidden = false;
-  els.importPackageKind.textContent = result.resolvedKind === 'vfxlibrary' ? 'Paquete .vfxlibrary' : 'Carpeta de plugin';
+  els.importPackageKind.textContent = result.resolvedKind === 'vfxlibrary' ? t('ui.importPackage.kindPackage') : t('ui.importPackage.kindFolder');
   els.importPackageSource.textContent = result.sourcePath;
 
   currentInspectionPlugins = result.plugins;
@@ -5449,26 +5999,26 @@ function renderImportPackageInspection(result: LibraryInspectPackageResponse): v
 
   els.importPackageAllPlugs.checked = true;
   els.importPackageAllBanks.checked = true;
-  els.importPackageStatus.textContent = `Inspección completada: ${result.plugins.length} plugin(s), ${result.banks.length} banco(s) detectados.`;
+  els.importPackageStatus.textContent = t('ui.importPackage.inspected', { 0: result.plugins.length, 1: result.banks.length });
   els.importPackageStatus.className = 'status ok';
 }
 
 async function inspectPackage(): Promise<void> {
   const pkgPath = els.importPackagePath.value.trim();
   if (!pkgPath) {
-    els.importPackageStatus.textContent = 'Escribe o elige la ruta del paquete o instrumento a importar.';
+    els.importPackageStatus.textContent = t('ui.importPackage.needPath');
     els.importPackageStatus.className = 'status error';
     els.importPackagePath.focus();
     return;
   }
   if (!libraryRoot) {
-    els.importPackageStatus.textContent = 'Debes tener seleccionada una librería activa de destino.';
+    els.importPackageStatus.textContent = t('ui.importPackage.needLibrary');
     els.importPackageStatus.className = 'status error';
     return;
   }
 
   setImportPackageBusy(true);
-  els.importPackageStatus.textContent = 'Inspeccionando origen…';
+  els.importPackageStatus.textContent = t('ui.importPackage.inspecting');
   els.importPackageStatus.className = 'status busy';
 
   try {
@@ -5490,7 +6040,7 @@ async function inspectPackage(): Promise<void> {
     els.importPackageBanksTable.replaceChildren();
     selectedImportBanks.clear();
     currentInspectionBanks = [];
-    els.importPackageStatus.textContent = `Error al inspeccionar: ${describeError(error)}`;
+    els.importPackageStatus.textContent = t('ui.importPackage.inspectError', { 0: describeError(error) });
     els.importPackageStatus.className = 'status error';
   } finally {
     setImportPackageBusy(false);
@@ -5506,7 +6056,7 @@ async function executeImportPackage(): Promise<void> {
   const selectedBanks = [...selectedImportBanks];
 
   if (selectedPlugins.length === 0 && selectedBanks.length === 0) {
-    els.importPackageStatus.textContent = 'Selecciona al menos un plugin o un banco para importar.';
+    els.importPackageStatus.textContent = t('ui.importPackage.needSelection');
     els.importPackageStatus.className = 'status error';
     return;
   }
@@ -5514,7 +6064,7 @@ async function executeImportPackage(): Promise<void> {
   const collisionPolicy = els.importPackagePolicy.value as 'skip' | 'overwrite';
 
   setImportPackageBusy(true);
-  els.importPackageStatus.textContent = 'Importando elementos seleccionados a la librería…';
+  els.importPackageStatus.textContent = t('ui.importPackage.importing');
   els.importPackageStatus.className = 'status busy';
 
   try {
@@ -5540,17 +6090,21 @@ async function executeImportPackage(): Promise<void> {
         : '';
 
     const msg =
-      `Importación finalizada con éxito: ` +
-      `${result.importedPlugins.length} plugins y ${result.importedBanks.length} bancos importados (${formatBytes(result.totalCopiedBytes)}).` +
+      t('ui.importPackage.done') +
+      t('ui.importPackage.doneCounts', { 0: result.importedPlugins.length, 1: result.importedBanks.length, 2: formatBytes(result.totalCopiedBytes) }) +
       repairedMsg +
       ((result as { preparedPlugins?: string[] }).preparedPlugins?.length
-        ? ` Preparados con wizard: ${(result as { preparedPlugins?: string[] }).preparedPlugins!.join(', ')}.`
+        ? t('msg.preparedWithWizard', {
+            0: (result as { preparedPlugins?: string[] }).preparedPlugins!.join(', '),
+          })
         : '') +
       ((result as { wizardWarnings?: { plugin: string; message: string }[] }).wizardWarnings?.length
-        ? ` Avisos de preparación: ${(result as { wizardWarnings?: { plugin: string; message: string }[] }).wizardWarnings!.map((warning) => `${warning.plugin}: ${warning.message}`).join(' · ')}`
+        ? t('msg.prepareWarnings', {
+            0: (result as { wizardWarnings?: { plugin: string; message: string }[] }).wizardWarnings!.map((warning) => `${warning.plugin}: ${warning.message}`).join(' · '),
+          })
         : '') +
       (result.skippedPlugins.length > 0 || result.skippedBanks.length > 0
-        ? ` Omitidos: ${result.skippedPlugins.length} plugins, ${result.skippedBanks.length} bancos.`
+        ? t('ui.importPackage.skipped', { 0: result.skippedPlugins.length, 1: result.skippedBanks.length })
         : '');
 
     els.importPackageStatus.textContent = msg;
@@ -5563,7 +6117,7 @@ async function executeImportPackage(): Promise<void> {
     // Re-inspeccionar para actualizar estados
     await inspectPackage();
   } catch (error) {
-    els.importPackageStatus.textContent = `Error durante la importación: ${describeError(error)}`;
+    els.importPackageStatus.textContent = t('ui.importPackage.importError', { 0: describeError(error) });
     els.importPackageStatus.className = 'status error';
   } finally {
     setImportPackageBusy(false);
@@ -5575,10 +6129,10 @@ type AssociationAuditEntry = AssociationAuditSnapshotResponse['entries'][number]
 
 /** Etiqueta legible de cada tipo de evento; el valor crudo es el que filtra. */
 const AUDIT_KIND_LABELS: Record<string, string> = {
-  'association-change': 'Cambio de asociación',
-  import: 'Importación',
-  reimport: 'Reimportación',
-  collision: 'Colisión',
+  'association-change': t('ui.audit.kindAssociation'),
+  import: t('ui.audit.kindImport'),
+  reimport: t('ui.audit.kindReimport'),
+  collision: t('ui.audit.kindCollision'),
 };
 
 /**
@@ -5598,23 +6152,23 @@ let auditDetailOpener: HTMLButtonElement | null = null;
  */
 function openAuditRecordDetail(entry: AssociationAuditEntry, trigger: HTMLButtonElement): void {
   auditDetailOpener = trigger;
-  els.auditDetailTitle.textContent = `Evento · ${AUDIT_KIND_LABELS[entry.kind] ?? entry.kind}`;
+  els.auditDetailTitle.textContent = t('ui.audit.eventHead', { 0: AUDIT_KIND_LABELS[entry.kind] ?? entry.kind });
   const fields: HTMLElement[] = [
-    renderLogDetailField('Fecha y hora', logTimestamp(entry.ts) || entry.ts),
+    renderLogDetailField(t('ui.audit.timestamp'), logTimestamp(entry.ts) || entry.ts),
     renderLogDetailField('Tipo', AUDIT_KIND_LABELS[entry.kind] ?? entry.kind),
     renderLogDetailField('Plugin', entry.plugin ?? ''),
-    renderLogDetailField('Librería', entry.libraryRoot ?? ''),
+    renderLogDetailField(t('ui.audit.library'), entry.libraryRoot ?? ''),
     renderLogDetailField('Campo', entry.field ?? ''),
-    renderLogDetailField('Valor anterior', entry.previousValue ?? ''),
-    renderLogDetailField('Valor nuevo', entry.newValue ?? ''),
+    renderLogDetailField(t('ui.audit.previousValue'), entry.previousValue ?? ''),
+    renderLogDetailField(t('ui.audit.newValue'), entry.newValue ?? ''),
     renderLogDetailField('Origen', entry.packageSource ?? ''),
   ];
-  if (entry.collisionPolicy) fields.push(renderLogDetailField('Política', entry.collisionPolicy));
+  if (entry.collisionPolicy) fields.push(renderLogDetailField(t('ui.audit.policy'), entry.collisionPolicy));
   if (entry.collisionNames && entry.collisionNames.length > 0) {
     fields.push(renderLogDetailField('Omitidos', entry.collisionNames.join(', ')));
   }
   if (entry.repairedBanks && entry.repairedBanks.length > 0) {
-    fields.push(renderLogDetailField('Bancos reparados', entry.repairedBanks.join(', ')));
+    fields.push(renderLogDetailField(t('ui.audit.repairedBanks'), entry.repairedBanks.join(', ')));
   }
   els.auditDetailFields.replaceChildren(...fields);
   els.auditDetail.hidden = false;
@@ -5675,7 +6229,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
       sortType: 'text',
       cellTitle: (entry) =>
         entry.field
-          ? `${entry.field}: ${entry.previousValue ?? '—'} → ${entry.newValue ?? '—'}`
+          ? t('ui.audit.fieldChange', { 0: entry.field, 1: entry.previousValue ?? '—', 2: entry.newValue ?? '—' })
           : undefined,
       getValue: (entry) =>
         [entry.field, entry.previousValue, entry.newValue].filter(Boolean).join(' '),
@@ -5687,9 +6241,9 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
         field.textContent = entry.field;
         const line = document.createElement('div');
         const from = document.createElement('code');
-        from.textContent = entry.previousValue ?? '(vacío)';
+        from.textContent = entry.previousValue ?? t('ui.audit.emptyValue');
         const to = document.createElement('code');
-        to.textContent = entry.newValue ?? '(vacío)';
+        to.textContent = entry.newValue ?? t('ui.audit.emptyValue');
         line.append(from, document.createTextNode(' → '), to);
         wrap.append(field, line);
         return wrap;
@@ -5709,7 +6263,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
       sortable: false,
       getValue: (entry) =>
         [
-          entry.collisionPolicy ? `Política ${entry.collisionPolicy}` : '',
+          entry.collisionPolicy ? t('ui.audit.policyName', { 0: entry.collisionPolicy }) : '',
           ...(entry.collisionNames ?? []),
           ...(entry.repairedBanks ?? []),
         ]
@@ -5718,13 +6272,13 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
       renderNode: (entry) => {
         const parts: string[] = [];
         if (entry.collisionPolicy) {
-          parts.push(`Política: ${entry.collisionPolicy === 'skip' ? 'omitir' : 'sobrescribir'}`);
+          parts.push(t('ui.audit.policyShort', { 0: entry.collisionPolicy === 'skip' ? 'omitir' : 'sobrescribir' }));
         }
         if (entry.collisionNames && entry.collisionNames.length > 0) {
-          parts.push(`Omitidos: ${entry.collisionNames.join(', ')}`);
+          parts.push(t('ui.audit.skippedNames', { 0: entry.collisionNames.join(', ') }));
         }
         if (entry.repairedBanks && entry.repairedBanks.length > 0) {
-          parts.push(`Bancos reparados: ${entry.repairedBanks.join(', ')}`);
+          parts.push(t('ui.audit.repairedNames', { 0: entry.repairedBanks.join(', ') }));
         }
         if (parts.length === 0) return null;
         const note = document.createElement('div');
@@ -5737,8 +6291,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
   getRowId: (entry) =>
     `${entry.ts}|${entry.kind}|${entry.plugin ?? ''}|${entry.packageSource ?? ''}`,
   initialSort: { columnId: 'ts', direction: 'desc' },
-  pageSize: 25,
-  emptyText: 'Sin eventos de auditoría que cumplan los filtros.',
+  emptyText: t('ui.audit.noEvents'),
   filters: [
     {
       id: 'kindFilter',
@@ -5754,7 +6307,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     { id: 'tsFilter', label: 'Fecha', columnId: 'ts', type: 'date-range' },
   ],
   rowActions: {
-    actions: [{ id: 'view-record', label: 'Ver registro', icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
+    actions: [{ id: 'view-record', label: t('ui.log.viewRecord'), icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
   },
   onSearchChange: (query) => onAuditSearchChange(query),
 };
@@ -5826,13 +6379,13 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
     destroyAssociationAuditTable();
     els.auditPath.textContent = '';
     els.auditSummary.textContent = '';
-    setAuditStatus('Elige la carpeta de la librería activa para leer su auditoría.', 'error');
+    setAuditStatus(t('ui.audit.needRoot'), 'error');
     return;
   }
 
   auditBusy = true;
   els.auditRefresh.disabled = true;
-  if (!silent) setAuditStatus('Leyendo el almacén de auditoría…', 'busy');
+  if (!silent) setAuditStatus(t('ui.audit.reading'), 'busy');
   try {
     const snapshot = await client.associationAudit.list({
       libraryRoot,
@@ -5841,8 +6394,8 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
     });
     els.auditPath.textContent = snapshot.auditPath;
     els.auditSummary.textContent = snapshot.exists
-      ? `${snapshot.total} evento(s) · ${formatBytes(snapshot.size)} en el almacén`
-      : 'Todavía no existe el almacén: lo creará la primera operación que audite.';
+      ? t('ui.audit.summary', { 0: snapshot.total, 1: formatBytes(snapshot.size) })
+      : t('ui.audit.notCreated');
     if (auditTableController === null) {
       auditTableController = mountTable(els.auditTable, associationAuditTableView, snapshot.entries);
     } else {
@@ -5861,7 +6414,7 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
       els.auditPath.textContent = '';
       els.auditSummary.textContent = '';
     }
-    setAuditStatus(`No se pudo leer la auditoría: ${describeError(error)}`, 'error');
+    setAuditStatus(t('ui.audit.readError', { 0: describeError(error) }), 'error');
   } finally {
     auditBusy = false;
     els.auditRefresh.disabled = false;
@@ -5959,13 +6512,13 @@ els.importPackageBrowse.addEventListener('click', async () => {
   try {
     const current = els.importPackagePath.value.trim();
     const start = current || (libraryRoot ? (parentDir(libraryRoot) ?? undefined) : undefined);
-    const res = await client.system.pick({ kind: 'folder', title: 'Elegir carpeta o paquete a importar', initialDir: start });
+    const res = await client.system.pick({ kind: 'folder', title: t('ui.importPackage.choosePath'), initialDir: start });
     if (res.paths && res.paths.length > 0 && res.paths[0]) {
       els.importPackagePath.value = res.paths[0];
       void inspectPackage();
     }
   } catch (error) {
-    els.importPackageStatus.textContent = `No se pudo abrir el selector: ${describeError(error)}`;
+    els.importPackageStatus.textContent = t('ui.picker.openError', { 0: describeError(error) });
     els.importPackageStatus.className = 'status error';
   }
 });
@@ -6011,12 +6564,13 @@ const DATA_AUDIT_SOURCE_LABELS: Record<string, string> = {
   meta: 'meta',
   dll: 'DLL',
   derived: 'deducido',
+  wizard: 'wizard',
 };
 
 /** Gravedad de un hueco en una palabra, para el badge del detalle. */
 const DATA_AUDIT_SEVERITY_LABELS: Record<string, string> = {
   missing: 'falta',
-  invalid: 'no válido',
+  invalid: t('ui.dataAudit.notValid'),
   note: 'nota',
 };
 
@@ -6073,11 +6627,11 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       id: 'state',
       label: 'Estado',
       sortType: 'text',
-      getValue: (plugin) => (dataAuditHasGaps(plugin) ? 'con huecos' : 'completo'),
+      getValue: (plugin) => (dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : 'completo'),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = dataAuditHasGaps(plugin) ? 'badge off' : 'badge on';
-        badge.textContent = dataAuditHasGaps(plugin) ? 'Con huecos' : 'Completo';
+        badge.textContent = dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : 'Completo';
         return badge;
       },
     },
@@ -6087,7 +6641,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       sortType: 'number',
       getValue: (plugin) => plugin.issues.length,
       cellTitle: (plugin) =>
-        plugin.issues.map((issue) => `${issue.field}: ${issue.message}`).join('\n'),
+        plugin.issues.map((issue) => t('ui.dataAudit.issueLine', { 0: issue.field, 1: issue.message })).join('\n'),
     },
     {
       id: 'fillable',
@@ -6095,7 +6649,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       sortType: 'number',
       getValue: (plugin) => plugin.proposals.length,
       cellTitle: (plugin) =>
-        plugin.proposals.map((proposal) => `${proposal.field} = ${proposal.value}`).join('\n'),
+        plugin.proposals.map((proposal) => t('ui.dataAudit.proposalLine', { 0: proposal.field, 1: proposal.value })).join('\n'),
     },
     {
       id: 'dll',
@@ -6105,7 +6659,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       renderCell: (plugin) => plugin.dll.resolved ?? '—',
       cellTitle: (plugin) =>
         [
-          plugin.dll.bitness === null ? '' : `${plugin.dll.bitness} bits`,
+          plugin.dll.bitness === null ? '' : t('ui.dataAudit.bits', { 0: plugin.dll.bitness }),
           plugin.dll.vstEntrypoint ?? '',
         ]
           .filter(Boolean)
@@ -6114,7 +6668,6 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
   ],
   getRowId: (plugin) => plugin.path,
   initialSort: { columnId: 'gaps', direction: 'desc' },
-  pageSize: 50,
   emptyText: 'Sin plugins que auditar en plugs\\.',
   filters: [
     {
@@ -6124,7 +6677,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       type: 'single',
       options: [
         { value: '', label: 'Todos', tone: 'neutral' },
-        { value: 'incomplete', label: 'Con huecos', tone: 'negative', predicate: dataAuditHasGaps },
+        { value: 'incomplete', label: t('ui.dataAudit.withGaps'), tone: 'negative', predicate: dataAuditHasGaps },
         {
           value: 'complete',
           label: 'Completos',
@@ -6138,7 +6691,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
     actions: [
       {
         id: 'view-data-detail',
-        label: 'Ver detalle',
+        label: t('ui.dataAudit.viewDetail'),
         icon: 'file',
         onSelect: (plugin, trigger) => openDataAuditDetail(plugin, trigger),
       },
@@ -6150,6 +6703,9 @@ let dataAuditTableController: TableController<DataAuditPlugin> | null = null;
 let dataAuditBusy = false;
 /** Botón que abrió el detalle del plugin: para devolverle el foco al cerrar. */
 let dataAuditDetailOpener: HTMLButtonElement | null = null;
+/** Plugin cuyo detalle está abierto; es a quien se le aplican las propuestas. */
+let dataAuditDetailPlugin: DataAuditPlugin | null = null;
+let dataAuditApplyBusy = false;
 
 /**
  * Detalle de un plugin: los datos que la tabla no pinta (ruta, estado del DLL)
@@ -6158,21 +6714,28 @@ let dataAuditDetailOpener: HTMLButtonElement | null = null;
  */
 function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement): void {
   dataAuditDetailOpener = trigger;
-  els.dataAuditDetailTitle.textContent = `Plugin · ${plugin.name}`;
+  dataAuditDetailPlugin = plugin;
+  closeDataAuditApplyConfirm();
+  els.dataAuditApply.disabled = plugin.proposals.length === 0;
+  els.dataAuditApply.title =
+    plugin.proposals.length === 0
+      ? t('ui.dataAudit.nothingToApply')
+      : t('ui.dataAudit.applyTitle', { 0: plugin.proposals.length });
+  els.dataAuditDetailTitle.textContent = t('ui.dataAudit.pluginHead', { 0: plugin.name });
   els.dataAuditDetailFields.replaceChildren(
     renderLogDetailField('Carpeta', plugin.path),
     renderLogDetailField('vfxinfo.txt', plugin.hasVfxinfo ? 'presente' : 'ausente'),
     renderLogDetailField('fxbLoader.meta.json', plugin.hasMeta ? 'presente' : 'ausente'),
-    renderLogDetailField('DLL declarado', plugin.dll.declared ?? '(sin dll_name)'),
+    renderLogDetailField(t('ui.dataAudit.declaredDll'), plugin.dll.declared ?? t('ui.dataAudit.noDllName')),
     renderLogDetailField(
-      'DLL encontrado',
+      t('ui.dataAudit.foundDll'),
       plugin.dll.resolved === null ? '(ninguno)' : `plugs/${plugin.dll.resolved}`,
     ),
     renderLogDetailField(
       'Arquitectura',
-      plugin.dll.bitness === null ? '—' : `${plugin.dll.bitness} bits`,
+      plugin.dll.bitness === null ? '—' : t('ui.dataAudit.bits', { 0: plugin.dll.bitness }),
     ),
-    renderLogDetailField('Entrypoint VST', plugin.dll.vstEntrypoint ?? '—'),
+    renderLogDetailField(t('ui.dataAudit.vstEntry'), plugin.dll.vstEntrypoint ?? '—'),
   );
 
   const gaps = plugin.issues.map((issue) =>
@@ -6184,9 +6747,9 @@ function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement
     ),
   );
   els.dataAuditDetailGaps.replaceChildren(
-    dataAuditHeading(`Huecos · ${plugin.issues.length}`),
+    dataAuditHeading(t('ui.dataAudit.gapsHead', { 0: plugin.issues.length })),
     ...(gaps.length === 0
-      ? [dataAuditEmpty('Sin huecos: vfxinfo, meta y DLL están completos para lo que se puede leer en disco.')]
+      ? [dataAuditEmpty(t('ui.dataAudit.noGaps'))]
       : [dataAuditList(gaps)]),
   );
 
@@ -6199,9 +6762,9 @@ function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement
     ),
   );
   els.dataAuditDetailProposals.replaceChildren(
-    dataAuditHeading(`Se puede rellenar · ${plugin.proposals.length}`),
+    dataAuditHeading(t('ui.dataAudit.fillable', { 0: plugin.proposals.length })),
     ...(proposals.length === 0
-      ? [dataAuditEmpty('Nada que proponer: no hay de dónde sacar los valores que faltan.')]
+      ? [dataAuditEmpty(t('ui.dataAudit.nothingToPropose'))]
       : [dataAuditList(proposals)]),
   );
 
@@ -6211,6 +6774,9 @@ function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement
 
 function closeDataAuditDetail(): void {
   if (els.dataAuditDetail.hidden) return;
+  dataAuditDetailPlugin = null;
+  closeDataAuditApplyConfirm();
+  els.dataAuditApply.disabled = true;
   els.dataAuditDetail.hidden = true;
   els.dataAuditDetailFields.replaceChildren();
   els.dataAuditDetailGaps.replaceChildren();
@@ -6219,6 +6785,84 @@ function closeDataAuditDetail(): void {
   dataAuditDetailOpener = null;
   if (opener?.isConnected && opener.getClientRects().length > 0) {
     opener.focus({ preventScroll: true });
+  }
+}
+
+function setDataAuditApplyStatus(message: string, kind = ''): void {
+  els.dataAuditApplyStatus.textContent = message;
+  els.dataAuditApplyStatus.className = kind ? `status ${kind}` : 'status';
+}
+
+function closeDataAuditApplyConfirm(): void {
+  els.dataAuditApplyConfirm.hidden = true;
+  els.dataAuditApplyList.replaceChildren();
+  els.dataAuditApplyNote.textContent = '';
+  setDataAuditApplyStatus('');
+  els.dataAuditApplyConfirmBtn.disabled = false;
+  els.dataAuditApplyCancel.disabled = false;
+}
+
+/** Confirmación previa: qué se escribe y qué se respalda, antes de tocar nada. */
+function renderDataAuditApplyConfirm(plugin: DataAuditPlugin): void {
+  els.dataAuditApplyNote.textContent =
+    t('msg.dataAuditApplyNote', { 0: plugin.proposals.length });
+  els.dataAuditApplyList.replaceChildren(
+    ...plugin.proposals.map((proposal) =>
+      dataAuditItem(
+        proposal.field,
+        `= ${proposal.value}${proposal.note === undefined ? '' : ` · ${proposal.note}`}`,
+        DATA_AUDIT_SOURCE_LABELS[proposal.source] ?? proposal.source,
+        'badge on',
+      ),
+    ),
+  );
+  setDataAuditApplyStatus('');
+  els.dataAuditApplyConfirm.hidden = false;
+  els.dataAuditApplyConfirmBtn.focus({ preventScroll: true });
+}
+
+async function applyDataAuditProposals(): Promise<void> {
+  const plugin = dataAuditDetailPlugin;
+  if (plugin === null || dataAuditApplyBusy) return;
+  if (!libraryRoot) {
+    setDataAuditApplyStatus(t('ui.dataAudit.needRoot'), 'error');
+    return;
+  }
+
+  dataAuditApplyBusy = true;
+  els.dataAuditApplyConfirmBtn.disabled = true;
+  els.dataAuditApplyCancel.disabled = true;
+  setDataAuditApplyStatus(t('ui.dataAudit.writing'), 'busy');
+  try {
+    const result = await client.library.auditApply({
+      libraryRoot,
+      plugin: plugin.name,
+      fields: plugin.proposals.map((proposal) => proposal.field),
+    });
+    const written = [
+      result.vfxinfoPath === null ? null : 'vfxinfo.txt',
+      result.metaPath === null ? null : 'fxbLoader.meta.json',
+    ].filter((file): file is string => file !== null);
+    const backups = result.backups.map((file) => file.split(/[\\/]/).pop() ?? file);
+    const summary = [
+      `Aplicado ${result.applied.length} valor(es)${written.length === 0 ? '' : ` en ${written.join(' y ')}`}.`,
+      backups.length === 0 ? t('ui.dataAudit.noFilesToBackup') : t('ui.dataAudit.backup', { 0: backups.join(', ') }),
+      result.skipped.length === 0 ? '' : t('ui.dataAudit.skippedProposals', { 0: result.skipped.length }),
+      ...result.warnings,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    closeDataAuditDetail();
+    await loadDataAudit();
+    setDataAuditStatus(summary, result.applied.length === 0 ? 'error' : 'ok');
+  } catch (error) {
+    setDataAuditApplyStatus(t('ui.dataAudit.applyError', { 0: describeError(error) }), 'error');
+  } finally {
+    dataAuditApplyBusy = false;
+    if (els.dataAuditApplyConfirm.hidden === false) {
+      els.dataAuditApplyConfirmBtn.disabled = false;
+      els.dataAuditApplyCancel.disabled = false;
+    }
   }
 }
 
@@ -6246,19 +6890,25 @@ async function loadDataAudit(): Promise<void> {
     destroyDataAuditTable();
     els.dataAuditPath.textContent = '';
     els.dataAuditSummary.textContent = '';
-    setDataAuditStatus('Elige la carpeta de la librería activa para auditar sus datos.', 'error');
+    setDataAuditStatus(t('ui.dataAudit.needRootAudit'), 'error');
     return;
   }
 
   dataAuditBusy = true;
   els.dataAuditRefresh.disabled = true;
-  setDataAuditStatus('Auditando los datos de la librería…', 'busy');
+  setDataAuditStatus(t('ui.dataAudit.auditing'), 'busy');
   try {
     const result = await client.library.audit({ libraryRoot });
     els.dataAuditPath.textContent = result.plugsPath;
     els.dataAuditSummary.textContent =
-      `${result.total} plugin(s) · ${result.complete} completo(s) · ${result.incomplete} con huecos · ` +
-      `${result.issueCount} hueco(s) · ${result.proposalCount} valor(es) rellenables · leído ${result.scannedAt}`;
+      t('msg.dataAuditSummary', {
+        0: result.total,
+        1: result.complete,
+        2: result.incomplete,
+        3: result.issueCount,
+        4: result.proposalCount,
+        5: result.scannedAt,
+      });
     if (dataAuditTableController === null) {
       dataAuditTableController = mountTable(els.dataAuditTable, dataAuditTableView, result.plugins);
     } else {
@@ -6274,7 +6924,7 @@ async function loadDataAudit(): Promise<void> {
     destroyDataAuditTable();
     els.dataAuditPath.textContent = '';
     els.dataAuditSummary.textContent = '';
-    setDataAuditStatus(`No se pudo auditar la librería: ${describeError(error)}`, 'error');
+    setDataAuditStatus(t('ui.dataAudit.auditError', { 0: describeError(error) }), 'error');
   } finally {
     dataAuditBusy = false;
     els.dataAuditRefresh.disabled = false;
@@ -6321,6 +6971,21 @@ els.dataAuditRefresh.addEventListener('click', () => {
 });
 
 els.dataAuditDetailClose.addEventListener('click', closeDataAuditDetail);
+
+els.dataAuditApply.addEventListener('click', () => {
+  const plugin = dataAuditDetailPlugin;
+  if (plugin === null || plugin.proposals.length === 0) return;
+  renderDataAuditApplyConfirm(plugin);
+});
+
+els.dataAuditApplyCancel.addEventListener('click', () => {
+  closeDataAuditApplyConfirm();
+  els.dataAuditApply.focus({ preventScroll: true });
+});
+
+els.dataAuditApplyConfirmBtn.addEventListener('click', () => {
+  void applyDataAuditProposals();
+});
 
 els.drawerBackdrop.addEventListener('click', () => {
   closeBanks();
@@ -6384,10 +7049,44 @@ window.addEventListener('keydown', (event) => {
 // El clic fuera de una tabla cierra sus menús «···» y los chips: lo lleva
 // `mountTable`, que es quien los crea.
 
+// ---------------------------------------------------------------- idioma
+const localeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="ui-locale"]')];
+
+function syncLocaleInputs(locale: Locale): void {
+  for (const input of localeInputs) input.checked = input.value === locale;
+}
+
+/** Cambia el idioma de toda la interfaz sin recargar ni perder el estado. */
+function applyLocale(locale: Locale): void {
+  setLocale(locale);
+  syncDocumentLang(locale);
+  syncLocaleInputs(locale);
+  applyI18n();
+  if (scanData !== null) render(scanData);
+}
+
+for (const input of localeInputs) {
+  input.addEventListener('change', () => {
+    if (input.checked) applyLocale(input.value as Locale);
+  });
+}
+
+onLocaleChange((locale) => {
+  syncDocumentLang(locale);
+  syncLocaleInputs(locale);
+  applyI18n();
+  if (scanData !== null) render(scanData);
+});
+
+initAppI18n();
+applyI18n();
+syncLocaleInputs(getLocale());
+
+void initCapabilities();
 void pruneRecents();
 
 if (libraryRoot) {
   void scan();
 } else {
-  setStatus('Elige la carpeta de la librería VFX para empezar.', 'info');
+  setStatus(t('ui.app.needRoot'), 'info');
 }

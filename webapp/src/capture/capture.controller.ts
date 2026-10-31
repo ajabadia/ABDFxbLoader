@@ -19,6 +19,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
+  ApiResponse,
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
@@ -36,8 +37,12 @@ import {
   CAPTURE_OK_EXAMPLE,
   CAPTURE_PACKAGE_REQUEST_EXAMPLE,
   CAPTURE_PACKAGE_RESULT_EXAMPLE,
+  CAPTURE_PRE_EXISTING_EXAMPLE,
+  CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE,
   CAPTURE_SNAPSHOT_EXAMPLE,
   CAPTURE_STAGING_EXAMPLE,
+  CAPTURE_STAGING_RESTORE_EXAMPLE,
+  CAPTURE_STAGING_REVEAL_EXAMPLE,
   CAPTURE_START_REQUEST_EXAMPLE,
   CAPTURE_TASK_EXAMPLE,
   CAPTURE_TASK_FINISHED_EXAMPLE,
@@ -48,8 +53,12 @@ import {
   CaptureFinalizeResultDto,
   CaptureOkDto,
   CapturePackageResultDto,
+  CapturePreExistingDto,
+  CaptureRevealPreExistingDto,
+  CaptureRevealStagingDto,
   CaptureSnapshotDto,
   CaptureStagingListDto,
+  CaptureStagingRestoreDto,
   CaptureTaskDto,
   CaptureVMachineResultDto,
   FinishCaptureDto,
@@ -229,6 +238,140 @@ export class CaptureController {
     return this.service.packageDiff(dto.diffId, dto.targetDir, dto.packageName);
   }
 
+  @Get('pre-existing/:diffId')
+  @ApiOperation({
+    summary: 'Contar los archivos previos a la captura que se incluirían',
+    description:
+      'Consulta el snapshot inicial sin copiar nada: devuelve cuántos archivos del plugin ya ' +
+      'existían antes de la captura y se sumarían al paquete con «incluir los archivos previos». ' +
+      'Es la misma selección que hace `/capture/package`, acotada al tallo del DLL y a las ' +
+      'carpetas donde la captura puso archivos. Si el staging ya existe, solo cuenta los que ' +
+      'siguen en él, porque son los que `/capture/vmachine/:diffId` empaquetaría de verdad. ' +
+      '`restorableFiles` lista los que se quitaron y todavía se pueden devolver de uno en uno.',
+  })
+  @ApiParam({ name: 'diffId', description: 'ID del diff calculado al finalizar la captura.', example: CAPTURE_DIFF_EXAMPLE.diffId })
+  @ApiOkResponse({
+    description: 'Recuento y rutas relativas de los archivos previos que entrarían.',
+    type: CapturePreExistingDto,
+    example: CAPTURE_PRE_EXISTING_EXAMPLE,
+  })
+  @ApiNotFoundResponse({
+    description: 'No existe ningún diff con ese `diffId`.',
+    type: CaptureErrorDto,
+    example: CAPTURE_NOT_FOUND_DIFF_EXAMPLE,
+  })
+  async listPreExisting(@Param('diffId') diffId: string) {
+    return this.service.listPreExisting(diffId);
+  }
+
+  @Post('pre-existing/:diffId/reveal')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Abrir en el Explorador de Windows un archivo previo del paso 4',
+    description:
+      'Abre la carpeta del Explorador con ese archivo resaltado, para comprobar qué es antes ' +
+      'de generar el banco. El `path` se valida contra la misma selección que hace ' +
+      '`GET /capture/pre-existing/:diffId`: una ruta que no sea de los previos de ese diff, o ' +
+      'un previo que ya no está en el disco, es un 404 y no se abre ninguna ventana. El ' +
+      'servidor tiene que correr en Windows; en otro sistema es un 501.',
+  })
+  @ApiParam({ name: 'diffId', description: 'ID del diff calculado al finalizar la captura.', example: CAPTURE_DIFF_EXAMPLE.diffId })
+  @ApiQuery({
+    name: 'path',
+    required: true,
+    description:
+      'Ruta del previo tal como la devuelve `GET /capture/pre-existing/:diffId` en `files`. ' +
+      'Se compara sin distinguir mayúsculas ni separadores.',
+    example: CAPTURE_PRE_EXISTING_EXAMPLE.files[0],
+  })
+  @ApiOkResponse({
+    description: 'Archivo mostrado en el Explorador.',
+    type: CaptureRevealPreExistingDto,
+    example: CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta el parámetro `path`.',
+    type: CaptureErrorDto,
+    example: { message: 'path requerido' },
+  })
+  @ApiNotFoundResponse({
+    description:
+      'No existe el diff, o el `path` no es uno de sus archivos previos: también cuando ese ' +
+      'previo existía al listarlo pero ya se borró del disco.',
+    schema: { $ref: getSchemaPath(CaptureErrorDto) },
+    examples: {
+      sinDiff: { summary: 'El diff ya no está cargado', value: CAPTURE_NOT_FOUND_DIFF_EXAMPLE },
+      noEsPrevio: {
+        summary: 'La ruta no es de los archivos previos, o el previo ya no está',
+        value: {
+          message:
+            '"otro.dll" no es uno de los archivos previos del diff "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f" ' +
+            'o ya no está en el disco.',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_IMPLEMENTED,
+    description: 'El servidor no corre en Windows: no hay Explorador que abrir.',
+    type: CaptureErrorDto,
+    example: { message: 'Abrir en el Explorador solo está disponible en Windows' },
+  })
+  async revealPreExisting(@Param('diffId') diffId: string, @Query('path') filePath: string) {
+    if (!filePath) throw new BadRequestException('path requerido');
+    return this.service.revealPreExisting(diffId, filePath);
+  }
+
+  @Post('staging/:diffId/reveal')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Abrir en el Explorador de Windows un archivo del staging',
+    description:
+      'Abre la carpeta del Explorador con ese archivo del staging resaltado, para comprobar qué se ' +
+      'va a empaquetar. El `path` se resuelve dentro de la carpeta del staging del `diffId`: una ruta ' +
+      'absoluta, con `..`, de una carpeta o de un archivo que ya no está es un 404 y no se abre nada. ' +
+      'El servidor tiene que correr en Windows; en otro sistema es un 501.',
+  })
+  @ApiParam({ name: 'diffId', description: 'ID del diff empaquetado.', example: CAPTURE_DIFF_EXAMPLE.diffId })
+  @ApiQuery({
+    name: 'path',
+    required: true,
+    description: 'Ruta del archivo tal como la devuelve `GET /capture/staging/:diffId` en `files`.',
+    example: CAPTURE_STAGING_REVEAL_EXAMPLE.file,
+  })
+  @ApiOkResponse({
+    description: 'Archivo del staging mostrado en el Explorador.',
+    type: CaptureRevealStagingDto,
+    example: CAPTURE_STAGING_REVEAL_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta el parámetro `path`.',
+    type: CaptureErrorDto,
+    example: { message: 'path requerido' },
+  })
+  @ApiNotFoundResponse({
+    description:
+      'No existe el staging del diff, o el `path` no apunta a un archivo que siga dentro de él.',
+    schema: { $ref: getSchemaPath(CaptureErrorDto) },
+    examples: {
+      sinStaging: { summary: 'El staging no está preparado', value: CAPTURE_NOT_FOUND_STAGING_EXAMPLE },
+      sinArchivo: {
+        summary: 'La ruta no es del staging o el archivo ya no está',
+        value: CAPTURE_NOT_FOUND_STAGING_FILE_EXAMPLE,
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_IMPLEMENTED,
+    description: 'El servidor no corre en Windows: no hay Explorador que abrir.',
+    type: CaptureErrorDto,
+    example: { message: 'Abrir en el Explorador solo está disponible en Windows' },
+  })
+  async revealStaging(@Param('diffId') diffId: string, @Query('path') filePath: string) {
+    if (!filePath) throw new BadRequestException('path requerido');
+    return this.service.revealStagingFile(diffId, filePath);
+  }
+
   @Get('staging/:diffId')
   @ApiOperation({ summary: 'Listar archivos en staging' })
   @ApiParam({ name: 'diffId', description: 'ID del diff empaquetado.', example: CAPTURE_DIFF_EXAMPLE.diffId })
@@ -281,6 +424,48 @@ export class CaptureController {
     if (!filePath) throw new BadRequestException('path requerido');
     await this.service.removeFromStaging(diffId, filePath);
     return { ok: true };
+  }
+
+  @Post('staging/:diffId/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Recuperar en el staging los archivos previos que se quitaron',
+    description:
+      'Vuelve a copiar desde el snapshot inicial los archivos que `POST /capture/package` marcó ' +
+      'como anteriores a la captura y que ya no están en el staging. No repite el empaquetado: ' +
+      'los archivos de la captura, el `.reg` y el manifiesto se quedan como están. Los que el ' +
+      'manifiesto declara pero cuyo origen ya no existe se devuelven en `missing`, no como error. ' +
+      'Con `path` devuelve solo ese archivo —el botón de una fila quitada del staging—; sin ' +
+      '`path` los devuelve todos. Repetirlo sin nada que devolver es un 200 con `restored: 0`.',
+  })
+  @ApiParam({ name: 'diffId', description: 'ID del diff empaquetado.', example: CAPTURE_DIFF_EXAMPLE.diffId })
+  @ApiQuery({
+    name: 'path',
+    required: false,
+    description:
+      'Ruta relativa del único previo que se quiere devolver, tal como aparece en `restorableFiles` ' +
+      'de `GET /capture/pre-existing/:diffId`. Si no es uno de los previos que el manifiesto marca, ' +
+      'la respuesta es 404 y no se copia nada.',
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE.files[0],
+  })
+  @ApiOkResponse({
+    description: 'Archivos previos devueltos al staging, y los que ya no se pueden recuperar.',
+    type: CaptureStagingRestoreDto,
+    example: CAPTURE_STAGING_RESTORE_EXAMPLE,
+  })
+  @ApiNotFoundResponse({
+    description:
+      'No hay staging para ese diff, el diff ya no está cargado (por ejemplo, tras reiniciar el ' +
+      'servidor) —sin snapshot inicial no hay de dónde copiar los previos—, o el `path` pedido no ' +
+      'es uno de los archivos previos del manifiesto.',
+    schema: { $ref: getSchemaPath(CaptureErrorDto) },
+    examples: {
+      sinStaging: { summary: 'El diff no se ha empaquetado', value: CAPTURE_NOT_FOUND_STAGING_EXAMPLE },
+      sinDiff: { summary: 'El diff ya no está cargado', value: CAPTURE_NOT_FOUND_DIFF_EXAMPLE },
+    },
+  })
+  async restoreStaging(@Param('diffId') diffId: string, @Query('path') filePath?: string) {
+    return this.service.restoreStagingPreExisting(diffId, filePath || undefined);
   }
 
   @Delete('staging/:diffId/clean')

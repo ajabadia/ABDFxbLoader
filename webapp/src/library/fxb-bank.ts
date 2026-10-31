@@ -64,8 +64,12 @@ export interface FxbBankParse {
   warnings: string[];
 }
 
-function readU32(data: Buffer, offset: number, endianness: FxbEndianness): number {
-  return endianness === 'little' ? data.readUInt32LE(offset) : data.readUInt32BE(offset);
+function readU32(data: Buffer | Uint8Array, offset: number, endianness: FxbEndianness): number {
+  if (typeof (data as Buffer).readUInt32LE === 'function') {
+    return endianness === 'little' ? (data as Buffer).readUInt32LE(offset) : (data as Buffer).readUInt32BE(offset);
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return view.getUint32(offset, endianness === 'little');
 }
 
 /** `CCONST('M','y','S','y')` → `0x4d795379`. */
@@ -114,7 +118,7 @@ export function parseUniqueIdInput(input: string | number): number {
  * Parsea y valida un `.fxb`. `totalSize` permite validar solo la cabecera
  * (pasando un buffer de 156 bytes y el tamaño real del archivo).
  */
-export function parseFxbBank(data: Buffer, totalSize: number = data.length): FxbBankParse {
+export function parseFxbBank(data: Buffer | Uint8Array, totalSize: number = data.length): FxbBankParse {
   const issues: string[] = [];
   const warnings: string[] = [];
   const fail = (issue: string): FxbBankParse => ({
@@ -277,9 +281,9 @@ export function parseFxbBank(data: Buffer, totalSize: number = data.length): Fxb
   };
 }
 
-export interface FxbConversion {
+export interface FxbConversion<T extends Uint8Array = Buffer> {
   /** Copia convertida; si el origen ya estaba en ese orden, idéntica al original. */
-  data: Buffer;
+  data: T;
   /** Campos de 32 bits cuyo orden de bytes se invirtió (enteros y floats). */
   fields: number;
   /** Programas recorridos de un `FxBk`; 0 en un `FBCh`. */
@@ -298,7 +302,12 @@ export interface FxbConversion {
  * parámetros que se salen de su programa. Si el banco ya está en el orden
  * pedido devuelve una copia sin tocar y `fields: 0`.
  */
-export function convertFxbEndianness(data: Buffer, target: FxbEndianness): FxbConversion {
+export function convertFxbEndianness(data: Buffer, target: FxbEndianness): FxbConversion<Buffer>;
+export function convertFxbEndianness(data: Uint8Array, target: FxbEndianness): FxbConversion<Uint8Array>;
+export function convertFxbEndianness(
+  data: Buffer | Uint8Array,
+  target: FxbEndianness,
+): FxbConversion<Buffer | Uint8Array> {
   if (target !== 'big' && target !== 'little') {
     throw new RangeError('el orden de bytes de destino debe ser "big" o "little"');
   }
@@ -318,10 +327,10 @@ export function convertFxbEndianness(data: Buffer, target: FxbEndianness): FxbCo
     throw new Error(`fxMagic 0x${fxMagic.toString(16)} no es "FxBk" ni "FBCh"`);
   }
 
-  const converted = Buffer.from(data);
+  const converted = Buffer.isBuffer(data) ? Buffer.from(data) : new Uint8Array(data);
   if (source === target) {
     return {
-      data: converted,
+      data: converted as any,
       fields: 0,
       programs: fxMagic === FX_BANK_MAGIC ? readU32(data, 24, source) : 0,
       chunks: 0,
@@ -407,7 +416,7 @@ export function convertFxbEndianness(data: Buffer, target: FxbEndianness): FxbCo
     programs += 1;
   }
 
-  return { data: converted, fields, programs, chunks };
+  return { data: converted as any, fields, programs, chunks };
 }
 
 export interface BankReference {
@@ -475,7 +484,7 @@ export interface FxBankChunkBuildInput {
   /** Versión del plugin que declarará el banco (por defecto 0). */
   fxVersion?: number;
   /** Contenido opaco del chunk del plugin (sin cabecera del banco). */
-  chunk: Buffer;
+  chunk: Buffer | Uint8Array;
   /** Versión del formato de banco: 1 o 2 (2 añade `currentProgram`) (por defecto 1). */
   version?: 1 | 2;
   /** Programa activo del banco; solo aplica con `version: 2` (por defecto 0). */
@@ -500,8 +509,8 @@ export function buildFxBankChunk(input: FxBankChunkBuildInput): Buffer {
     if (endianness === 'little') buffer.writeUInt32LE(value >>> 0, offset);
     else buffer.writeUInt32BE(value >>> 0, offset);
   };
-  if (!Buffer.isBuffer(input.chunk)) {
-    throw new TypeError('chunk debe ser un Buffer');
+  if (!Buffer.isBuffer(input.chunk) && !(input.chunk instanceof Uint8Array)) {
+    throw new TypeError('chunk debe ser un Buffer o Uint8Array');
   }
   if (input.chunk.length === 0) {
     throw new RangeError('chunk no puede estar vacío');
@@ -540,7 +549,11 @@ export function buildFxBankChunk(input: FxBankChunkBuildInput): Buffer {
   writeU32(buffer, 28, currentProgram); // 0 salvo versión 2
   writeU32(buffer, 152, CHUNK_MAGIC); // chunkMagic de cierre del struct
   writeU32(buffer, FXB_HEADER_SIZE, input.chunk.length);
-  input.chunk.copy(buffer, FXB_CHUNK_HEADER_SIZE);
+  if (Buffer.isBuffer(input.chunk)) {
+    input.chunk.copy(buffer, FXB_CHUNK_HEADER_SIZE);
+  } else {
+    buffer.set(input.chunk, FXB_CHUNK_HEADER_SIZE);
+  }
 
   return buffer;
 }

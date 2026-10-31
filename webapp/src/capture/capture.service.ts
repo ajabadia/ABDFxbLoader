@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  NotImplementedException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
@@ -6,6 +12,7 @@ import * as os from 'node:os';
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
 import { writeFileAtomic } from '../common/atomic-file';
+import { revealInExplorer, RevealUnsupportedError } from '../system/reveal';
 import { VFXINFO_FILENAME } from '../library/vfxinfo';
 import type { CaptureSnapshot, CaptureDiff, CaptureTask, CaptureTaskKind, FileSnapshotEntry, RegistrySnapshotEntry } from './capture.types';
 import { serializeWizardToVfxinfo } from '../wizard/wizard-parser';
@@ -74,6 +81,14 @@ function unitRelative(absolute: string): string {
   const parsed = path.parse(absolute);
   const relative = parsed.root ? path.relative(parsed.root, absolute).replace(/^[\\/]+/, '') : absolute;
   return (relative === '' ? path.basename(absolute) : relative).split(path.sep).join('/');
+}
+
+/**
+ * Clave comparable de una ruta del staging: separadores de más, `.` y
+ * mayúsculas fuera, igual que Windows compara las rutas.
+ */
+function stagingKey(value: string): string {
+  return splitRelative(value).join('/').toLowerCase();
 }
 
 /** `child` está dentro de `parent` (`false` si es el propio `parent`). */
@@ -807,6 +822,201 @@ export class CaptureService implements OnModuleInit {
     return { files, warnings };
   }
 
+  /**
+   * Archivos previos a la captura que se incluirían en el paquete, sin tocar
+   * disco ni el staging. Sale de la misma selección que usa `packageDiff` sobre
+   * el snapshot inicial; si el staging ya existe, solo cuenta los que siguen
+   * en él, que es lo que `POST /capture/vmachine/:diffId` empaquetaría de
+   * verdad. La vista lo consulta en el paso 4 antes de generar.
+   */
+  async listPreExisting(
+    diffId: string,
+  ): Promise<{
+    count: number;
+    files: string[];
+    restorable: number;
+    restorableFiles: string[];
+    warnings: string[];
+  }> {
+    const diff = this.diffs.get(diffId);
+    if (!diff) throw new NotFoundException({ message: `No existe el diff "${diffId}".` });
+    const { files, warnings } = this.collectPreExisting(diff);
+    const stagingPath = path.join(this.stagingDir, diffId);
+    const stagingExists = existsSync(stagingPath);
+    // El staging guarda la ruta relativa a la unidad de origen (`unitRelative`),
+    // no la relativa a la carpeta del paquete: con esta última nunca habría
+    // coincidencia y el recuento saldría siempre vacío.
+    const relatives = files.map((file) => unitRelative(file.absolute));
+    const remaining = relatives.filter((relative) => {
+      if (!stagingExists) return true;
+      const target = this.stagingTarget(stagingPath, relative);
+      return target !== null && existsSync(target);
+    });
+    // Lo que el manifiesto marcó como previo, ya no está en el staging y sigue
+    // disponible en el snapshot es lo que `POST …/restore` puede devolver, de
+    // uno en uno con `?path=` o todos de golpe.
+    const available = new Set(relatives.map(stagingKey));
+    const declared = stagingExists ? await this.readStagedPreExisting(diffId) : [];
+    const restorableFiles = declared.filter((relative) => {
+      const target = this.stagingTarget(stagingPath, relative);
+      return target !== null && !existsSync(target) && available.has(stagingKey(relative));
+    });
+    return {
+      count: remaining.length,
+      files: remaining,
+      restorable: restorableFiles.length,
+      restorableFiles,
+      warnings,
+    };
+  }
+
+  /**
+   * Abre en el Explorador de Windows uno de los previos del paso 4, con el
+   * archivo resaltado, para comprobar qué es antes de empaquetarlo. La ruta se
+   * busca entre la misma selección que enseña el recuento: no se abre cualquier
+   * cosa que mande la vista. Un previo que ya no está en el disco es un 404, no
+   * una ventana en una carpeta vacía.
+   */
+  async revealPreExisting(
+    diffId: string,
+    relative: string,
+  ): Promise<{ ok: true; file: string; opened: string }> {
+    const diff = this.diffs.get(diffId);
+    if (!diff) {
+      throw new NotFoundException({ message: `No existe el diff "${diffId}".` });
+    }
+    const { files } = this.collectPreExisting(diff);
+    const key = stagingKey(relative);
+    const match = files.find((file) => stagingKey(unitRelative(file.absolute)) === key);
+    if (match === undefined) {
+      // `collectPreExisting` ya descarta los que no están en disco, así que la
+      // ruta puede ser ajena al diff o de un previo borrado desde que se listó.
+      throw new NotFoundException({
+        message:
+          `"${relative}" no es uno de los archivos previos del diff "${diffId}" ` +
+          'o ya no está en el disco.',
+      });
+    }
+    if (!existsSync(match.absolute)) {
+      throw new NotFoundException({
+        message: `El archivo previo "${relative}" ya no está en el disco.`,
+      });
+    }
+    try {
+      await revealInExplorer(match.absolute);
+    } catch (error) {
+      if (error instanceof RevealUnsupportedError) {
+        throw new NotImplementedException(error.message);
+      }
+      throw error;
+    }
+    return { ok: true, file: unitRelative(match.absolute), opened: match.absolute };
+  }
+
+  /**
+   * Abre en el Explorador de Windows un archivo del staging, con el archivo
+   * resaltado, para comprobar qué se va a empaquetar. La ruta se resuelve
+   * dentro de la carpeta del staging y se exige que sea un archivo que sigue
+   * ahí: ni rutas absolutas, ni `..`, ni carpetas, ni algo que se haya quitado
+   * con la ×.
+   */
+  async revealStagingFile(
+    diffId: string,
+    relative: string,
+  ): Promise<{ ok: true; file: string; opened: string }> {
+    const stagingPath = this.stagingPathOrThrow(diffId);
+    const target = this.stagingTarget(stagingPath, relative);
+    // Se comprueba con `stat` y no solo con `existsSync`: una carpeta dentro
+    // del staging no es un archivo que abrir, y un permiso denegado es un 404,
+    // no un 500.
+    const stats = target === null ? null : await fs.stat(target).catch(() => null);
+    if (target === null || stats === null || !stats.isFile()) {
+      throw new NotFoundException({
+        message: `No existe "${relative}" en el staging del diff "${diffId}".`,
+      });
+    }
+    try {
+      await revealInExplorer(target);
+    } catch (error) {
+      if (error instanceof RevealUnsupportedError) {
+        throw new NotImplementedException(error.message);
+      }
+      throw error;
+    }
+    return { ok: true, file: relative, opened: target };
+  }
+
+  /**
+   * Ruta dentro del staging, o `null` si la relativa se sale de la carpeta
+   * (rutas absolutas, `..`) o no nombra ningún archivo.
+   */
+  private stagingTarget(stagingPath: string, relative: string): string | null {
+    const segments = splitRelative(relative);
+    if (segments.length === 0 || segments.includes('..')) return null;
+    const target = path.join(stagingPath, ...segments);
+    return target.startsWith(stagingPath + path.sep) ? target : null;
+  }
+
+  /**
+   * Devuelve al staging los archivos previos a la captura que se habían
+   * quitado con `DELETE /capture/staging/:diffId`, copiándolos otra vez del
+   * snapshot inicial. No repite `POST /capture/package`: los archivos de la
+   * captura, el `.reg` y el manifiesto se quedan como están. Los previos que el
+   * manifiesto declara y ya no están en el origen quedan en `missing`.
+   *
+   * Con `onlyRelative` devuelve únicamente ese archivo, para deshacer un borrado
+   * suelto del staging sin tener que recuperar los demás.
+   */
+  async restoreStagingPreExisting(
+    diffId: string,
+    onlyRelative?: string,
+  ): Promise<{ restored: number; files: string[]; missing: string[]; warnings: string[] }> {
+    const stagingPath = this.stagingPathOrThrow(diffId);
+    const diff = this.diffs.get(diffId);
+    if (!diff) {
+      throw new NotFoundException({
+        message: `No existe el diff "${diffId}": sin snapshot inicial no hay de dónde recuperar los archivos previos.`,
+      });
+    }
+    const declared = await this.readStagedPreExisting(diffId);
+    // Con `path` se devuelve solo ese archivo: el botón de cada fila quitada
+    // del staging. La ruta tiene que ser una de las que el manifiesto marcó
+    // como previas; cualquier otra cosa es un 404, no un éxito vacío.
+    const targets =
+      onlyRelative === undefined
+        ? declared
+        : declared.filter((relative) => stagingKey(relative) === stagingKey(onlyRelative));
+    if (onlyRelative !== undefined && targets.length === 0) {
+      throw new NotFoundException({
+        message: `"${onlyRelative}" no es uno de los archivos previos del staging del diff "${diffId}".`,
+      });
+    }
+    const { files, warnings } = this.collectPreExisting(diff);
+    const sources = new Map(
+      files.map((file) => [stagingKey(unitRelative(file.absolute)), file.absolute] as const),
+    );
+    const restored: string[] = [];
+    const missing: string[] = [];
+    for (const relative of targets) {
+      const target = this.stagingTarget(stagingPath, relative);
+      const source = sources.get(stagingKey(relative));
+      if (target === null || source === undefined) {
+        missing.push(relative);
+        continue;
+      }
+      // Si sigue en el staging no se pisa: puede ser una copia ya editada.
+      if (existsSync(target)) continue;
+      try {
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.copyFile(source, target);
+        restored.push(relative);
+      } catch {
+        missing.push(relative);
+      }
+    }
+    return { restored: restored.length, files: restored, missing, warnings };
+  }
+
   /** Rutas del staging que `POST /capture/package` marcó como previas a la captura. */
   private async readStagedPreExisting(diffId: string): Promise<string[]> {
     try {
@@ -1089,6 +1299,13 @@ export class CaptureService implements OnModuleInit {
       const wizardContent = serializeWizardToVfxinfo(wizardRecord);
       wizardPath = path.join(outputDir, `${options.pluginName}.vfxwizard`);
       await writeFileAtomic(wizardPath, Buffer.from(wizardContent, 'utf8')).catch(() => undefined);
+    } else {
+      // El `.vfxwizard` vive suelto junto al paquete, no dentro de
+      // `plugs\<Plugin>\`, así que no lo alcanza el borrado de la generación
+      // anterior: si esta generación no lo pide, se queda al lado de un paquete
+      // que ya no describe a nadie. Se borra el de este plugin (el que escribiría
+      // esta misma llamada) y no otros que convivan en la carpeta.
+      await fs.rm(path.join(outputDir, `${options.pluginName}.vfxwizard`), { force: true });
     }
 
     return { bankDir, wizardPath, warnings };

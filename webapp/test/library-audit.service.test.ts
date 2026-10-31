@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { LibraryAuditService } from '../src/library/library-audit.service';
 import type { LibraryAuditPlugin } from '../src/library/library-audit.types';
-import { LibraryPathError } from '../src/library/library.types';
+import { LibraryPathError, PluginNotFoundError } from '../src/library/library.types';
 import { META_FILENAME } from '../src/plugin-meta/plugin-meta.constants';
 import { PluginMetaService } from '../src/plugin-meta/plugin-meta.service';
+import type { WizardService } from '../src/wizard/wizard.service';
+import type { WizardRecord } from '../src/wizard/wizard.types';
 import { peWithExportsDll } from './helpers/pe';
 
 const service = new LibraryAuditService(new PluginMetaService());
@@ -284,4 +286,360 @@ test('una librería vacía se audita sin plugins', async (t) => {
   assert.equal(result.complete, 0);
   assert.equal(result.incomplete, 0);
   assert.deepEqual(result.plugins, []);
+});
+
+test('apply escribe el meta propuesto y no respalda si el archivo no existía', async (t) => {
+  const root = await library(t);
+  const dir = await plugin(root, 'Lead');
+
+  const result = await service.apply({ libraryRoot: root, plugin: 'Lead' });
+
+  assert.equal(result.plugin, 'Lead');
+  assert.deepEqual(
+    result.applied.map(({ field, value }) => [field, value]),
+    [
+      ['meta.id', '1177630041'],
+      ['meta.name', 'Lead'],
+      ['meta.genre', 'Synth'],
+      ['meta.name_abbreviation', 'LEAD'],
+    ],
+  );
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(result.backups, [], 'no había archivo que respaldar');
+  assert.equal(result.vfxinfoPath, null);
+  assert.equal(result.metaPath, path.join(dir, META_FILENAME));
+  assert.deepEqual(result.warnings, []);
+
+  const written = JSON.parse(await readFile(path.join(dir, META_FILENAME), 'utf8'));
+  assert.deepEqual(written.common, {
+    id: '1177630041',
+    name: 'Lead',
+    vendor: '',
+    vendor_url: '',
+    genre: 'Synth',
+    name_abbreviation: 'LEAD',
+    notes: '',
+    created: '',
+  });
+  assert.deepEqual(written.extended, {});
+  assert.deepEqual(written.source, { vfxinfo: false });
+
+  // Lo aplicado ya no se vuelve a proponer.
+  assert.deepEqual(find((await service.audit(root)).plugins, 'Lead').proposals, []);
+});
+
+test('apply rellena el encabezado del vfxinfo sin tocar bloques ni finales de línea', async (t) => {
+  const root = await library(t);
+  const vfxinfo = [
+    'name: Lead',
+    'id: 1177630041',
+    'dll_name: Lead/Lead.dll',
+    'is_synth: 1',
+    'parameter_count: 12',
+    'program_count: 128',
+    'has_editor: 1',
+    'editor_width: 640',
+    'editor_height: 480',
+    '',
+    'files_to_copy:',
+    '...',
+    '/Program Files/Lead/extra.dat',
+    '...',
+    '',
+    'notes:',
+    '...',
+    'version: esto es una nota, no un campo del encabezado',
+    '...',
+    '',
+  ].join('\r\n');
+  const dir = await plugin(root, 'Lead', { vfxinfo, meta: FULL_META });
+  const file = path.join(dir, 'vfxinfo.txt');
+
+  const result = await service.apply({ libraryRoot: root, plugin: 'Lead' });
+
+  assert.deepEqual(result.applied, [{ field: 'vfxinfo.version', value: '1' }]);
+  assert.deepEqual(result.backups, [`${file}.bak`]);
+  const applied = await readFile(file, 'latin1');
+  assert.match(applied, /^version: 1\r$/m);
+  // La línea de la nota no es un campo: sigue igual y dentro de su bloque.
+  assert.match(applied, /^version: esto es una nota, no un campo del encabezado\r$/m);
+  assert.match(
+    applied,
+    /files_to_copy:\r\n\.\.\.\r\n\/Program Files\/Lead\/extra\.dat\r\n\.\.\./,
+  );
+  assert.equal(/[^\r]\n/.test(applied), false, 'no debe mezclar finales de línea');
+  assert.equal(await readFile(`${file}.bak`, 'latin1'), vfxinfo);
+});
+
+test('apply sin vfxinfo no inventa el archivo y lo informa', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Huerfano', { vfxinfo: null, dll: null });
+
+  const result = await service.apply({ libraryRoot: root, plugin: 'Huerfano' });
+
+  assert.equal(result.vfxinfoPath, null);
+  assert.deepEqual(result.skipped, [
+    { field: 'vfxinfo.name', reason: 'no existe vfxinfo.txt' },
+  ]);
+  assert.deepEqual(result.applied, [{ field: 'meta.name_abbreviation', value: 'HUER' }]);
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0] ?? '', /No se creó vfxinfo\.txt/);
+});
+
+test('apply solo escribe campos propuestos y valida el plugin', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Lead');
+
+  const result = await service.apply({
+    libraryRoot: root,
+    plugin: 'Lead',
+    fields: ['meta.vendor', 'dll.vst'],
+  });
+
+  assert.deepEqual(result.applied, []);
+  assert.equal(result.metaPath, null);
+  assert.deepEqual(
+    result.skipped.map((item) => item.field).sort(),
+    ['dll.vst', 'meta.vendor'],
+  );
+  assert.match(result.skipped[0]?.reason ?? '', /no propone/);
+
+  await assert.rejects(
+    () => service.apply({ libraryRoot: root, plugin: 'Ghost' }),
+    PluginNotFoundError,
+  );
+  await assert.rejects(
+    () => service.apply({ libraryRoot: root, plugin: path.join('..', 'Lead') }),
+    LibraryPathError,
+  );
+  await assert.rejects(() => service.apply({ libraryRoot: root, plugin: '  ' }), LibraryPathError);
+});
+
+test('apply conserva el extended del meta, respalda y es idempotente', async (t) => {
+  const root = await library(t);
+  const dir = await plugin(root, 'Lead', {
+    meta: {
+      ...FULL_META,
+      common: { ...FULL_META.common, id: '', name: '' },
+      extended: { license: 'free', max_programs: 128 },
+    },
+  });
+  const file = path.join(dir, META_FILENAME);
+  const original = await readFile(file, 'utf8');
+
+  const first = await service.apply({ libraryRoot: root, plugin: 'Lead' });
+
+  assert.deepEqual(
+    first.applied.map((item) => item.field),
+    ['meta.id', 'meta.name'],
+  );
+  assert.deepEqual(first.backups, [`${file}.bak`]);
+  assert.equal(await readFile(`${file}.bak`, 'utf8'), original);
+  const written = JSON.parse(await readFile(file, 'utf8'));
+  assert.equal(written.common.vendor, 'SynthEdit', 'lo que ya estaba no se pisa');
+  assert.deepEqual(written.extended, { license: 'free', max_programs: 128 });
+
+  const second = await service.apply({ libraryRoot: root, plugin: 'Lead' });
+  assert.deepEqual(second.applied, []);
+  assert.equal(second.metaPath, null);
+  assert.equal(second.backups.length, 0);
+  // Ya no hay propuestas: la auditoría no propone lo que está relleno.
+  assert.deepEqual(second.skipped, []);
+});
+
+test('apply respeta los campos pedidos y no aplica el resto', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Lead');
+
+  const result = await service.apply({
+    libraryRoot: root,
+    plugin: 'Lead',
+    fields: ['meta.genre'],
+  });
+
+  assert.deepEqual(result.applied, [{ field: 'meta.genre', value: 'Synth' }]);
+  const written = JSON.parse(await readFile(path.join(root, 'plugs', 'Lead', META_FILENAME), 'utf8'));
+  assert.equal(written.common.genre, 'Synth');
+  assert.equal(written.common.id, '', 'el id no se escribe si no se pidió');
+});
+
+/** `vfxinfo.txt` con identidad pero sin versión ni campos de ejecución. */
+function sparseVfxinfo(name: string): string {
+  return [
+    `name: ${name}`,
+    'id: 1177630041',
+    `dll_name: ${name}/${name}.dll`,
+    'is_synth: 1',
+    '',
+  ].join('\r\n');
+}
+
+/** Registro de wizard completo; cada prueba retoca solo lo que necesita. */
+function wizardRecord(overrides: Partial<WizardRecord> = {}): WizardRecord {
+  return {
+    id: '1177630041',
+    name: 'Lead',
+    nameAbbreviation: 'LEAD',
+    version: '2.4',
+    dllName: 'Lead/Lead.dll',
+    dllVersion: '',
+    isSynth: true,
+    hasEditor: true,
+    parameterCount: 42,
+    programCount: 128,
+    editorWidth: 640,
+    editorHeight: 480,
+    vendor: 'SynthEdit',
+    vendorUrl: 'https://www.synthedit.com',
+    vendorType: 'Free',
+    genre: 'Synth',
+    notes: '*Known Issues*\r\nNo known issues.',
+    vendorNotes: '',
+    created: '2026-01-01',
+    filesToCopy: [],
+    dirsToCopy: [],
+    filesToCreate: {},
+    symlinks: [],
+    registryKeys: '',
+    flags: {},
+    sourcePath: '_banks/wizards/Lead.vfxwizard',
+    readme: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Auditoría con un catálogo de wizards simulado: de `WizardService` solo se usa
+ * la búsqueda, así que no hace falta el catálogo real en disco. `seen` recoge
+ * las consultas para poder comprobar con qué claves se busca.
+ */
+function auditWithCatalog(
+  record: WizardRecord | null,
+  seen: Array<{ id: string; name: string; dllName: string }> = [],
+): LibraryAuditService {
+  return new LibraryAuditService(new PluginMetaService(), {
+    matchExact: (query: { id: string; name: string; dllName: string }) => {
+      seen.push(query);
+      return record;
+    },
+  } as unknown as WizardService);
+}
+
+test('el wizard del catálogo propone fabricante, URL, notas, versión y campos de ejecución', async (t) => {
+  const root = await library(t);
+  const dir = await plugin(root, 'Lead', { vfxinfo: sparseVfxinfo('Lead'), meta: null });
+  const seen: Array<{ id: string; name: string; dllName: string }> = [];
+  const service = auditWithCatalog(wizardRecord(), seen);
+
+  const lead = find((await service.audit(root)).plugins, 'Lead');
+
+  // La búsqueda usa la identidad del plugin: ID, nombre y DLL declarado.
+  assert.deepEqual(seen, [{ id: '1177630041', name: 'Lead', dllName: 'Lead/Lead.dll' }]);
+
+  const fromWizard = lead.proposals.filter((proposal) => proposal.source === 'wizard');
+  assert.deepEqual(
+    fromWizard.map(({ field, value }) => [field, value]),
+    [
+      ['vfxinfo.version', '2.4'],
+      ['vfxinfo.parameter_count', '42'],
+      ['vfxinfo.program_count', '128'],
+      ['vfxinfo.has_editor', '1'],
+      ['vfxinfo.editor_width', '640'],
+      ['vfxinfo.editor_height', '480'],
+      ['meta.vendor', 'SynthEdit'],
+      ['meta.vendor_url', 'https://www.synthedit.com'],
+      // Las notas de varias líneas se juntan en una, como al aplicar un wizard.
+      ['meta.notes', '*Known Issues* · No known issues.'],
+    ],
+  );
+  for (const proposal of fromWizard) {
+    assert.equal(proposal.note, 'wizard del catálogo: Lead', `sin procedencia en ${proposal.field}`);
+  }
+
+  // Donde el wizard da el valor no hay hueco bloqueante; la versión es una nota.
+  assert.deepEqual(fieldsOf(lead.issues), ['meta', 'vfxinfo.version']);
+  assert.equal(lead.issues.find((issue) => issue.field === 'vfxinfo.version')?.severity, 'note');
+  assert.match(lead.issues.find((issue) => issue.field === 'vfxinfo.version')?.message ?? '', /2\.4/);
+
+  // Y lo propuesto se puede escribir: vfxinfo y catálogo.
+  const applied = await service.apply({
+    libraryRoot: root,
+    plugin: 'Lead',
+    fields: ['vfxinfo.version', 'vfxinfo.parameter_count', 'meta.vendor'],
+  });
+  assert.deepEqual(
+    applied.applied.map(({ field, value }) => [field, value]),
+    [
+      ['vfxinfo.version', '2.4'],
+      ['vfxinfo.parameter_count', '42'],
+      ['meta.vendor', 'SynthEdit'],
+    ],
+  );
+  const written = await readFile(path.join(dir, 'vfxinfo.txt'), 'latin1');
+  assert.match(written, /^version: 2\.4\r$/m);
+  assert.match(written, /^parameter_count: 42\r$/m);
+  const meta = JSON.parse(await readFile(path.join(dir, META_FILENAME), 'utf8'));
+  assert.equal(meta.common.vendor, 'SynthEdit');
+});
+
+test('sin wizard en el catálogo esos campos siguen siendo huecos', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Lead', { vfxinfo: sparseVfxinfo('Lead'), meta: null });
+  const service = auditWithCatalog(null);
+
+  const lead = find((await service.audit(root)).plugins, 'Lead');
+
+  assert.deepEqual(fieldsOf(lead.issues), [
+    'meta',
+    'meta.notes',
+    'meta.vendor',
+    'meta.vendor_url',
+    'vfxinfo.editor_height',
+    'vfxinfo.editor_width',
+    'vfxinfo.has_editor',
+    'vfxinfo.parameter_count',
+    'vfxinfo.program_count',
+    'vfxinfo.version',
+  ]);
+  assert.deepEqual(
+    lead.proposals.filter((proposal) => proposal.source !== 'wizard').map((proposal) => proposal.field),
+    ['vfxinfo.version', 'meta.id', 'meta.name', 'meta.genre', 'meta.name_abbreviation'],
+  );
+  assert.equal(
+    lead.proposals.find((proposal) => proposal.field === 'vfxinfo.version')?.value,
+    '1',
+    'sin wizard la versión sigue siendo la que asume el catálogo',
+  );
+});
+
+test('un wizard sin contadores declarados no propone ceros inventados', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Lead', { vfxinfo: sparseVfxinfo('Lead'), meta: null });
+  // Los contadores y el editor valen 0 cuando el wizard no los declara, y un 0
+  // declarado no se distingue del ausente: no se proponen.
+  const service = auditWithCatalog(
+    wizardRecord({ parameterCount: 0, programCount: 0, editorWidth: 0, editorHeight: 0 }),
+  );
+
+  const lead = find((await service.audit(root)).plugins, 'Lead');
+
+  assert.deepEqual(
+    lead.proposals.filter((proposal) => proposal.source === 'wizard').map((proposal) => proposal.field),
+    ['vfxinfo.version', 'vfxinfo.has_editor', 'meta.vendor', 'meta.vendor_url', 'meta.notes'],
+  );
+  assert.deepEqual(
+    fieldsOf(lead.issues).filter((field) => field.startsWith('vfxinfo.')),
+    ['vfxinfo.editor_height', 'vfxinfo.editor_width', 'vfxinfo.parameter_count', 'vfxinfo.program_count', 'vfxinfo.version'],
+  );
+});
+
+test('el wizard no pisa lo que el plugin ya declara', async (t) => {
+  const root = await library(t);
+  await plugin(root, 'Lead', { meta: FULL_META });
+  const service = auditWithCatalog(wizardRecord({ vendor: 'Otro fabricante', version: '9.9' }));
+
+  const lead = find((await service.audit(root)).plugins, 'Lead');
+
+  assert.deepEqual(lead.proposals, [], 'un plugin completo no recibe propuestas del wizard');
+  assert.deepEqual(lead.issues, []);
 });

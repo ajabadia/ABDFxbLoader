@@ -250,3 +250,23 @@ test('solo la referencia explícita compara la versión del plugin', () => {
     'incompatible',
   );
 });
+
+test('parsea y convierte bancos usando Uint8Array puro (estándar Web para el navegador)', () => {
+  const nodeBuf = buildBank({ programs: 2, uniqueId: 'WebB', fxVersion: 100 });
+  // Uint8Array puro cuyo prototipo no es Buffer:
+  const webArray = new Uint8Array(nodeBuf.buffer.slice(nodeBuf.byteOffset, nodeBuf.byteOffset + nodeBuf.byteLength));
+  assert.equal(Buffer.isBuffer(webArray), false);
+
+  const parsed = parseFxbBank(webArray);
+  assert.deepEqual(parsed.issues, []);
+  assert.equal(parsed.bank?.uniqueId, 'WebB');
+  assert.equal(parsed.bank?.numPrograms, 2);
+
+  const converted = convertFxbEndianness(webArray, 'big');
+  assert.equal(converted.data instanceof Uint8Array, true);
+  assert.ok(converted.fields > 0);
+
+  const parsedBig = parseFxbBank(converted.data);
+  assert.equal(parsedBig.bank?.endianness, 'big');
+  assert.equal(parsedBig.bank?.uniqueId, 'WebB');
+});

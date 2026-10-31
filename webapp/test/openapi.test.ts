@@ -49,8 +49,13 @@ import {
   PLUGIN_META_VALIDATION_ERROR_EXAMPLE,
 } from '../src/plugin-meta/plugin-meta.dto';
 import {
+  CAPTURE_NOT_FOUND_DIFF_EXAMPLE,
   CAPTURE_NOT_FOUND_STAGING_EXAMPLE,
   CAPTURE_NOT_FOUND_STAGING_FILE_EXAMPLE,
+  CAPTURE_PRE_EXISTING_EXAMPLE,
+  CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE,
+  CAPTURE_STAGING_RESTORE_EXAMPLE,
+  CAPTURE_STAGING_REVEAL_EXAMPLE,
 } from '../src/capture/capture.dto';
 import { SYSTEM_PATHS_MIXED_EXAMPLE } from '../src/system/paths.dto';
 import { MAX_PLUGINS_PER_BATCH } from '../src/client/batch-stream';
@@ -95,9 +100,13 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/capture/finalize',
     '/capture/finish',
     '/capture/package',
+    '/capture/pre-existing/{diffId}',
+    '/capture/pre-existing/{diffId}/reveal',
     '/capture/snapshots/{id}',
     '/capture/staging/{diffId}',
     '/capture/staging/{diffId}/clean',
+    '/capture/staging/{diffId}/restore',
+    '/capture/staging/{diffId}/reveal',
     '/capture/start',
     '/capture/tasks/{taskId}',
     '/capture/tasks/{taskId}/cancel',
@@ -107,6 +116,7 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/association-audit/list',
     '/library/association-audit/stream',
     '/library/audit',
+    '/library/audit/apply',
     '/library/banks/convert',
     '/library/banks/create',
     '/library/banks/discard-backup',
@@ -128,6 +138,7 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/library/scan',
     '/plugins/{id}/log',
     '/plugins/{id}/meta',
+    '/system/capabilities',
     '/system/paths',
     '/system/pick',
     '/wizards',
@@ -167,6 +178,104 @@ test('el staging de /capture documenta su 404 y el 400 sin `path`', () => {
   const clean = responses('/capture/staging/{diffId}/clean', 'delete');
   assert.deepEqual(Object.keys(clean).sort(), ['200', '404']);
   assert.deepEqual(jsonBody(clean['404'])['example'], CAPTURE_NOT_FOUND_STAGING_EXAMPLE);
+
+  // El recuento de previos que enseña el paso 4 se consulta antes de generar.
+  const preExisting = responses('/capture/pre-existing/{diffId}', 'get');
+  assert.deepEqual(Object.keys(preExisting).sort(), ['200', '404']);
+  const preExistingOk = jsonBody(preExisting['200']);
+  assert.deepEqual(preExistingOk['example'], CAPTURE_PRE_EXISTING_EXAMPLE);
+  assert.equal(
+    (preExistingOk['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CapturePreExistingDto',
+  );
+  assert.deepEqual(jsonBody(preExisting['404'])['example'], CAPTURE_NOT_FOUND_DIFF_EXAMPLE);
+  const preExistingSchema = document.components?.schemas?.['CapturePreExistingDto'] as {
+    properties?: Record<string, unknown>;
+  };
+  assert.ok(
+    preExistingSchema.properties?.['restorableFiles'],
+    'la vista necesita las rutas de los devolvibles, no solo el recuento',
+  );
+
+  // Cada fila del listado se puede abrir en el Explorador de Windows.
+  const reveal = responses('/capture/pre-existing/{diffId}/reveal', 'post');
+  assert.deepEqual(Object.keys(reveal).sort(), ['200', '400', '404', '501']);
+  const revealOk = jsonBody(reveal['200']);
+  assert.equal(
+    (revealOk['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CaptureRevealPreExistingDto',
+  );
+  assert.deepEqual(revealOk['example'], CAPTURE_PRE_EXISTING_REVEAL_EXAMPLE);
+  assert.deepEqual(jsonBody(reveal['400'])['example'], { message: 'path requerido' });
+  const revealMissing = jsonBody(reveal['404'])['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(revealMissing).sort(), ['noEsPrevio', 'sinDiff']);
+  assert.deepEqual(revealMissing['sinDiff']!.value, CAPTURE_NOT_FOUND_DIFF_EXAMPLE);
+  assert.match(
+    (reveal['501'] as { description?: string }).description ?? '',
+    /Windows/,
+    'el 501 explica que el Explorador solo existe en Windows',
+  );
+  const revealParams = (document.paths['/capture/pre-existing/{diffId}/reveal']?.post
+    ?.parameters ?? []) as { name: string; in: string; required?: boolean }[];
+  const revealPath = revealParams.find((param) => param.name === 'path');
+  assert.ok(revealPath, 'debe documentar qué previo se abre');
+  assert.equal(revealPath!.in, 'query');
+  assert.equal(revealPath!.required, true);
+
+  // «Recuperar previos» deshace `DELETE` sin volver a preparar el staging.
+  const restore = responses('/capture/staging/{diffId}/restore', 'post');
+  assert.deepEqual(Object.keys(restore).sort(), ['200', '404']);
+  const restoreOk = jsonBody(restore['200']);
+  assert.equal(
+    (restoreOk['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CaptureStagingRestoreDto',
+  );
+
+  // Cada archivo del staging también se puede abrir en el Explorador.
+  const revealStaging = responses('/capture/staging/{diffId}/reveal', 'post');
+  assert.deepEqual(Object.keys(revealStaging).sort(), ['200', '400', '404', '501']);
+  const revealStagingOk = jsonBody(revealStaging['200']);
+  assert.equal(
+    (revealStagingOk['schema'] as { $ref: string }).$ref,
+    '#/components/schemas/CaptureRevealStagingDto',
+  );
+  assert.deepEqual(revealStagingOk['example'], CAPTURE_STAGING_REVEAL_EXAMPLE);
+  assert.deepEqual(jsonBody(revealStaging['400'])['example'], { message: 'path requerido' });
+  const revealStagingMissing = jsonBody(revealStaging['404'])['examples'] as Record<
+    string,
+    { value: unknown }
+  >;
+  assert.deepEqual(Object.keys(revealStagingMissing).sort(), ['sinArchivo', 'sinStaging']);
+  assert.deepEqual(
+    revealStagingMissing['sinStaging']!.value,
+    CAPTURE_NOT_FOUND_STAGING_EXAMPLE,
+  );
+  assert.deepEqual(
+    revealStagingMissing['sinArchivo']!.value,
+    CAPTURE_NOT_FOUND_STAGING_FILE_EXAMPLE,
+  );
+  assert.match((revealStaging['501'] as { description?: string }).description ?? '', /Windows/);
+  const revealStagingParams = (document.paths['/capture/staging/{diffId}/reveal']?.post
+    ?.parameters ?? []) as { name: string; in: string; required?: boolean }[];
+  const revealStagingPath = revealStagingParams.find((param) => param.name === 'path');
+  assert.ok(revealStagingPath, 'debe documentar qué archivo del staging se abre');
+  assert.equal(revealStagingPath!.in, 'query');
+  assert.equal(revealStagingPath!.required, true);
+  assert.deepEqual(restoreOk['example'], CAPTURE_STAGING_RESTORE_EXAMPLE);
+  const restoreMissing = restore['404'] as { description?: string };
+  assert.match(restoreMissing.description ?? '', /snapshot inicial/, 'el 404 explica que sin diff no hay origen');
+  const restoreExamples = jsonBody(restore['404'])['examples'] as Record<string, { value: unknown }>;
+  assert.deepEqual(Object.keys(restoreExamples).sort(), ['sinDiff', 'sinStaging']);
+  assert.deepEqual(restoreExamples['sinStaging']!.value, CAPTURE_NOT_FOUND_STAGING_EXAMPLE);
+  assert.deepEqual(restoreExamples['sinDiff']!.value, CAPTURE_NOT_FOUND_DIFF_EXAMPLE);
+
+  // El `path` opcional es lo que permite devolver un único previo quitado.
+  const restoreParams = (document.paths['/capture/staging/{diffId}/restore']?.post?.parameters ??
+    []) as { name: string; in: string; required?: boolean }[];
+  const restorePath = restoreParams.find((param) => param.name === 'path');
+  assert.ok(restorePath, 'debe documentar el path del previo que se devuelve solo');
+  assert.equal(restorePath!.in, 'query');
+  assert.equal(restorePath!.required, false);
 
   // `finalize` y `vmachine` leen el staging después de resolver el diff: el
   // contrato dice que un staging limpiado también es un 404.

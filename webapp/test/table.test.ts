@@ -88,9 +88,9 @@ test('date-range filters include both selected calendar dates', () => {
   assert.deepEqual(processTableRows(rows, actionView, state).rows.map(row => row.name), ['alfa']);
 });
 
-test('processTableRows defaults to 100 rows and clamps the requested page after filtering', () => {
-  const result = processTableRows(rows, { ...view, pageSize: undefined }, { ...baseState, page: 8 });
-  assert.equal(result.pageSize, 100);
+test('processTableRows defaults to 10 rows and clamps the requested page after filtering', () => {
+  const result = processTableRows(rows, { ...view, pageSize: undefined }, { ...baseState, page: 8, pageSize: 0 });
+  assert.equal(result.pageSize, 10);
   assert.equal(result.page, 1);
   assert.equal(result.totalPages, 1);
 });

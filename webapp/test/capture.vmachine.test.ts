@@ -418,6 +418,42 @@ test('v-machine respeta includePreExisting:false y empaqueta solo lo capturado',
 });
 
 /**
+ * El paso 4 enseña cuántos archivos previos entran antes de generar, y ese
+ * recuento sale del snapshot inicial: los mismos tres del fixture, sin el
+ * vecino ni el DLL que la captura borró. Al quitar uno del staging baja a dos,
+ * porque lo que no está en el staging no llega al banco.
+ */
+test('GET /capture/pre-existing cuenta los previos del snapshot inicial', async (t) => {
+  const { http, diffId } = await preExistingFixture(t);
+
+  const before = await http().get(`/capture/pre-existing/${diffId}`).expect(200);
+  assert.equal(before.body.count, 3);
+  const relative = (before.body.files as string[]).map((file) => file.split(/[\\/]+/).join('/'));
+  for (const file of ['P8.dll', 'P8/wavetables/table.wav', 'presets/legacy.fxb']) {
+    assert.ok(relative.some((entry) => entry.endsWith(file)), `falta el previo "${file}" en el recuento`);
+  }
+  for (const file of ['Other/Other.dll', 'Old.dll']) {
+    assert.ok(
+      !relative.some((entry) => entry.endsWith(file)),
+      `"${file}" no es del plugin y no debe contarse`,
+    );
+  }
+  assert.deepEqual(before.body.warnings, []);
+
+  const staging = await http().get(`/capture/staging/${diffId}`).expect(200);
+  const legacy = (staging.body.files as string[]).find((file) => file.endsWith('legacy.fxb'));
+  assert.ok(legacy, 'el preset previo debe estar en el staging para poder quitarlo');
+  await http().delete(`/capture/staging/${diffId}`).query({ path: legacy }).expect(200);
+
+  const after = await http().get(`/capture/pre-existing/${diffId}`).expect(200);
+  assert.equal(after.body.count, 2, 'lo quitado del staging ya no se va a incluir');
+  assert.ok(
+    !(after.body.files as string[]).some((file) => file.endsWith('legacy.fxb')),
+    'el archivo quitado no puede seguir en el recuento',
+  );
+});
+
+/**
  * El staging es la única fuente del paquete: un archivo previo del plugin que
  * se quita al revisar el staging no vuelve a aparecer al generar para v-machine.
  */
@@ -522,4 +558,45 @@ test('regenerar el paquete en la misma carpeta no deja archivos de la generació
     'presets/factory.fxb',
     'vfxinfo.txt',
   ]);
+});
+
+/**
+ * El `.vfxwizard` no vive dentro de `plugs\\<Plugin>\\` sino suelto en la carpeta
+ * de salida, así que el borrado de la generación anterior del plugin no lo
+ * alcanza. Regenerar sin wizard tiene que retirarlo: si no, queda al lado del
+ * paquete un archivo que describe algo que esta generación decidió no hacer.
+ */
+test('regenerar sin wizard borra el .vfxwizard de la generación anterior', async (t) => {
+  const { http, diffId } = await preExistingFixture(t);
+  const outputDir = await mkdtemp(path.join(tmpdir(), 'fxb-vmachine-nowizard-'));
+  t.after(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  const wizardPath = path.join(outputDir, `${PLUGIN_NAME}.vfxwizard`);
+  const generate = (extra: Record<string, unknown> = {}) =>
+    http()
+      .post(`/capture/vmachine/${diffId}`)
+      .send({ pluginName: PLUGIN_NAME, uniqueId: UNIQUE_ID, isSynth: true, outputDir, ...extra })
+      .expect(200);
+
+  const first = await generate();
+  assert.equal(first.body.wizardPath, wizardPath);
+  await assert.doesNotReject(stat(wizardPath), 'la primera generación debe escribir el wizard');
+
+  // El wizard de otro plugin en la misma carpeta no es de esta generación.
+  const otherWizard = path.join(outputDir, 'Otro Plugin.vfxwizard');
+  await writeFile(otherWizard, 'id: Otro\n');
+
+  const bankDir = path.join(outputDir, 'plugs', PLUGIN_NAME);
+  const packaged = await treeFiles(bankDir);
+
+  const second = await generate({ generateWizard: false });
+  assert.equal(second.body.wizardPath, undefined, 'sin wizard no hay ruta que devolver');
+  await assert.rejects(
+    stat(wizardPath),
+    'el .vfxwizard de la generación anterior no debe quedar en la carpeta de salida',
+  );
+  await assert.doesNotReject(stat(otherWizard), 'el wizard de otro plugin no se toca');
+  assert.deepEqual(await treeFiles(bankDir), packaged, 'el paquete del plugin se regenera igual');
 });

@@ -3,7 +3,9 @@ import { readdir, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import {
+  auditControlHeight,
   auditCss,
+  auditPaginatedTableScroll,
   baseSelector,
   parseCssSelectors,
   selectorNames,
@@ -165,6 +167,109 @@ test('styles.css no tiene reglas que no puedan pintar ningún elemento', async (
   assert.ok(audit.unverified >= 1, 'los combinadores + / ~ deben quedar como no comprobados');
 });
 
+test('la auditoría de scroll de una tabla paginada entiende la cascada del cajón', () => {
+  const html = parseHtml(`
+    <aside class="card drawer"><div id="a-table" class="a-table"></div></aside>
+    <section id="b-table" class="b-table"></section>
+  `);
+
+  const audit = auditPaginatedTableScroll(
+    html,
+    `
+      .drawer .table-wrap { max-height: 260px; overflow-y: auto; }
+      .a-table .table-wrap { max-height: none; overflow-y: visible; }
+    `,
+  );
+  assert.deepEqual(audit.tables, ['#a-table'], 'solo se audita la tabla que vive en un cajón');
+  assert.deepEqual(audit.offenders, [], 'el override de la tabla gana a la regla del cajón');
+
+  const capped = auditPaginatedTableScroll(
+    html,
+    '.drawer .table-wrap { max-height: 260px; overflow-y: auto; }',
+  );
+  assert.deepEqual(
+    capped.offenders.map((entry) => entry.property),
+    ['max-height', 'overflow-y'],
+    'sin override, el recorte del cajón y su scroll interno se detectan',
+  );
+
+  const later = auditPaginatedTableScroll(
+    html,
+    `
+      .a-table .table-wrap { max-height: none; overflow-y: visible; }
+      .drawer .table-wrap { max-height: 260px; overflow-y: auto; }
+    `,
+  );
+  assert.equal(
+    later.offenders.length,
+    2,
+    'con la misma especificidad gana la regla posterior, también hacia atrás',
+  );
+});
+
+test('ninguna tabla paginada de un cajón recupera scroll interno', async () => {
+  const { html, css } = await realPage();
+
+  const audit = auditPaginatedTableScroll(html, css);
+  const describe = (entry: (typeof audit.offenders)[number]): string =>
+    `${entry.table} → ${entry.property}: ${entry.value} (styles.css:${entry.line})`;
+
+  assert.deepEqual(
+    audit.offenders,
+    [],
+    `tablas paginadas con scroll propio dentro de un cajón:\n${audit.offenders.map(describe).join('\n')}`,
+  );
+
+  // Sin este mínimo, un cambio en el detector dejaría el test comparando nada.
+  assert.ok(
+    audit.tables.length >= 10,
+    `solo se auditaron ${audit.tables.length} tablas paginadas en cajones: ${audit.tables.join(', ')}`,
+  );
+  assert.ok(
+    audit.tables.includes('#import-package-plugins-table') &&
+      audit.tables.includes('#wizards-table'),
+    `faltan tablas conocidas en la auditoría: ${audit.tables.join(', ')}`,
+  );
+  // Los cuatro listados de «Plugin nuevo sin wizard» también se montan con
+  // `mountTable`: tienen que quedar cubiertos, no solo los del catálogo.
+  for (const id of [
+    '#custom-plugin-exports',
+    '#custom-plugin-issues',
+    '#custom-plugin-created-paths',
+    '#custom-plugin-created-warnings',
+  ]) {
+    assert.ok(
+      audit.tables.includes(id),
+      `falta el listado ${id} en la auditoría: ${audit.tables.join(', ')}`,
+    );
+  }
+});
+
+test('la auditoría de scroll detecta una tabla paginada recortada en el styles.css real', async () => {
+  const { html, css } = await realPage();
+  const appended = '.audit-table .table-wrap { max-height: 260px; }';
+  const mutated = `${css}\n${appended}\n`;
+
+  const audit = auditPaginatedTableScroll(html, mutated);
+
+  // Con el mismo código que audita el CSS real: si el detector no viera esta
+  // regla, el test anterior también pasaría por vacuidad.
+  const offenders = audit.offenders.filter((entry) => entry.table === '#audit-table');
+  assert.equal(offenders.length, 1, 'la tabla de auditoría vuelve a recortarse');
+  assert.equal(offenders[0]!.property, 'max-height');
+  assert.equal(offenders[0]!.value, '260px');
+  assert.equal(
+    offenders[0]!.line,
+    mutated.slice(0, mutated.indexOf(appended)).split('\n').length,
+    'la línea debe apuntar a la regla añadida',
+  );
+  assert.deepEqual(
+    audit.offenders.every((entry) => entry.table === '#audit-table' || entry.table === '#data-audit-table'),
+    true,
+    'las dos tablas de auditoría comparten clase y selector',
+  );
+});
+
 test('un selector con [open] de un details queda sin verificar, no muerto', () => {
   const html = parseHtml(`
     <details>
@@ -197,6 +302,101 @@ test('la auditoría detecta una regla muerta añadida al styles.css real', async
   assert.equal(
     dead.line,
     mutated.slice(0, mutated.indexOf(selector)).split('\n').length,
+    'la línea debe apuntar a la regla añadida',
+  );
+});
+
+test('la auditoría de alto sigue la variable de los controles y detecta la desalineación', () => {
+  const aligned = `
+    :root { --control-height: 42px; }
+    input, select, button { height: var(--control-height); }
+  `;
+  const audit = auditControlHeight(aligned);
+  assert.equal(audit.variable?.value, '42px');
+  assert.deepEqual(
+    audit.controls.map((entry) => entry.control),
+    ['input', 'select', 'button'],
+  );
+  assert.deepEqual(audit.offenders, [], 'los tres salen de la misma variable');
+
+  const sinSelect = auditControlHeight(`
+    :root { --control-height: 42px; }
+    input, button { height: var(--control-height); }
+  `);
+  assert.deepEqual(
+    sinSelect.offenders.map((entry) => [entry.control, entry.problem]),
+    [['select', 'missing-height']],
+    'un control sin `height` tampoco comparte el alto',
+  );
+
+  const literal = auditControlHeight(`
+    :root { --control-height: 42px; }
+    input { height: var(--control-height); }
+    select { height: 40px; }
+    button { height: var(--control-height); }
+  `);
+  assert.deepEqual(
+    literal.offenders.map((entry) => [entry.control, entry.problem, entry.value]),
+    [['select', 'fixed-height', '40px']],
+    'un alto fijo se denuncia con su valor',
+  );
+
+  const sinVariable = auditControlHeight('input, select, button { height: var(--control-height); }');
+  assert.equal(sinVariable.variable, null);
+  assert.deepEqual(
+    sinVariable.offenders.map((entry) => entry.problem),
+    ['variable-undefined', 'variable-undefined', 'variable-undefined'],
+    'sin declaración, el var() no resuelve y los tres fallan',
+  );
+});
+
+test('input, select y botón comparten el alto de --control-height', async () => {
+  const { css } = await realPage();
+
+  const audit = auditControlHeight(css);
+  const describe = (entry: (typeof audit.offenders)[number]): string =>
+    `${entry.control} → ${entry.value ?? 'sin height'} (${entry.problem}, styles.css:${entry.line ?? '-'})`;
+
+  assert.deepEqual(
+    audit.offenders,
+    [],
+    `controles que no comparten el alto de --control-height:\n${audit.offenders.map(describe).join('\n')}`,
+  );
+
+  // Sin estas comprobaciones, un parser roto dejaría el test pasando por vacuidad.
+  assert.ok(
+    audit.variable !== null && audit.variable.value !== '',
+    '`--control-height` tiene que estar declarada con un valor',
+  );
+  assert.deepEqual(
+    audit.controls.map((entry) => entry.control),
+    ['input', 'select', 'button'],
+  );
+  for (const entry of audit.controls) {
+    assert.match(
+      entry.value ?? '',
+      /^var\(\s*--control-height\s*\)$/i,
+      `${entry.control} debe llevar height: var(--control-height)`,
+    );
+  }
+});
+
+test('la auditoría de alto detecta un control con altura propia en el styles.css real', async () => {
+  const { css } = await realPage();
+  const appended = 'select { height: 30px; }';
+  const mutated = `${css}\n${appended}\n`;
+
+  const audit = auditControlHeight(mutated);
+
+  // Mismo código que audita el CSS real: si el detector no viera esta regla,
+  // el test anterior también pasaría sin comprobar el alto de verdad.
+  assert.deepEqual(
+    audit.offenders.map((entry) => [entry.control, entry.problem, entry.value]),
+    [['select', 'fixed-height', '30px']],
+  );
+  assert.equal(
+    audit.offenders[0]!.line,
+    mutated.slice(0, mutated.indexOf(appended)).split('\n').length,
     'la línea debe apuntar a la regla añadida',
   );
 });

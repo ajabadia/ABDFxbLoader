@@ -771,6 +771,262 @@
         ]
       }
     },
+    "/capture/pre-existing/{diffId}": {
+      "get": {
+        "description": "Consulta el snapshot inicial sin copiar nada: devuelve cuántos archivos del plugin ya existían antes de la captura y se sumarían al paquete con «incluir los archivos previos». Es la misma selección que hace `/capture/package`, acotada al tallo del DLL y a las carpetas donde la captura puso archivos. Si el staging ya existe, solo cuenta los que siguen en él, porque son los que `/capture/vmachine/:diffId` empaquetaría de verdad. `restorableFiles` lista los que se quitaron y todavía se pueden devolver de uno en uno.",
+        "operationId": "CaptureController_listPreExisting",
+        "parameters": [
+          {
+            "name": "diffId",
+            "required": true,
+            "in": "path",
+            "description": "ID del diff calculado al finalizar la captura.",
+            "schema": {
+              "example": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recuento y rutas relativas de los archivos previos que entrarían.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapturePreExistingDto"
+                },
+                "example": {
+                  "count": 3,
+                  "files": [
+                    "P8.dll",
+                    "P8\\wavetables\\table.wav",
+                    "presets\\legacy.fxb"
+                  ],
+                  "restorable": 0,
+                  "restorableFiles": [],
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe ningún diff con ese `diffId`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "example": {
+                  "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                }
+              }
+            }
+          }
+        },
+        "summary": "Contar los archivos previos a la captura que se incluirían",
+        "tags": [
+          "capture"
+        ]
+      }
+    },
+    "/capture/pre-existing/{diffId}/reveal": {
+      "post": {
+        "description": "Abre la carpeta del Explorador con ese archivo resaltado, para comprobar qué es antes de generar el banco. El `path` se valida contra la misma selección que hace `GET /capture/pre-existing/:diffId`: una ruta que no sea de los previos de ese diff, o un previo que ya no está en el disco, es un 404 y no se abre ninguna ventana. El servidor tiene que correr en Windows; en otro sistema es un 501.",
+        "operationId": "CaptureController_revealPreExisting",
+        "parameters": [
+          {
+            "name": "diffId",
+            "required": true,
+            "in": "path",
+            "description": "ID del diff calculado al finalizar la captura.",
+            "schema": {
+              "example": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "required": true,
+            "in": "query",
+            "description": "Ruta del previo tal como la devuelve `GET /capture/pre-existing/:diffId` en `files`. Se compara sin distinguir mayúsculas ni separadores.",
+            "schema": {
+              "example": "P8.dll",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo mostrado en el Explorador.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureRevealPreExistingDto"
+                },
+                "example": {
+                  "ok": true,
+                  "file": "Program Files/VstPlugins/P8.dll",
+                  "opened": "C:\\Program Files\\VstPlugins\\P8.dll"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta el parámetro `path`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "example": {
+                  "message": "path requerido"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe el diff, o el `path` no es uno de sus archivos previos: también cuando ese previo existía al listarlo pero ya se borró del disco.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "examples": {
+                  "sinDiff": {
+                    "summary": "El diff ya no está cargado",
+                    "value": {
+                      "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                    }
+                  },
+                  "noEsPrevio": {
+                    "summary": "La ruta no es de los archivos previos, o el previo ya no está",
+                    "value": {
+                      "message": "\"otro.dll\" no es uno de los archivos previos del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\" o ya no está en el disco."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "El servidor no corre en Windows: no hay Explorador que abrir.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "example": {
+                  "message": "Abrir en el Explorador solo está disponible en Windows"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Abrir en el Explorador de Windows un archivo previo del paso 4",
+        "tags": [
+          "capture"
+        ]
+      }
+    },
+    "/capture/staging/{diffId}/reveal": {
+      "post": {
+        "description": "Abre la carpeta del Explorador con ese archivo del staging resaltado, para comprobar qué se va a empaquetar. El `path` se resuelve dentro de la carpeta del staging del `diffId`: una ruta absoluta, con `..`, de una carpeta o de un archivo que ya no está es un 404 y no se abre nada. El servidor tiene que correr en Windows; en otro sistema es un 501.",
+        "operationId": "CaptureController_revealStaging",
+        "parameters": [
+          {
+            "name": "diffId",
+            "required": true,
+            "in": "path",
+            "description": "ID del diff empaquetado.",
+            "schema": {
+              "example": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "required": true,
+            "in": "query",
+            "description": "Ruta del archivo tal como la devuelve `GET /capture/staging/:diffId` en `files`.",
+            "schema": {
+              "example": "Program Files\\VstPlugins\\P8.dll",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo del staging mostrado en el Explorador.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureRevealStagingDto"
+                },
+                "example": {
+                  "ok": true,
+                  "file": "Program Files\\VstPlugins\\P8.dll",
+                  "opened": "C:\\Program Files\\VstPlugins\\P8.dll"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta el parámetro `path`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "example": {
+                  "message": "path requerido"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe el staging del diff, o el `path` no apunta a un archivo que siga dentro de él.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "examples": {
+                  "sinStaging": {
+                    "summary": "El staging no está preparado",
+                    "value": {
+                      "message": "No existe el staging del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\". Ejecuta POST /capture/package para prepararlo."
+                    }
+                  },
+                  "sinArchivo": {
+                    "summary": "La ruta no es del staging o el archivo ya no está",
+                    "value": {
+                      "message": "No existe \"Program Files\\VstPlugins\\P8.dll\" en el staging del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "El servidor no corre en Windows: no hay Explorador que abrir.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "example": {
+                  "message": "Abrir en el Explorador solo está disponible en Windows"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Abrir en el Explorador de Windows un archivo del staging",
+        "tags": [
+          "capture"
+        ]
+      }
+    },
     "/capture/staging/{diffId}": {
       "get": {
         "operationId": "CaptureController_listStaging",
@@ -900,6 +1156,83 @@
           }
         },
         "summary": "Eliminar archivo del staging",
+        "tags": [
+          "capture"
+        ]
+      }
+    },
+    "/capture/staging/{diffId}/restore": {
+      "post": {
+        "description": "Vuelve a copiar desde el snapshot inicial los archivos que `POST /capture/package` marcó como anteriores a la captura y que ya no están en el staging. No repite el empaquetado: los archivos de la captura, el `.reg` y el manifiesto se quedan como están. Los que el manifiesto declara pero cuyo origen ya no existe se devuelven en `missing`, no como error. Con `path` devuelve solo ese archivo —el botón de una fila quitada del staging—; sin `path` los devuelve todos. Repetirlo sin nada que devolver es un 200 con `restored: 0`.",
+        "operationId": "CaptureController_restoreStaging",
+        "parameters": [
+          {
+            "name": "diffId",
+            "required": true,
+            "in": "path",
+            "description": "ID del diff empaquetado.",
+            "schema": {
+              "example": "5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f",
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "required": false,
+            "in": "query",
+            "description": "Ruta relativa del único previo que se quiere devolver, tal como aparece en `restorableFiles` de `GET /capture/pre-existing/:diffId`. Si no es uno de los previos que el manifiesto marca, la respuesta es 404 y no se copia nada.",
+            "schema": {
+              "example": "Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivos previos devueltos al staging, y los que ya no se pueden recuperar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureStagingRestoreDto"
+                },
+                "example": {
+                  "restored": 2,
+                  "files": [
+                    "Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav",
+                    "Users/tester/Program Files/VstPlugins/P8/presets/legacy.fxb"
+                  ],
+                  "missing": [],
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No hay staging para ese diff, el diff ya no está cargado (por ejemplo, tras reiniciar el servidor) —sin snapshot inicial no hay de dónde copiar los previos—, o el `path` pedido no es uno de los archivos previos del manifiesto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureErrorDto"
+                },
+                "examples": {
+                  "sinStaging": {
+                    "summary": "El diff no se ha empaquetado",
+                    "value": {
+                      "message": "No existe el staging del diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\". Ejecuta POST /capture/package para prepararlo."
+                    }
+                  },
+                  "sinDiff": {
+                    "summary": "El diff ya no está cargado",
+                    "value": {
+                      "message": "No existe el diff \"5c9a2b7e-2f6d-4b1f-8f6e-1a2b3c4d5e6f\"."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Recuperar en el staging los archivos previos que se quitaron",
         "tags": [
           "capture"
         ]
@@ -1548,6 +1881,150 @@
           }
         },
         "summary": "Audita los datos de los plugins de la librería",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/audit/apply": {
+      "post": {
+        "description": "Escribe en `vfxinfo.txt` y/o `fxbLoader.meta.json` los valores que propone la auditoría, recalculados en el servidor en ese momento (el cliente solo elige los campos, nunca los valores). Antes de tocar cada archivo lo respalda como `*.bak` y conserva todo lo que no son los campos pedidos: bloques del vfxinfo, `extended` del meta y sus claves desconocidas. Los campos que ya tienen el valor propuesto no reescriben nada y se devuelven como omitidos.",
+        "operationId": "LibraryController_auditApply",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryAuditApplyRequestDto"
+              },
+              "examples": {
+                "catalogo": {
+                  "summary": "Rellenar identidad y género del meta",
+                  "value": {
+                    "libraryRoot": "D:\\_banks\\storage",
+                    "plugin": "FSynthz-15",
+                    "fields": [
+                      "meta.id",
+                      "meta.name",
+                      "meta.genre",
+                      "meta.name_abbreviation"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Campos escritos, omitidos, archivos tocados y respaldos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryAuditApplyResultDto"
+                },
+                "example": {
+                  "plugin": "FSynthz-15",
+                  "applied": [
+                    {
+                      "field": "meta.id",
+                      "value": "1177630041"
+                    },
+                    {
+                      "field": "meta.name",
+                      "value": "15 - SynthEdit"
+                    },
+                    {
+                      "field": "meta.genre",
+                      "value": "Synth"
+                    },
+                    {
+                      "field": "meta.name_abbreviation",
+                      "value": "15"
+                    }
+                  ],
+                  "skipped": [
+                    {
+                      "field": "vfxinfo.version",
+                      "reason": "el valor ya era el vigente"
+                    }
+                  ],
+                  "vfxinfoPath": null,
+                  "metaPath": "D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json",
+                  "backups": [
+                    "D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json.bak"
+                  ],
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`libraryRoot` o `plugin` ausentes o inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "examples": {
+                  "rutaRelativa": {
+                    "summary": "Librería relativa",
+                    "value": {
+                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                    }
+                  },
+                  "pluginConRuta": {
+                    "summary": "El plugin llega como ruta y no como carpeta",
+                    "value": {
+                      "message": "plugin debe ser el nombre de una carpeta bajo plugs\\: \"..\\Otro\""
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El plugin no existe en `plugs\\`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fxbLoader.meta.json` cambió en disco entre la auditoría y la escritura.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "fxbLoader.meta.json cambió en disco mientras se aplicaba; vuelve a auditar y repite."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El meta en disco no es válido y no se puede fusionar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryErrorDto"
+                },
+                "example": {
+                  "message": "Metadatos no válidos: el archivo propio no es JSON válido"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Aplica las propuestas de datos de un plugin",
         "tags": [
           "library"
         ]
@@ -5536,6 +6013,42 @@
           "system"
         ]
       }
+    },
+    "/system/capabilities": {
+      "get": {
+        "description": "Devuelve qué características del sistema operativo (diálogos nativos, papelera de reciclaje, registro de Windows, explorador) están disponibles según el modo (desktop .exe o web local).",
+        "operationId": "SystemCapabilitiesController_getCapabilities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Capacidades activas del sistema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemCapabilitiesResponseDto"
+                },
+                "examples": {
+                  "estandar": {
+                    "summary": "Capacidades activas en entorno Windows",
+                    "value": {
+                      "mode": "web-local",
+                      "canCaptureRegistry": true,
+                      "canTrash": true,
+                      "canRevealInExplorer": true,
+                      "canNativePick": true,
+                      "canFileSystemAccess": false
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Capacidades del entorno de ejecución",
+        "tags": [
+          "system"
+        ]
+      }
     }
   },
   "info": {
@@ -6351,6 +6864,109 @@
         ],
         "additionalProperties": false
       },
+      "CapturePreExistingDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "description": "Archivos que ya existían antes de la captura y se sumarían al paquete con «incluir archivos previos» marcado. Ya descuenta los que se hayan quitado del staging.",
+            "example": 3
+          },
+          "files": {
+            "description": "Rutas relativas de esos archivos, tal como aparecen en el staging.",
+            "example": [
+              "P8.dll",
+              "P8\\wavetables\\table.wav",
+              "presets\\legacy.fxb"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restorable": {
+            "type": "number",
+            "description": "Archivos previos que se quitaron del staging y todavía se pueden devolver con `POST /capture/staging/:diffId/restore`. Es lo que enciende el botón «Recuperar previos».",
+            "example": 0
+          },
+          "restorableFiles": {
+            "description": "Rutas relativas de esos archivos, en el orden del manifiesto. La vista lista cada una con su propio botón para devolverla con `POST /capture/staging/:diffId/restore?path=` sin recuperar las demás.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y no hay forma de saber qué archivos previos faltan.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "files",
+          "restorable",
+          "restorableFiles",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "CaptureRevealPreExistingDto": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "El archivo se ha abierto en el Explorador.",
+            "example": true
+          },
+          "file": {
+            "type": "string",
+            "description": "Ruta del archivo previo, relativa a la unidad de origen y con `/`.",
+            "example": "Program Files/VstPlugins/P8.dll"
+          },
+          "opened": {
+            "type": "string",
+            "description": "Ruta absoluta que se ha abierto: la misma que el recuento tiene en el snapshot.",
+            "example": "C:\\Program Files\\VstPlugins\\P8.dll"
+          }
+        },
+        "required": [
+          "ok",
+          "file",
+          "opened"
+        ],
+        "additionalProperties": false
+      },
+      "CaptureRevealStagingDto": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "El archivo se ha abierto en el Explorador.",
+            "example": true
+          },
+          "file": {
+            "type": "string",
+            "description": "Ruta del archivo en el staging, tal como la devuelve `GET /capture/staging/:diffId` (con el separador de la plataforma).",
+            "example": "Program Files\\VstPlugins\\P8.dll"
+          },
+          "opened": {
+            "type": "string",
+            "description": "Ruta absoluta que se ha abierto, dentro de la carpeta del staging.",
+            "example": "C:\\Program Files\\VstPlugins\\P8.dll"
+          }
+        },
+        "required": [
+          "ok",
+          "file",
+          "opened"
+        ],
+        "additionalProperties": false
+      },
       "CaptureStagingListDto": {
         "type": "object",
         "properties": {
@@ -6388,6 +7004,50 @@
         },
         "required": [
           "ok"
+        ],
+        "additionalProperties": false
+      },
+      "CaptureStagingRestoreDto": {
+        "type": "object",
+        "properties": {
+          "restored": {
+            "type": "number",
+            "description": "Archivos previos devueltos al staging en esta llamada.",
+            "example": 2
+          },
+          "files": {
+            "description": "Rutas relativas de los archivos recuperados, desde la unidad de origen y con `/`.",
+            "example": [
+              "Users/tester/Program Files/VstPlugins/P8/wavetables/table.wav",
+              "Users/tester/Program Files/VstPlugins/P8/presets/legacy.fxb"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missing": {
+            "description": "Previos que el manifiesto da por anteriores a la captura y no se han podido recuperar: el origen ya no está en disco o la ruta del manifiesto no es válida.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Avisos no bloqueantes; por ejemplo, que no se pudo recuperar el snapshot inicial y por eso no hay previos que devolver.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "restored",
+          "files",
+          "missing",
+          "warnings"
         ],
         "additionalProperties": false
       },
@@ -7371,12 +8031,13 @@
           },
           "source": {
             "type": "string",
-            "description": "Origen del valor: `vfxinfo`, `meta`, `dll` o deducido.",
+            "description": "Origen del valor: `vfxinfo`, `meta`, `dll`, `derived` o `wizard` (catálogo de wizards: fabricante, URL, notas, versión y campos de ejecución que el DLL no expone).",
             "enum": [
               "vfxinfo",
               "meta",
               "dll",
-              "derived"
+              "derived",
+              "wizard"
             ],
             "example": "derived"
           },
@@ -7510,6 +8171,142 @@
           "issueCount",
           "proposalCount",
           "plugins"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryAuditApplyRequestDto": {
+        "type": "object",
+        "properties": {
+          "libraryRoot": {
+            "type": "string",
+            "description": "Ruta absoluta a la librería VFX activa (la que contiene `plugs\\`).",
+            "example": "D:\\_banks\\storage"
+          },
+          "plugin": {
+            "type": "string",
+            "description": "Nombre de la carpeta del plugin bajo `plugs\\`; no es una ruta.",
+            "example": "FSynthz-15"
+          },
+          "fields": {
+            "description": "Campos a escribir. Si se omite se aplican todas las propuestas de la auditoría; los que no tengan propuesta se omiten con su motivo.",
+            "example": [
+              "meta.genre",
+              "meta.id",
+              "meta.name"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "libraryRoot",
+          "plugin"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryAuditAppliedDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Campo escrito.",
+            "example": "meta.genre"
+          },
+          "value": {
+            "type": "string",
+            "description": "Valor escrito.",
+            "example": "Synth"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryAuditSkippedDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Campo que no se escribió.",
+            "example": "vfxinfo.dll_name"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo por el que se omitió.",
+            "example": "el valor ya era el vigente"
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "LibraryAuditApplyResultDto": {
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "type": "string",
+            "description": "Carpeta del plugin bajo `plugs\\`.",
+            "example": "FSynthz-15"
+          },
+          "applied": {
+            "description": "Valores escritos.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryAuditAppliedDto"
+            }
+          },
+          "skipped": {
+            "description": "Propuestas omitidas con el motivo.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryAuditSkippedDto"
+            }
+          },
+          "vfxinfoPath": {
+            "type": "string",
+            "description": "`vfxinfo.txt` reescrito, o `null` si no se tocó.",
+            "nullable": true,
+            "example": "D:\\_banks\\storage\\plugs\\FSynthz-15\\vfxinfo.txt"
+          },
+          "metaPath": {
+            "type": "string",
+            "description": "`fxbLoader.meta.json` escrito, o `null` si no se tocó.",
+            "nullable": true,
+            "example": "D:\\_banks\\storage\\plugs\\FSynthz-15\\fxbLoader.meta.json"
+          },
+          "backups": {
+            "description": "Respaldos creados antes de escribir, uno por archivo tocado.",
+            "example": [
+              "D:\\_banks\\storage\\plugs\\FSynthz-15\\vfxinfo.txt.bak"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Avisos que no impiden aplicar el resto.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "plugin",
+          "applied",
+          "skipped",
+          "vfxinfoPath",
+          "metaPath",
+          "backups",
+          "warnings"
         ],
         "additionalProperties": false
       },
@@ -10810,6 +11607,55 @@
         },
         "required": [
           "results"
+        ],
+        "additionalProperties": false
+      },
+      "SystemCapabilitiesResponseDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "Modo de entrega y ejecución de la aplicación",
+            "enum": [
+              "desktop",
+              "web-local",
+              "web-remote"
+            ],
+            "example": "web-local"
+          },
+          "canCaptureRegistry": {
+            "type": "boolean",
+            "description": "Indica si puede tomar instantáneas y diffs del Registro de Windows",
+            "example": true
+          },
+          "canTrash": {
+            "type": "boolean",
+            "description": "Indica si puede enviar archivos a la Papelera de reciclaje de Windows",
+            "example": true
+          },
+          "canRevealInExplorer": {
+            "type": "boolean",
+            "description": "Indica si puede revelar archivos en el Explorador de Windows (explorer.exe)",
+            "example": true
+          },
+          "canNativePick": {
+            "type": "boolean",
+            "description": "Indica si puede abrir diálogos nativos del sistema operativo (PowerShell/Win32)",
+            "example": true
+          },
+          "canFileSystemAccess": {
+            "type": "boolean",
+            "description": "Indica si el entorno soporta File System Access API (navegador)",
+            "example": false
+          }
+        },
+        "required": [
+          "mode",
+          "canCaptureRegistry",
+          "canTrash",
+          "canRevealInExplorer",
+          "canNativePick",
+          "canFileSystemAccess"
         ],
         "additionalProperties": false
       }

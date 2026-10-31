@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, it } from 'node:test';
-import { inspectPeExports } from '../src/library/pe-exports';
+import { inspectPeExports, inspectPeExportsBuffer } from '../src/library/pe-exports';
 import { pe32Dll, pe64Dll, peWithExportsDll } from './helpers/pe';
 
 describe('inspectPeExports', () => {
@@ -119,5 +119,23 @@ describe('inspectPeExports', () => {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('analiza directamente un Uint8Array en memoria sin requerir disco (estándar Web)', () => {
+    const nodeBuf = peWithExportsDll(['VSTPluginMain'], {
+      bitness: 32,
+      internalName: 'WebMemoryPlugin.dll',
+    });
+    const webArray = new Uint8Array(nodeBuf.buffer.slice(nodeBuf.byteOffset, nodeBuf.byteOffset + nodeBuf.byteLength));
+    assert.equal(Buffer.isBuffer(webArray), false);
+
+    const inspection = inspectPeExportsBuffer(webArray);
+    assert.equal(inspection.validPe, true);
+    assert.equal(inspection.bitness, 32);
+    assert.equal(inspection.is32BitCompatible, true);
+    assert.equal(inspection.isVstPlugin, true);
+    assert.equal(inspection.vstEntrypoint, 'VSTPluginMain');
+    assert.equal(inspection.internalDllName, 'WebMemoryPlugin.dll');
+    assert.deepEqual(inspection.exportedNames, ['VSTPluginMain']);
   });
 });

@@ -3,11 +3,18 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist-test",
+    "baseUrl": ".",
+    // El motor de i18n vive en @abdsynths/shared (ESM puro): Node 24 lo puede
+    // requerir desde CJS, aquí solo hace falta que TypeScript encuentre los tipos.
+    "paths": { "@abdsynths/shared/i18n": ["./node_modules/@abdsynths/shared/Components/i18n.d.ts"] },
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
   // La UI de navegador que toca el DOM (`main.ts` y `dom.ts`) se compila
   // aparte (tsconfig.ui.json). El resto sí entra: `src/ui/batch.ts` y
   // `src/ui/browser/api.ts` no usan DOM y los prueban los tests.
-  "exclude": ["src/ui/browser/main.ts", "src/ui/browser/dom.ts"]
+  "exclude": [
+    "src/ui/browser/main.ts",
+    "src/ui/browser/dom.ts"
+  ]
 }

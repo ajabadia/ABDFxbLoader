@@ -53,6 +53,8 @@ export type LibraryLoaderAddResponse = SuccessBody<'/library/loader/add', 'post'
 export type LibraryLoaderRemoveResponse = SuccessBody<'/library/loader/remove', 'post'>;
 /** Huecos de datos por plugin y valores que se pueden rellenar. */
 export type LibraryAuditResponse = SuccessBody<'/library/audit', 'post'>;
+/** Resultado de escribir las propuestas de datos de un plugin. */
+export type LibraryAuditApplyResponse = SuccessBody<'/library/audit/apply', 'post'>;
 export type LibraryBatchResponse = SuccessBody<'/library/batch', 'post'>;
 export type LibraryBanksListResponse = SuccessBody<'/library/banks/list', 'post'>;
 export type LibraryBanksImportResponse = SuccessBody<'/library/banks/import', 'post'>;
@@ -72,6 +74,7 @@ export type LibraryCreateCustomPluginResponse = SuccessBody<
 export type FxbConfigSnapshotResponse = SuccessBody<'/fxb-config/read', 'post'>;
 export type SystemPickResponse = SuccessBody<'/system/pick', 'post'>;
 export type SystemPathsResponse = SuccessBody<'/system/paths', 'post'>;
+export type SystemCapabilitiesResponse = SuccessBody<'/system/capabilities', 'get'>;
 export type PluginMetaSnapshotResponse = SuccessBody<'/plugins/{id}/meta', 'get'>;
 export type PluginMetaWriteResponse = SuccessBody<'/plugins/{id}/meta', 'post'>;
 export type PluginLogSnapshotResponse = SuccessBody<'/plugins/{id}/log', 'get'>;
@@ -157,6 +160,10 @@ export interface FxbClient {
     audit(
       body: RequestBody<'/library/audit', 'post'>,
     ): Promise<SuccessBody<'/library/audit', 'post'>>;
+    /** Escribe las propuestas de un plugin en `vfxinfo.txt` y/o el meta, con respaldo. */
+    auditApply(
+      body: RequestBody<'/library/audit/apply', 'post'>,
+    ): Promise<SuccessBody<'/library/audit/apply', 'post'>>;
     /** Instala o desinstala varios plugins en una llamada, con resultado por plugin. */
     batch(
       body: RequestBody<'/library/batch', 'post'>,
@@ -311,6 +318,8 @@ export interface FxbClient {
     paths(
       body: RequestBody<'/system/paths', 'post'>,
     ): Promise<SuccessBody<'/system/paths', 'post'>>;
+    /** Consulta las capacidades activas del entorno (desktop .exe, local o remoto). */
+    capabilities(): Promise<SuccessBody<'/system/capabilities', 'get'>>;
   };
   readonly wizards: {
     /** Lista paginada de wizards disponibles en el repositorio con filtros. */
@@ -577,6 +586,10 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/library/audit', body) as Promise<
           SuccessBody<'/library/audit', 'post'>
         >,
+      auditApply: (body) =>
+        request('POST', '/library/audit/apply', body) as Promise<
+          SuccessBody<'/library/audit/apply', 'post'>
+        >,
       batch: (body) =>
         request('POST', '/library/batch', body) as Promise<
           SuccessBody<'/library/batch', 'post'>
@@ -675,6 +688,8 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
         request('POST', '/system/pick', body) as Promise<SuccessBody<'/system/pick', 'post'>>,
       paths: (body) =>
         request('POST', '/system/paths', body) as Promise<SuccessBody<'/system/paths', 'post'>>,
+      capabilities: () =>
+        request('GET', '/system/capabilities') as Promise<SuccessBody<'/system/capabilities', 'get'>>,
     },
     wizards: {
       list: (query = {}) => {

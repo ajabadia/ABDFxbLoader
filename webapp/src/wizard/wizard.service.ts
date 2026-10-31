@@ -394,6 +394,31 @@ export class WizardService implements OnModuleInit {
   }
 
   /**
+   * Coincidencia estricta: ID, nombre de DLL o nombre normalizado exactos, sin
+   * el último recurso por subcadena de `match`. Es la que pueden usar los flujos
+   * que escriben datos a partir del wizard: heredar el fabricante o las notas de
+   * un plugin «parecido» es peor que no proponer nada.
+   */
+  matchExact(query: WizardMatchQuery): WizardRecord | null {
+    if (query.id && query.id.trim() !== '') {
+      const byId = this.byId.get(query.id.trim());
+      if (byId) return byId;
+    }
+
+    if (query.dllName && query.dllName.trim() !== '') {
+      const byDll = this.byDllBase.get(extractDllBase(query.dllName));
+      if (byDll) return byDll;
+    }
+
+    if (query.name && query.name.trim() !== '') {
+      const byName = this.byNormalizedName.get(normalizeName(query.name));
+      if (byName) return byName;
+    }
+
+    return null;
+  }
+
+  /**
    * Aplica los metadatos de un wizard al catálogo `fxbLoader.meta.json` de un plugin.
    */
   async applyToMeta(input: WizardApplyMetaInput): Promise<PluginMetaSnapshot> {

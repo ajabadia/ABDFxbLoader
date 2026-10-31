@@ -77,7 +77,45 @@ test('mountTable emits an unlabeled actions column and runs row menu actions', (
   }
 });
 
-test('mountTable emits search, sortable headers and a default 100-row pager', () => {
+test('setRows conserva abierto el menú «···» de la fila que sigue en la tabla', () => {
+  const previous = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = fakeDocument;
+  try {
+    const root = new FakeElement();
+    const view: TableView<{ name: string }> = {
+      columns: [{ id: 'name', label: 'Nombre', getValue: row => row.name }],
+      getRowId: row => row.name,
+      initialSort: { columnId: 'name', direction: 'asc' },
+      rowActions: { actions: [{ id: 'inspect', label: 'Inspeccionar', onSelect: () => undefined }] },
+    };
+    const table = mountTable(root as unknown as HTMLElement, view, [
+      { name: 'alfa' },
+      { name: 'beta' },
+    ]);
+    const rootTree = root.children[0]!;
+    const menuButton = rootTree.find((element) => element.className === 'row-menu-btn')!;
+    const dropdown = rootTree.find((element) => element.className === 'row-menu-dropdown')!;
+    menuButton.click();
+    assert.equal(dropdown.hidden, false);
+
+    // El sondeo repinta con una fila más: el menú de «alfa» sigue abierto.
+    table.setRows([{ name: 'alfa' }, { name: 'beta' }, { name: 'gamma' }]);
+    const reopenedButton = rootTree.find((element) => element.className === 'row-menu-btn')!;
+    const reopenedDropdown = rootTree.find((element) => element.className === 'row-menu-dropdown')!;
+    assert.equal(reopenedDropdown.hidden, false, 'la recarga no cierra el menú abierto');
+    assert.equal(reopenedButton.attributes['aria-expanded'], 'true');
+
+    // Sin su fila no se abre el menú de otra: se cierra.
+    table.setRows([{ name: 'beta' }]);
+    const otherDropdown = rootTree.find((element) => element.className === 'row-menu-dropdown')!;
+    assert.equal(otherDropdown.hidden, true, 'el menú de una fila que ya no está se cierra');
+    table.destroy();
+  } finally {
+    (globalThis as { document?: unknown }).document = previous;
+  }
+});
+
+test('mountTable emits search, sortable headers and a default 10-row pager', () => {
   const previous = (globalThis as { document?: unknown }).document;
   (globalThis as { document?: unknown }).document = fakeDocument;
   try {
@@ -91,7 +129,9 @@ test('mountTable emits search, sortable headers and a default 100-row pager', ()
     assert.equal(root.children.length, 1);
     assert.ok(JSON.stringify(root.children[0]).includes('Buscar en la tabla'));
     assert.ok(JSON.stringify(root.children[0]).includes('Ordenar por Nombre'));
-    assert.ok(JSON.stringify(root.children[0]).includes('100'));
+    const sizeSelect = root.children[0]!.find((element) => element.className === 'pagination-select')!;
+    assert.deepEqual(sizeSelect.children.map((option) => option.value), ['10', '25', '50', '100', '200']);
+    assert.equal(sizeSelect.value, '10', 'el paginador arranca en 10 filas por página');
     table.destroy();
     assert.equal(root.children.length, 0);
   } finally {

@@ -43,6 +43,19 @@ const BANK = path.basename(OBXD_BANK);
 /** Permite apuntar a una librería VFX real sin tocar el fixture. */
 const LIBRARY_SOURCE = process.env['FXB_VFX_LIBRARY']?.trim() || FIXTURE_LIBRARY;
 
+/**
+ * Las aserciones de esta prueba están escritas en castellano: se fija el idioma
+ * de la interfaz en `localStorage` antes de cargar la página. El inglés es el
+ * idioma por defecto (lo comprueba `test/ui.test.ts`).
+ */
+async function openTestPage(browser: Browser): Promise<Page> {
+  const page = await openTestPage(browser);
+  await page.addInitScript(() => {
+    localStorage.setItem('abdsynths.locale', 'es');
+  });
+  return page;
+}
+
 const skip = existsSync(REPO_DLL)
   ? false
   : `no está ${path.relative(process.cwd(), REPO_DLL)}; la prueba necesita la DLL real`;
@@ -111,6 +124,19 @@ async function waitForRowCount(page: Page, selector: string, count: number): Pro
 
 function pluginRow(page: Page): Locator {
   return page.locator('#plugins-table tbody tr').filter({ hasText: PLUGIN });
+}
+
+
+/**
+ * «Crear plugin» es un desplegable: sus dos opciones (plugin nuevo sin wizard y
+ * capturar instalación) solo existen cuando el `<details>` está abierto.
+ */
+async function openCreationMenu(page: Page): Promise<void> {
+  const menu = page.locator('.creation-menu');
+  if ((await menu.getAttribute('open')) === null) {
+    await page.click('.creation-menu > summary');
+  }
+  await page.locator('.creation-menu .creation-menu-items').waitFor({ state: 'visible' });
 }
 
 /**
@@ -205,7 +231,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const requests: string[] = [];
@@ -616,7 +642,7 @@ test(
       assert.equal(await page.locator('#log-record-detail-fields .log-record-field').count(), 0);
       assert.equal(await page.evaluate(`document.activeElement?.getAttribute('aria-label')`), 'Acciones del registro');
       assert.equal(await page.locator('#log-table [aria-label="Buscar en la tabla"]').count(), 1);
-      assert.equal(await page.locator('#log-table .pagination-select').inputValue(), '100');
+      assert.equal(await page.locator('#log-table .pagination-select').inputValue(), '10');
       assert.equal(await page.locator('#log-table th[aria-sort="descending"]').count(), 1);
 
       // La búsqueda recorre acción y resumen: «instalado» solo encaja con la
@@ -794,7 +820,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -975,7 +1001,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1190,7 +1216,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1232,6 +1258,7 @@ test(
       assert.deepEqual(importRequests.flat(), bankPaths, 'los trozos cubren la lista en orden');
 
       // La lista de resultados es una sola y tiene un elemento por archivo.
+      await page.selectOption('#import-results .pagination-select', '100');
       assert.equal(await page.locator('#import-results .import-result').count(), total);
       assert.equal(await page.locator('#import-results .import-result.rejected').count(), 0);
       const first = path.basename(bankPaths[0]!);
@@ -1240,6 +1267,7 @@ test(
       await waitForText(page, '#import-results', last);
 
       // Y la lista del plugin se refresca con todos los bancos copiados.
+      await page.selectOption('#banks-table .pagination-select', '100');
       assert.equal(await page.locator('#banks-rows tr').count(), total);
 
       // El historial guarda los últimos ocho bancos y cada chip trae su «×»:
@@ -1334,7 +1362,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1483,7 +1511,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1598,6 +1626,7 @@ test(
         'el rechazo del primer trozo no impide mandar el segundo',
       );
 
+      await page.selectOption('#import-results .pagination-select', '100');
       assert.equal(await page.locator('#import-results .import-result').count(), total);
       assert.equal(await page.locator('#import-results .import-result.rejected').count(), 50);
       assert.equal(await page.locator('#import-results .import-result.imported').count(), 1);
@@ -1660,7 +1689,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1841,7 +1870,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -1992,7 +2021,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -2136,6 +2165,9 @@ test(
     browser = await chromium.launch();
     // Tema del SO fijo: el sol o la luna de «Sistema» no deben depender del host.
     const context = await browser.newContext({ colorScheme: 'light' });
+    await context.addInitScript(() => {
+      localStorage.setItem('abdsynths.locale', 'es');
+    });
     const page = await context.newPage();
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -2198,6 +2230,23 @@ test(
       assert.equal(initial.sun, true, 'con el SO claro se dibuja el sol');
       assert.equal(initial.title, titleFor.auto);
 
+      // El conmutador cierra la fila y el dibujo crece sin agrandar el botón.
+      assert.deepEqual(
+        await page.evaluate(`(() => {
+          const actions = document.querySelector('.top-actions');
+          const button = document.getElementById('theme-toggle');
+          const icon = button.querySelector('svg:not([hidden])');
+          const box = button.getBoundingClientRect();
+          return {
+            ultimo: actions.lastElementChild === button,
+            boton: Math.round(box.width) + 'x' + Math.round(box.height),
+            icono: Math.round(icon.getBoundingClientRect().width),
+          };
+        })()`),
+        { ultimo: true, boton: '32x32', icono: 20 },
+        'el botón de tema va al final y su icono mide 20 px',
+      );
+
       await page.click('#theme-toggle');
       await expectTheme('dark');
       await page.reload();
@@ -2208,6 +2257,21 @@ test(
       await expectTheme('light');
       await page.reload();
       await page.waitForSelector('#theme-toggle');
+      await expectTheme('light');
+
+      // Ajustes refleja el tema vigente y también lo cambia.
+      await page.click('#settings-nav-btn');
+      await page.locator('#settings-drawer').waitFor({ state: 'visible' });
+      assert.equal(
+        await page.locator('input[name="theme-mode"]:checked').inputValue(),
+        'light',
+        'los ajustes muestran el tema vigente',
+      );
+      await page.locator('input[name="theme-mode"][value="dark"]').check();
+      await expectTheme('dark');
+      await page.click('#settings-close');
+      await page.locator('#settings-drawer').waitFor({ state: 'hidden' });
+      await page.click('#theme-toggle');
       await expectTheme('light');
 
       await page.click('#theme-toggle');
@@ -2287,6 +2351,9 @@ test(
 
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
+    await context.addInitScript(() => {
+      localStorage.setItem('abdsynths.locale', 'es');
+    });
     const page = await context.newPage();
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -2300,9 +2367,14 @@ test(
       await page.waitForSelector('#results:not([hidden])');
       await page.waitForSelector('#plugins-table .table-pagination');
 
-      // El tamaño por defecto lo fija la vista del catálogo.
+      // Todas las tablas arrancan con el tamaño por defecto compartido.
       const defaultPageSize = await page.inputValue('#plugins-table .pagination-select');
-      assert.equal(defaultPageSize, '25', 'por defecto el paginador muestra 25');
+      assert.equal(defaultPageSize, '10', 'por defecto el paginador muestra 10');
+      assert.equal(
+        await page.$$eval('#plugins-table tbody tr', (rows) => rows.length),
+        10,
+        'con el tamaño por defecto se ven 10 filas',
+      );
       const prevDisabled = await page.isDisabled('#plugins-table .pagination-btn:has-text("Anterior")');
       assert.equal(prevDisabled, true, 'el botón Anterior debe estar deshabilitado en página 1');
 
@@ -2384,7 +2456,7 @@ test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, 
   await waitForServer(server, url, logs);
 
   browser = await chromium.launch();
-  const page = await browser.newPage();
+  const page = await openTestPage(browser);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -2394,16 +2466,16 @@ test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, 
   try {
     await page.goto(url);
 
-    /* Primer montaje: la vista fija 100 por página ---------------- */
+    /* Primer montaje: el tamaño por defecto compartido -------------- */
     await page.click('#wizards-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'visible' });
-    await waitForRowCount(page, '#wizards-table', 100);
+    await waitForRowCount(page, '#wizards-table', 10);
     assert.equal(
       await page.inputValue('#wizards-table .pagination-select'),
-      '100',
-      'la tabla recién montada arranca con el tamaño por defecto de la vista',
+      '10',
+      'la tabla recién montada arranca con el tamaño por defecto',
     );
-    assert.match(await pageInfo(), /^1–100 de \d+$/, 'y en la primera página');
+    assert.match(await pageInfo(), /^1–10 de \d+$/, 'y en la primera página');
 
     // Estado que NO debe sobrevivir al cierre: 25 por página y página 2.
     await page.selectOption('#wizards-table .pagination-select', '25');
@@ -2423,13 +2495,13 @@ test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, 
     /* Reapertura: tabla nueva con el estado inicial --------------- */
     await page.click('#wizards-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'visible' });
-    await waitForRowCount(page, '#wizards-table', 100);
+    await waitForRowCount(page, '#wizards-table', 10);
     assert.equal(
       await page.inputValue('#wizards-table .pagination-select'),
-      '100',
+      '10',
       'la tabla remontada vuelve al tamaño por defecto, no al 25 de la apertura anterior',
     );
-    assert.match(await pageInfo(), /^1–100 de \d+$/, 'y a la primera página');
+    assert.match(await pageInfo(), /^1–10 de \d+$/, 'y a la primera página');
     assert.match(
       (await page.locator('#wizards-count').textContent()) ?? '',
       /^\d+ de \d+$/,
@@ -2489,7 +2561,7 @@ test('menú «···» de wizards: «Historial» abre el cajón de log como en e
   await waitForServer(server, url, logs);
 
   browser = await chromium.launch();
-  const page = await browser.newPage();
+  const page = await openTestPage(browser);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -2497,7 +2569,7 @@ test('menú «···» de wizards: «Historial» abre el cajón de log como en e
     await page.goto(url);
     await page.click('#wizards-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'visible' });
-    await waitForRowCount(page, '#wizards-table', 100);
+    await waitForRowCount(page, '#wizards-table', 10);
 
     const row = page.locator('#wizards-table tbody tr[data-row-id]').first();
     const wizardName = ((await row.locator('td').first().textContent()) ?? '').trim();
@@ -2592,7 +2664,7 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
   await waitForServer(server, url, logs);
 
   browser = await chromium.launch();
-  const page = await browser.newPage();
+  const page = await openTestPage(browser);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -2619,7 +2691,7 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
 
     await page.click('#wizards-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'visible' });
-    await waitForRowCount(page, '#wizards-table', 100);
+    await waitForRowCount(page, '#wizards-table', 10);
 
     const row = page.locator('#wizards-table tbody tr[data-row-id]').first();
     const wizardName = ((await row.locator('td').first().textContent()) ?? '').trim();
@@ -2721,7 +2793,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -2791,6 +2863,7 @@ test(
       await page.waitForSelector('#results:not([hidden])');
 
       // Reparto del fixture, leído de los badges con todos los ejes en «todos».
+      await page.selectOption('#plugins-table .pagination-select', '200');
       const total = await page.locator('#plugins-table tbody tr').count();
       assert.ok(total > 0, 'el fixture debe traer plugins');
       const installed = await page.locator('#plugins-table tbody tr').evaluateAll((trs) =>
@@ -3037,7 +3110,7 @@ test(
     await cp(OBXD_BANK, path.join(presets, BANK));
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -3225,7 +3298,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
   const pluginDir = path.join(library, 'plugs', PLUGIN);
 
   browser = await chromium.launch();
-  const page = await browser.newPage();
+  const page = await openTestPage(browser);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -3338,17 +3411,52 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
       'la tabla se recarga sola al entrar el evento nuevo',
     );
 
-    /* «Ver registro»: el evento completo en el cajón -------------- */
-    // La fila más nueva es la recién apendada (a.dll → b.dll) y su detalle
-    // lista todos los campos del JSONL, también los que la tabla no pinta.
+    /* El «···» sobrevive a la recarga automática ------------------- */
+    // Se abre el menú de la fila recién pintada (a.dll → b.dll). Antes de pulsar
+    // nada entra un tercer evento: el sondeo remonta las filas y el menú tiene
+    // que seguir abierto en esa misma fila, no cerrarse por la recarga.
     const auditRow = page.locator('#audit-table tbody tr[data-row-id]').first();
+    const auditRowId = await auditRow.getAttribute('data-row-id');
+    assert.ok(auditRowId, 'la fila pintada tiene id');
     await auditRow.locator('[data-action="menu"]').click();
     assert.equal(await auditRow.locator('[data-action="view-record"]').textContent(), 'Ver registro');
     assert.equal(
       await auditRow.locator('[data-action="view-record"] use').getAttribute('href'),
       '#icon-file',
     );
-    await auditRow.locator('[data-action="view-record"]').click();
+
+    await writeFile(
+      path.join(library, 'fxbLoader.audit.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        kind: 'association-change',
+        plugin: PLUGIN,
+        libraryRoot: library,
+        field: 'dll_name',
+        previousValue: 'c.dll',
+        newValue: 'd.dll',
+      })}\n`,
+      { flag: 'a' },
+    );
+    await waitForText(page, '#audit-summary', /3 evento\(s\)/);
+    await waitForRowCount(page, '#audit-table', 3);
+    const reopened = page.locator(`#audit-table tbody tr[data-row-id="${auditRowId}"]`);
+    assert.equal(
+      await reopened.locator('[data-action="menu"]').getAttribute('aria-expanded'),
+      'true',
+      'la recarga automática no cierra el menú «···» abierto',
+    );
+    assert.equal(
+      await reopened.locator('.row-menu-dropdown').isVisible(),
+      true,
+      'las acciones siguen a la vista tras la recarga',
+    );
+
+    /* «Ver registro»: el evento completo en el cajón -------------- */
+    // La fila con el menú abierto ya no es la primera (el evento nuevo entró
+    // arriba) y su detalle lista todos los campos del JSONL, también los que la
+    // tabla no pinta.
+    await reopened.locator('[data-action="view-record"]').click();
     await page.locator('#audit-record-detail').waitFor({ state: 'visible' });
     assert.match(
       (await page.locator('#audit-record-detail-title').textContent()) ?? '',
@@ -3438,7 +3546,7 @@ test(
     const vfxinfoPath = path.join(pluginDir, 'vfxinfo.txt');
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -3617,15 +3725,21 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     try {
       await page.goto(url);
-      await page.waitForSelector('#custom-plugin-nav-btn');
+      await openCreationMenu(page);
       await page.click('#custom-plugin-nav-btn');
       await page.locator('#custom-plugin-drawer').waitFor({ state: 'visible' });
+      // Elegir una opción cierra el desplegable: no debe quedar sobre el cajón.
+      assert.equal(
+        await page.locator('.creation-menu').getAttribute('open'),
+        null,
+        'el menú «Crear plugin» se cierra al elegir una opción',
+      );
 
       // El cajón es un diálogo modal con nombre accesible.
       assert.equal(
@@ -3832,7 +3946,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -3993,7 +4107,7 @@ test(
     await waitForServer(server, url, logs);
 
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await openTestPage(browser);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -4124,3 +4238,888 @@ test(
   },
 );
 
+/**
+ * Confirmación de «Aplicar propuestas» en la auditoría de datos: abrir el
+ * diálogo no escribe nada, cancelar deja el disco como estaba y solo el botón
+ * de confirmar manda las propuestas al servidor, que respalda antes de tocar
+ * los archivos.
+ *
+ * El plugin se siembra con huecos a propósito —sin versión, sin campos de
+ * ejecución y sin `fxbLoader.meta.json`— para que la auditoría tenga qué
+ * proponer y el flujo pueda comprobarse de principio a fin.
+ */
+test(
+  'auditoría de datos: «Aplicar propuestas» pide confirmación y solo escribe al confirmar',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+    const AUDIT_PLUGIN = 'Audit Tone';
+    const temp = await mkdtemp(path.join(tmpdir(), 'fxb-e2e-data-audit-'));
+    const library = path.join(temp, 'library');
+    const pluginDir = path.join(library, 'plugs', AUDIT_PLUGIN);
+    const vfxinfoPath = path.join(pluginDir, 'vfxinfo.txt');
+    const metaPath = path.join(pluginDir, 'fxbLoader.meta.json');
+
+    await mkdir(path.join(pluginDir, AUDIT_PLUGIN), { recursive: true });
+    await writeFile(
+      vfxinfoPath,
+      Buffer.from(
+        [
+          `name: ${AUDIT_PLUGIN}`,
+          'id: 1317377777',
+          `dll_name: ${AUDIT_PLUGIN}/${AUDIT_PLUGIN}.dll`,
+          'is_synth: 1',
+          '',
+        ].join('\r\n'),
+        'latin1',
+      ),
+    );
+    await writeFile(
+      path.join(pluginDir, AUDIT_PLUGIN, `${AUDIT_PLUGIN}.dll`),
+      peWithExportsDll(['main']),
+    );
+    const originalVfxinfo = await readFile(vfxinfoPath, 'latin1');
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await openTestPage(browser);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    const applyRequests = (): number =>
+      requests.filter((request) => request.includes('/library/audit/apply')).length;
+    const exists = async (file: string): Promise<boolean> =>
+      await readFile(file).then(
+        () => true,
+        () => false,
+      );
+
+    try {
+      await page.goto(url);
+      await openSettings(page);
+      await page.fill('#library-root', library);
+      await page.click('#scan-button');
+      await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
+
+      /* 1. El detalle del plugin tiene propuestas que aplicar ----------- */
+      await page.click('#data-audit-nav-btn');
+      await page.locator('#data-audit-drawer').waitFor({ state: 'visible' });
+      await waitForText(page, '#data-audit-table', AUDIT_PLUGIN);
+
+      const row = page.locator('#data-audit-table tbody tr[data-row-id]');
+      assert.equal(await row.count(), 1, 'la auditoría pinta el único plugin');
+      await row.locator('[data-action="menu"]').click();
+      await row.locator('[data-action="view-data-detail"]').click();
+      await page.locator('#data-audit-detail').waitFor({ state: 'visible' });
+
+      // Versión, ID, nombre, género y abreviatura: lo que se puede rellenar.
+      const proposals = page.locator('#data-audit-detail-proposals li');
+      assert.equal(await proposals.count(), 5, 'el detalle lista las propuestas del plugin');
+      assert.equal(await page.locator('#data-audit-apply').isEnabled(), true);
+      assert.equal(await page.locator('#data-audit-apply-confirm').isHidden(), true);
+
+      /* 2. «Aplicar» abre la confirmación y no escribe ------------------ */
+      await page.click('#data-audit-apply');
+      await page.locator('#data-audit-apply-confirm').waitFor({ state: 'visible' });
+
+      const note = (await page.locator('#data-audit-apply-note').textContent()) ?? '';
+      assert.match(note, /Se escribirán 5 valor\(es\)/, `aviso de la confirmación: ${note}`);
+      assert.match(note, /\.bak/, `el aviso explica el respaldo: ${note}`);
+      assert.equal(
+        await page.locator('#data-audit-apply-list li').count(),
+        5,
+        'la confirmación repite exactamente lo que se va a escribir',
+      );
+      // El foco queda en confirmar: abrir el diálogo nunca escribe por sí solo.
+      assert.equal(
+        await page.evaluate('document.activeElement?.id'),
+        'data-audit-apply-confirm-btn',
+      );
+      assert.equal(applyRequests(), 0, 'abrir la confirmación no llama al servidor');
+      assert.equal(await exists(metaPath), false, 'el meta no se crea antes de confirmar');
+      assert.equal(
+        await readFile(vfxinfoPath, 'latin1'),
+        originalVfxinfo,
+        'el vfxinfo no se toca antes de confirmar',
+      );
+
+      /* 3. Cancelar deja todo como estaba ------------------------------ */
+      await page.click('#data-audit-apply-cancel');
+      await page.locator('#data-audit-apply-confirm').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#data-audit-apply-list li').count(), 0);
+      assert.equal(
+        await page.evaluate('document.activeElement?.id'),
+        'data-audit-apply',
+        'al cancelar el foco vuelve al botón que abrió la confirmación',
+      );
+      assert.equal(applyRequests(), 0, 'cancelar no llama al servidor');
+      assert.equal(await exists(metaPath), false, 'cancelar no crea el meta');
+      assert.equal(await exists(`${vfxinfoPath}.bak`), false, 'cancelar no respalda nada');
+      assert.equal(await readFile(vfxinfoPath, 'latin1'), originalVfxinfo);
+
+      /* 4. Confirmar escribe, respalda y recarga la auditoría ---------- */
+      await page.click('#data-audit-apply');
+      await page.locator('#data-audit-apply-confirm').waitFor({ state: 'visible' });
+      await page.click('#data-audit-apply-confirm-btn');
+
+      await waitForText(
+        page,
+        '#data-audit-status',
+        /Aplicado 5 valor\(es\) en vfxinfo\.txt y fxbLoader\.meta\.json\./,
+      );
+      await waitForText(page, '#data-audit-status', /Respaldo: vfxinfo\.txt\.bak\./);
+      await page.locator('#data-audit-detail').waitFor({ state: 'hidden' });
+      assert.equal(applyRequests(), 1, 'confirmar hace una única llamada');
+
+      // El disco lo confirma: versión en el vfxinfo, respaldo del original y
+      // los campos comunes en el meta recién creado.
+      assert.match(await readFile(vfxinfoPath, 'latin1'), /^version: 1\r$/m);
+      assert.equal(await readFile(`${vfxinfoPath}.bak`, 'latin1'), originalVfxinfo);
+      const meta = JSON.parse(await readFile(metaPath, 'utf8'));
+      assert.equal(meta.common.id, '1317377777');
+      assert.equal(meta.common.name, AUDIT_PLUGIN);
+      assert.equal(meta.common.genre, 'Synth');
+      assert.equal(meta.common.name_abbreviation, 'AUDI');
+
+      // La auditoría se relee sola tras aplicar: el resumen ya no cuenta
+      // valores rellenables y el plugin sigue en la tabla, solo con sus huecos.
+      await waitForText(page, '#data-audit-summary', /0 valor\(es\) rellenables/);
+      assert.equal(
+        await page.locator('#data-audit-table tbody tr[data-row-id]').count(),
+        1,
+        'el plugin sigue en la auditoría, ya sin nada que rellenar',
+      );
+      assert.match((await page.locator('#data-audit-summary').textContent()) ?? '', /8 hueco\(s\)/);
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-data-audit-apply-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * El staging del paso 3 deja quitar un previo con su × y devolverlo sin repetir
+ * «Preparar staging»: primero en bloque con «Recuperar previos» —con otro previo
+ * aún en el staging, que no debe tocarse— y después, tras quitarlo otra vez,
+ * desde la fila que queda al final del listado. Termina quitando los dos previos
+ * y recuperándolos todos de golpe, con el staging otra vez sin previos dentro.
+ *
+ * La captura se hace de verdad contra el servidor. Solo se intercepta
+ * `POST /capture/start` para acotar el escaneo a una carpeta temporal: la vista
+ * pide las rutas del sistema y la prueba no puede recorrerlas ni depender de
+ * ellas. El resto —snapshot, diff, staging, borrado y recuperación— pasa por el
+ * API real y por los botones de la página.
+ */
+test(
+  'captura: quitar previos del staging y devolverlos en bloque, uno a uno o todos',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+    await mkdir(ARTIFACTS, { recursive: true });
+    // Fuera de %TEMP%: el escáner descarta lo que cuelga de `AppData\Local\Temp`.
+    const temp = await mkdtemp(path.join(ARTIFACTS, 'e2e-capture-'));
+    // El almacén de capturas cuelga del home: se aísla para no ensuciar el real.
+    const home = path.join(temp, 'home');
+    const root = path.join(temp, 'VstPlugins');
+    const dll = path.join(root, 'P8.dll');
+    const preset = path.join(root, 'P8', 'presets', 'legacy.fxb');
+    await mkdir(path.dirname(preset), { recursive: true });
+    await writeFile(dll, 'MZ-previo');
+    await writeFile(preset, 'RIFF-preset-previo');
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port), USERPROFILE: home, HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await openTestPage(browser);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // La vista manda `{}`: se le añade la carpeta de prueba y sin registro, que
+    // de otro modo recorrería HKCU/HKLM de verdad.
+    await page.route('**/capture/start', async (route) => {
+      const response = await route.fetch({
+        postData: JSON.stringify({ scanRoots: [root], registryRoots: [] }),
+        headers: { ...route.request().headers(), 'content-type': 'application/json' },
+      });
+      await route.fulfill({ response });
+    });
+
+    // Pulsar «Abrir» en el staging ejecutaría `explorer.exe /select,` en la
+    // máquina: se responde con la forma del API y se anota qué se pidió.
+    const stagingRevealCalls: { method: string; path: string }[] = [];
+    await page.route(/\/capture\/staging\/[^/]+\/reveal/, async (route) => {
+      const request = route.request();
+      const target = new URL(request.url()).searchParams.get('path') ?? '';
+      stagingRevealCalls.push({ method: request.method(), path: target });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, file: target, opened: path.join(root, path.basename(target)) }),
+      });
+    });
+
+    try {
+      await page.goto(url);
+      // «Capturar instalación» vive en el desplegable «Crear plugin».
+      await openCreationMenu(page);
+      await page.click('#capture-nav-btn');
+      await page.locator('#capture-drawer').waitFor({ state: 'visible' });
+
+      /* 1. Snapshot inicial de la carpeta temporal --------------------- */
+      await page.click('#capture-start-btn');
+      await waitForText(page, '#capture-step1-status', 'Completado');
+
+      /* 2. El «plugin» aparece después del snapshot -------------------- */
+      // `P8.ini` se suma en la misma carpeta del DLL: la captura lo añade y el
+      // snapshot inicial aporta el DLL y el preset que ya estaban ahí.
+      await writeFile(path.join(root, 'P8.ini'), 'capturado');
+      await page.click('#capture-finish-btn');
+      await waitForText(page, '#capture-step2-status', 'Completado');
+      await waitForText(page, '#capture-files-added', '1');
+
+      const diffId = ((await page.locator('#capture-diff-id').textContent()) ?? '').trim();
+      assert.match(diffId, /^[0-9a-f-]{36}$/i, 'la vista debe mostrar el diffId del API');
+
+      /* 3. Staging: el preset entra como previo, marcado ----------------- */
+      await page.click('#capture-package-btn');
+      await page.locator('#capture-staging-info').waitFor({ state: 'visible' });
+      // Tres archivos reales (P8.ini capturado, P8.dll y el preset previos) más
+      // el `manifest.json` y el `capture_diff.json` que escribe el staging.
+      await waitForText(page, '#capture-staging-count', '5');
+
+      const presetRow = page.locator('.capture-staging-item').filter({ hasText: 'legacy.fxb' });
+      await presetRow.waitFor({ state: 'visible' });
+      assert.match(
+        (await presetRow.getAttribute('class')) ?? '',
+        /is-pre-existing/,
+        'el preset ya existía antes de la captura',
+      );
+      assert.equal(await presetRow.locator('.capture-staging-badge').textContent(), 'ya existía');
+
+      /* 4. La fila se puede abrir en el Explorador --------------------- */
+      const presetRelative = ((await presetRow.locator('.capture-staging-name').textContent()) ?? '').trim();
+      assert.match(presetRelative, /legacy\.fxb$/);
+      await presetRow.locator('.capture-staging-open').click();
+      await waitForText(
+        page,
+        '#capture-log',
+        `Abierto en el Explorador: ${path.join(root, 'legacy.fxb')}`,
+      );
+      assert.equal(stagingRevealCalls.length, 1);
+      assert.equal(stagingRevealCalls[0]!.method, 'POST');
+      assert.equal(
+        stagingRevealCalls[0]!.path,
+        presetRelative,
+        'la petición lleva la ruta de esa fila, no otra',
+      );
+
+      /* 5. La × lo quita y lo deja disponible al final ------------------ */
+      await presetRow.locator('.capture-staging-remove').click();
+      const removedRow = page
+        .locator('.capture-staging-item.is-removed')
+        .filter({ hasText: 'legacy.fxb' });
+      await removedRow.waitFor({ state: 'visible' });
+      await waitForText(page, '#capture-staging-count', '4');
+      assert.equal(await removedRow.locator('.capture-staging-badge').textContent(), 'quitado');
+      // Queda otro previo en el staging (el DLL), pero «Recuperar previos» ya
+      // está disponible: devuelve solo los quitados sin tocar los que siguen.
+      const restoreAll = page.locator('#capture-restore-pre-existing-btn');
+      assert.equal(
+        await restoreAll.isVisible(),
+        true,
+        'recuperar no exige haber vaciado el staging entero',
+      );
+      assert.equal(await restoreAll.isEnabled(), true);
+      assert.equal(
+        await page.locator('#capture-restore-pre-existing-label').textContent(),
+        'Recuperar 1 previo',
+      );
+      assert.match(
+        (await restoreAll.getAttribute('title')) ?? '',
+        /previos quitados/,
+        'el título aclara que solo vuelven los quitados',
+      );
+
+      const preExistingUrl = new URL(`capture/pre-existing/${diffId}`, url).toString();
+      const before = (await (await fetch(preExistingUrl)).json()) as {
+        count: number;
+        restorable: number;
+        restorableFiles: string[];
+      };
+      assert.equal(before.count, 1, 'solo queda el DLL previo en el staging');
+      assert.equal(before.restorable, 1);
+      assert.deepEqual(
+        before.restorableFiles.map((file) => path.basename(file)),
+        ['legacy.fxb'],
+        'el API ofrece devolver justo el que se quitó',
+      );
+
+      /* 6. «Recuperar previos» lo devuelve en bloque sin tocar el que queda - */
+      await restoreAll.click();
+      await waitForText(page, '#capture-staging-count', '5');
+      await page.locator('.capture-staging-item.is-removed').waitFor({ state: 'detached' });
+      await waitForText(page, '#capture-log', 'Recuperado 1 archivo previo en el staging');
+
+      assert.equal(
+        await restoreAll.isHidden(),
+        true,
+        'sin quitados pendientes, «Recuperar previos» vuelve a ocultarse',
+      );
+
+      const restoredRow = page.locator('.capture-staging-item').filter({ hasText: 'legacy.fxb' });
+      assert.equal(await restoredRow.count(), 1, 'vuelve una sola fila, no una copia');
+      assert.match(
+        (await restoredRow.getAttribute('class')) ?? '',
+        /is-pre-existing/,
+        'al volver sigue siendo un previo, no un archivo de la captura',
+      );
+      assert.equal(await restoredRow.locator('.capture-staging-badge').textContent(), 'ya existía');
+      // El DLL que nunca se tocó sigue en su fila: recuperar no rehace el staging.
+      const untouchedRow = page.locator('.capture-staging-item').filter({ hasText: 'P8.dll' });
+      assert.equal(await untouchedRow.count(), 1, 'el previo que quedaba no se duplica');
+      assert.match(
+        (await untouchedRow.getAttribute('class')) ?? '',
+        /is-pre-existing/,
+        'el previo que quedaba sigue marcado como ya existía',
+      );
+
+      const after = (await (await fetch(preExistingUrl)).json()) as {
+        count: number;
+        restorable: number;
+        restorableFiles: string[];
+      };
+      assert.equal(after.count, 2, 'los dos previos vuelven a contar para el paquete');
+      assert.equal(after.restorable, 0);
+      assert.deepEqual(after.restorableFiles, []);
+
+      const staging = (await (
+        await fetch(new URL(`capture/staging/${diffId}`, url).toString())
+      ).json()) as { files: string[] };
+      assert.ok(
+        staging.files.some((file) => file.endsWith(`legacy${path.sep}fxb`) || file.endsWith('legacy.fxb')),
+        `el archivo tiene que estar de vuelta en el staging: ${staging.files.join(', ')}`,
+      );
+      assert.equal(
+        staging.files.filter((file) => file.endsWith(`legacy${path.sep}fxb`) || file.endsWith('legacy.fxb'))
+          .length,
+        1,
+        `el archivo recuperado no puede duplicarse: ${staging.files.join(', ')}`,
+      );
+
+      /* 7. El ↺ de la fila devuelve uno suelto sin tocar los demás -------- */
+      await restoredRow.locator('.capture-staging-remove').click();
+      await waitForText(page, '#capture-staging-count', '4');
+      const removedAgain = page
+        .locator('.capture-staging-item.is-removed')
+        .filter({ hasText: 'legacy.fxb' });
+      await removedAgain.waitFor({ state: 'visible' });
+      assert.equal(await restoreAll.isVisible(), true, 'el bloque vuelve a ofrecerse');
+
+      await removedAgain.locator('.capture-staging-restore').click();
+      await waitForText(page, '#capture-staging-count', '5');
+      await page.locator('.capture-staging-item.is-removed').waitFor({ state: 'detached' });
+      await waitForText(page, '#capture-log', 'Devuelto al staging');
+      assert.equal(await restoreAll.isHidden(), true, 'sin quitados pendientes se oculta otra vez');
+      assert.equal(
+        await page.locator('.capture-staging-item').filter({ hasText: 'legacy.fxb' }).count(),
+        1,
+        'el ↺ tampoco duplica la fila',
+      );
+
+      /* 8. Fuera los dos previos; vuelta de los dos en una sola llamada -- */
+      // El staging vuelve a tener los dos previos: el DLL que nunca se tocó y el
+      // preset que acaba de devolver su ↺. Se quitan los dos con la × y, ya sin
+      // previos dentro, «Recuperar previos» pide ambos de golpe al snapshot.
+      for (const name of ['P8.dll', 'legacy.fxb']) {
+        await page
+          .locator('.capture-staging-item')
+          .filter({ hasText: name })
+          .locator('.capture-staging-remove')
+          .click();
+      }
+      await waitForText(page, '#capture-staging-count', '3');
+      await page.locator('.capture-staging-item.is-pre-existing').waitFor({ state: 'detached' });
+      assert.equal(
+        await page.locator('.capture-staging-item.is-removed').count(),
+        2,
+        'los dos quitados se listan al final para poder devolverlos',
+      );
+      const restoreBoth = page.locator('#capture-restore-pre-existing-btn');
+      assert.equal(await restoreBoth.isVisible(), true);
+      assert.equal(
+        await page.locator('#capture-restore-pre-existing-label').textContent(),
+        'Recuperar 2 previos',
+      );
+      assert.equal(
+        await page.locator('#capture-remove-pre-existing-btn').isHidden(),
+        true,
+        'sin previos dentro, «Quitar» se oculta',
+      );
+
+      await restoreBoth.click();
+      await waitForText(page, '#capture-staging-count', '5');
+      await waitForText(page, '#capture-log', 'Recuperados 2 archivos previos en el staging');
+      await page.locator('.capture-staging-item.is-removed').waitFor({ state: 'detached' });
+      assert.equal(await restoreBoth.isHidden(), true, 'sin quitados pendientes se oculta');
+
+      const restoredBoth = page.locator('.capture-staging-item.is-pre-existing');
+      assert.equal(await restoredBoth.count(), 2, 'vuelven los dos, uno por archivo');
+      for (const name of ['P8.dll', 'legacy.fxb']) {
+        const row = restoredBoth.filter({ hasText: name });
+        assert.equal(await row.count(), 1, `vuelve una sola fila de ${name}`);
+        assert.equal(await row.locator('.capture-staging-badge').textContent(), 'ya existía');
+      }
+
+      const both = (await (await fetch(preExistingUrl)).json()) as {
+        count: number;
+        restorable: number;
+      };
+      assert.equal(both.count, 2, 'los dos previos vuelven a contar para el paquete');
+      assert.equal(both.restorable, 0);
+      const stagingAfterAll = (await (
+        await fetch(new URL(`capture/staging/${diffId}`, url).toString())
+      ).json()) as { files: string[] };
+      for (const name of ['P8.dll', 'legacy.fxb']) {
+        assert.equal(
+          stagingAfterAll.files.filter((file) => path.basename(file) === name).length,
+          1,
+          `${name} tiene que estar una sola vez: ${stagingAfterAll.files.join(', ')}`,
+        );
+      }
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-capture-restore-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * El otro extremo del staging: quitar de una vez todos los previos que había
+ * antes de la captura. Con el staging sin previos, «Recuperar previos» pide
+ * los dos al snapshot inicial en una sola llamada y vuelve a dejarlo igual;
+ * la prueba comprueba el estado del API además de las filas y el registro.
+ */
+test(
+  'captura: quitar todos los previos del staging y recuperarlos en bloque',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+    await mkdir(ARTIFACTS, { recursive: true });
+    // Fuera de %TEMP%: el escáner descarta lo que cuelga de `AppData\Local\Temp`.
+    const temp = await mkdtemp(path.join(ARTIFACTS, 'e2e-capture-all-'));
+    // El almacén de capturas cuelga del home: se aísla para no ensuciar el real.
+    const home = path.join(temp, 'home');
+    const root = path.join(temp, 'VstPlugins');
+    const dll = path.join(root, 'P8.dll');
+    const preset = path.join(root, 'P8', 'presets', 'legacy.fxb');
+    await mkdir(path.dirname(preset), { recursive: true });
+    await writeFile(dll, 'MZ-previo');
+    await writeFile(preset, 'RIFF-preset-previo');
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port), USERPROFILE: home, HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await openTestPage(browser);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // La vista manda `{}`: se le añade la carpeta de prueba y sin registro, que
+    // de otro modo recorrería HKCU/HKLM de verdad.
+    await page.route('**/capture/start', async (route) => {
+      const response = await route.fetch({
+        postData: JSON.stringify({ scanRoots: [root], registryRoots: [] }),
+        headers: { ...route.request().headers(), 'content-type': 'application/json' },
+      });
+      await route.fulfill({ response });
+    });
+
+    try {
+      await page.goto(url);
+      // «Capturar instalación» vive en el desplegable «Crear plugin».
+      await openCreationMenu(page);
+      await page.click('#capture-nav-btn');
+      await page.locator('#capture-drawer').waitFor({ state: 'visible' });
+
+      /* 1. Snapshot con dos previos ------------------------------------ */
+      await page.click('#capture-start-btn');
+      await waitForText(page, '#capture-step1-status', 'Completado');
+
+      // `P8.ini` se suma en la misma carpeta del DLL: la captura lo añade y el
+      // snapshot inicial aporta el DLL y el preset que ya estaban ahí.
+      await writeFile(path.join(root, 'P8.ini'), 'capturado');
+      await page.click('#capture-finish-btn');
+      await waitForText(page, '#capture-step2-status', 'Completado');
+      await waitForText(page, '#capture-files-added', '1');
+
+      const diffId = ((await page.locator('#capture-diff-id').textContent()) ?? '').trim();
+      assert.match(diffId, /^[0-9a-f-]{36}$/i, 'la vista debe mostrar el diffId del API');
+
+      /* 2. Staging: los dos previos, marcados -------------------------- */
+      await page.click('#capture-package-btn');
+      await page.locator('#capture-staging-info').waitFor({ state: 'visible' });
+      // Tres archivos reales (P8.ini capturado, P8.dll y el preset previos) más
+      // el `manifest.json` y el `capture_diff.json` que escribe el staging.
+      await waitForText(page, '#capture-staging-count', '5');
+      const preExistingRows = page.locator('.capture-staging-item.is-pre-existing');
+      assert.equal(await preExistingRows.count(), 2, 'el DLL y el preset son previos');
+
+      /* 3. «Quitar previos» los saca a los dos ------------------------- */
+      const removeAll = page.locator('#capture-remove-pre-existing-btn');
+      assert.equal(await removeAll.isVisible(), true);
+      assert.equal(
+        await page.locator('#capture-remove-pre-existing-label').textContent(),
+        'Quitar 2 previos',
+      );
+      await removeAll.click();
+      await waitForText(page, '#capture-staging-count', '3');
+      await waitForText(page, '#capture-log', 'Quitados 2 de 2 archivos previos del staging');
+
+      assert.equal(
+        await page.locator('.capture-staging-item.is-pre-existing').count(),
+        0,
+        'no queda ningún previo dentro del staging',
+      );
+      assert.equal(await removeAll.isHidden(), true, 'sin previos, «Quitar» se oculta');
+      assert.equal(
+        await page.locator('.capture-staging-item.is-removed').count(),
+        2,
+        'los dos quitados se listan al final para poder devolverlos',
+      );
+
+      const restoreAll = page.locator('#capture-restore-pre-existing-btn');
+      assert.equal(await restoreAll.isVisible(), true, 'con todo quitado, «Recuperar» aparece');
+      assert.equal(await restoreAll.isEnabled(), true);
+      assert.equal(
+        await page.locator('#capture-restore-pre-existing-label').textContent(),
+        'Recuperar 2 previos',
+      );
+
+      const preExistingUrl = new URL(`capture/pre-existing/${diffId}`, url).toString();
+      const before = (await (await fetch(preExistingUrl)).json()) as {
+        count: number;
+        restorable: number;
+        restorableFiles: string[];
+      };
+      assert.equal(before.count, 0, 'el staging se queda sin previos');
+      assert.equal(before.restorable, 2);
+      assert.deepEqual(
+        before.restorableFiles.map((file) => path.basename(file)).sort(),
+        ['P8.dll', 'legacy.fxb'],
+        'el API ofrece los dos quitados',
+      );
+
+      /* 4. «Recuperar previos» los devuelve en una sola llamada --------- */
+      await restoreAll.click();
+      await waitForText(page, '#capture-staging-count', '5');
+      await waitForText(page, '#capture-log', 'Recuperados 2 archivos previos en el staging');
+      await page.locator('.capture-staging-item.is-removed').waitFor({ state: 'detached' });
+      assert.equal(await restoreAll.isHidden(), true, 'sin quitados pendientes se oculta');
+
+      const restoredRows = page.locator('.capture-staging-item.is-pre-existing');
+      assert.equal(await restoredRows.count(), 2, 'vuelven los dos, una sola vez cada uno');
+      for (const name of ['P8.dll', 'legacy.fxb']) {
+        const row = page.locator('.capture-staging-item.is-pre-existing').filter({ hasText: name });
+        assert.equal(await row.count(), 1, `vuelve una sola fila de ${name}`);
+        assert.equal(await row.locator('.capture-staging-badge').textContent(), 'ya existía');
+      }
+
+      const after = (await (await fetch(preExistingUrl)).json()) as {
+        count: number;
+        restorable: number;
+        restorableFiles: string[];
+      };
+      assert.equal(after.count, 2, 'los dos previos vuelven a contar para el paquete');
+      assert.equal(after.restorable, 0);
+      assert.deepEqual(after.restorableFiles, []);
+
+      const staging = (await (
+        await fetch(new URL(`capture/staging/${diffId}`, url).toString())
+      ).json()) as { files: string[] };
+      for (const name of ['P8.dll', 'legacy.fxb']) {
+        assert.equal(
+          staging.files.filter((file) => path.basename(file) === name).length,
+          1,
+          `${name} tiene que estar de vuelta una sola vez: ${staging.files.join(', ')}`,
+        );
+      }
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-capture-restore-all-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
+
+/**
+ * El listado de previos del paso 4 no es solo informativo: cada fila tiene un
+ * «Abrir» que pide al servidor mostrar ese archivo concreto en el Explorador.
+ * La prueba comprueba que el enlace lleva el `path` de su fila y que la
+ * confirmación nombra la ruta absoluta que devuelve el servidor. La llamada se
+ * intercepta para no abrir una ventana real de Explorer durante el test; la
+ * validación del servidor la cubre `capture.reveal.test.ts`.
+ */
+test(
+  'captura: «Abrir» del listado de previos del paso 4 revela cada archivo',
+  { skip },
+  async (t) => {
+    assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
+
+    await mkdir(ARTIFACTS, { recursive: true });
+    // Fuera de %TEMP%: el escáner descarta lo que cuelga de `AppData\Local\Temp`.
+    const temp = await mkdtemp(path.join(ARTIFACTS, 'e2e-capture-reveal-'));
+    // El almacén de capturas cuelga del home: se aísla para no ensuciar el real.
+    const home = path.join(temp, 'home');
+    const root = path.join(temp, 'VstPlugins');
+    const dll = path.join(root, 'P8.dll');
+    const preset = path.join(root, 'P8', 'presets', 'legacy.fxb');
+    await mkdir(path.dirname(preset), { recursive: true });
+    await writeFile(dll, 'MZ-previo');
+    await writeFile(preset, 'RIFF-preset-previo');
+
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port), USERPROFILE: home, HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+      await rm(temp, { recursive: true, force: true });
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const page = await openTestPage(browser);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // La vista manda `{}`: se le añade la carpeta de prueba y sin registro, que
+    // de otro modo recorrería HKCU/HKLM de verdad.
+    await page.route('**/capture/start', async (route) => {
+      const response = await route.fetch({
+        postData: JSON.stringify({ scanRoots: [root], registryRoots: [] }),
+        headers: { ...route.request().headers(), 'content-type': 'application/json' },
+      });
+      await route.fulfill({ response });
+    });
+
+    // Pulsar «Abrir» ejecutaría `explorer.exe /select,` en la máquina: se
+    // responde con la misma forma que el servidor y se anota qué se pidió.
+    const revealCalls: { method: string; path: string }[] = [];
+    await page.route(/\/capture\/pre-existing\/[^/]+\/reveal/, async (route) => {
+      const request = route.request();
+      const target = new URL(request.url()).searchParams.get('path') ?? '';
+      revealCalls.push({ method: request.method(), path: target });
+      const opened = path.basename(target) === 'legacy.fxb' ? preset : dll;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, file: target, opened }),
+      });
+    });
+
+    try {
+      await page.goto(url);
+      await openCreationMenu(page);
+      await page.click('#capture-nav-btn');
+      await page.locator('#capture-drawer').waitFor({ state: 'visible' });
+
+      /* 1. Snapshot y diff con dos previos ------------------------------ */
+      await page.click('#capture-start-btn');
+      await waitForText(page, '#capture-step1-status', 'Completado');
+      await writeFile(path.join(root, 'P8.ini'), 'capturado');
+      await page.click('#capture-finish-btn');
+      await waitForText(page, '#capture-step2-status', 'Completado');
+      await waitForText(page, '#capture-files-added', '1');
+
+      const diffId = ((await page.locator('#capture-diff-id').textContent()) ?? '').trim();
+      assert.match(diffId, /^[0-9a-f-]{36}$/i, 'la vista debe mostrar el diffId del API');
+
+      /* 2. El paso 4 lista los dos previos con su «Abrir» ---------------- */
+      const details = page.locator('#capture-pre-existing-details');
+      await details.waitFor({ state: 'visible' });
+      await waitForText(
+        page,
+        '#capture-pre-existing-details-label',
+        'Ver los 2 archivos previos que se incluyen',
+      );
+
+      // El `<details>` nace plegado: hay que abrirlo como lo haría una persona.
+      await details.locator('summary').click();
+      assert.equal(await details.getAttribute('open'), '', 'el desplegable queda abierto');
+
+      const items = page.locator('#capture-pre-existing-list .capture-pre-existing-item');
+      await items.first().waitFor({ state: 'visible' });
+      assert.equal(await items.count(), 2, 'el listado enseña los dos previos del snapshot');
+
+      const presetItem = items.filter({ hasText: 'legacy.fxb' });
+      const dllItem = items.filter({ hasText: 'P8.dll' });
+      assert.equal(await presetItem.count(), 1);
+      assert.equal(await dllItem.count(), 1);
+
+      const presetRelative = ((await presetItem.locator('.capture-pre-existing-path').textContent()) ?? '').trim();
+      const dllRelative = ((await dllItem.locator('.capture-pre-existing-path').textContent()) ?? '').trim();
+      assert.match(presetRelative, /legacy\.fxb$/);
+      assert.match(dllRelative, /P8\.dll$/);
+
+      const presetOpen = presetItem.locator('.capture-pre-existing-open');
+      const dllOpen = dllItem.locator('.capture-pre-existing-open');
+      assert.equal(await presetOpen.textContent(), 'Abrir');
+      assert.equal(
+        await presetOpen.getAttribute('aria-label'),
+        `Abrir ${presetRelative} en el Explorador de Windows`,
+        'el botón dice qué archivo abre',
+      );
+
+      /* 3. Cada «Abrir» pide su propio archivo -------------------------- */
+      await presetOpen.click();
+      await waitForText(page, '#capture-log', `Abierto en el Explorador: ${preset}`);
+      assert.equal(revealCalls.length, 1);
+      assert.equal(revealCalls[0]!.method, 'POST');
+      assert.equal(revealCalls[0]!.path, presetRelative, 'la petición lleva la ruta de esa fila');
+
+      await dllOpen.click();
+      await waitForText(page, '#capture-log', `Abierto en el Explorador: ${dll}`);
+      assert.equal(revealCalls.length, 2, 'el segundo botón no reutiliza la ruta del primero');
+      assert.equal(revealCalls[1]!.method, 'POST');
+      assert.equal(revealCalls[1]!.path, dllRelative);
+
+      assert.deepEqual(
+        pageErrors,
+        [],
+        `errores de JavaScript en la página: ${pageErrors.join(' | ')}`,
+      );
+    } catch (error) {
+      await mkdir(ARTIFACTS, { recursive: true });
+      await page.screenshot({
+        path: path.join(ARTIFACTS, 'e2e-capture-reveal-failure.png'),
+        fullPage: true,
+      });
+      console.error(`Servidor:\n${logs.join('')}`);
+      throw error;
+    }
+  },
+);
