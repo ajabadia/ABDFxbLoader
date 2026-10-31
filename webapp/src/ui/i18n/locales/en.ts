@@ -248,6 +248,10 @@ export const appEn = {
   ui: {
     app: {
       needRoot: 'Choose the VFX library folder to start.',
+      openSettings: 'Configure in Settings',
+      openSettingsTitle: 'Open Settings panel and focus the path field',
+      focusField: 'Go to field',
+      goToLibraryField: 'Go to library field',
     },
     audit: {
       emptyValue: '(empty)',

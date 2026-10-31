@@ -539,9 +539,70 @@ els.dll.value = lastDll;
 renderRecents();
 setRootWarning(libraryRoot === '');
 
-function setStatus(message: string, kind = 'info'): void {
-  els.status.textContent = message;
-  els.status.className = `status ${kind}`;
+export interface StatusAction {
+  label: string;
+  icon?: string;
+  title?: string;
+  onClick: () => void;
+}
+
+function openSettingsAndFocus(targetFieldId: 'library-root' | 'dll-source' = 'library-root'): void {
+  showPanel(els.settingsDrawer, els.settingsNavBtn);
+  requestAnimationFrame(() => {
+    const el = document.getElementById(targetFieldId);
+    if (el instanceof HTMLInputElement) {
+      el.focus();
+      el.select?.();
+    }
+  });
+}
+
+function openSettingsForLibraryRootAction(): StatusAction {
+  return {
+    label: t('ui.app.openSettings'),
+    icon: 'settings',
+    title: t('ui.app.openSettingsTitle'),
+    onClick: () => openSettingsAndFocus('library-root'),
+  };
+}
+
+function renderStatusWithAction(
+  container: HTMLElement,
+  message: string,
+  kind = 'info',
+  action?: StatusAction,
+): void {
+  container.replaceChildren();
+  if (!message) {
+    container.className = 'status';
+    return;
+  }
+  container.className = kind ? `status ${kind}` : 'status';
+  const span = document.createElement('span');
+  span.textContent = message;
+  container.appendChild(span);
+
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'status-action-btn';
+    if (action.title) btn.title = action.title;
+    if (action.icon) {
+      btn.appendChild(createIcon(action.icon));
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = action.label;
+    btn.appendChild(labelSpan);
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      action.onClick();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function setStatus(message: string, kind = 'info', action?: StatusAction): void {
+  renderStatusWithAction(els.status, message, kind, action);
 }
 
 /**
@@ -1566,7 +1627,7 @@ async function scan(): Promise<boolean> {
   if (busy) return false;
   if (!libraryRoot) {
     setRootWarning(true);
-    setStatus(t('ui.settings.needRoot'), 'error');
+    setStatus(t('ui.settings.needRoot'), 'error', openSettingsForLibraryRootAction());
     els.root.focus();
     return false;
   }
@@ -1723,7 +1784,7 @@ async function chooseDll(): Promise<void> {
     writeStorage(STORAGE_DLL, chosen);
     rememberDll(chosen);
     if (libraryRoot === '') {
-      setStatus(t('ui.settings.dllChosenNeedRoot'), 'ok');
+      setStatus(t('ui.settings.dllChosenNeedRoot'), 'ok', openSettingsForLibraryRootAction());
       return;
     }
     await scanFromSettings();
@@ -3739,14 +3800,13 @@ async function promptAndInstallFromWizard(
 ): Promise<void> {
   if (!libraryRoot) {
     const msg = t('ui.wizard.needLibrary');
-    setStatus(msg, 'error');
+    const action = openSettingsForLibraryRootAction();
+    setStatus(msg, 'error', action);
     if (!els.wizards.hidden) {
-      els.wizardsStatus.textContent = msg;
-      els.wizardsStatus.className = 'status error';
+      renderStatusWithAction(els.wizardsStatus, msg, 'error', action);
     }
     if (!els.pluginWizard.hidden) {
-      els.pluginWizardStatus.textContent = msg;
-      els.pluginWizardStatus.className = 'status error';
+      renderStatusWithAction(els.pluginWizardStatus, msg, 'error', action);
     }
     return;
   }
@@ -4461,6 +4521,14 @@ function openImportPackageDrawer(opener?: HTMLElement): void {
       els.importPackagePath.value = parent;
     }
   }
+  if (!libraryRoot) {
+    renderStatusWithAction(
+      els.importPackageStatus,
+      t('ui.importPackage.needLibrary'),
+      'info',
+      openSettingsForLibraryRootAction(),
+    );
+  }
   els.importPackagePath.focus();
 }
 
@@ -4547,9 +4615,8 @@ function setCustomPluginBusy(busy: boolean): void {
   els.customPluginCreateBtn.disabled = busy;
 }
 
-function setCustomPluginStatus(message: string, kind = 'info'): void {
-  els.customPluginStatus.textContent = message;
-  els.customPluginStatus.className = `status ${kind}`;
+function setCustomPluginStatus(message: string, kind = 'info', action?: StatusAction): void {
+  renderStatusWithAction(els.customPluginStatus, message, kind, action);
 }
 
 function openCustomPluginDrawer(opener?: HTMLElement): void {
@@ -5401,7 +5468,12 @@ async function inspectCustomPlugin(): Promise<void> {
   if (customPluginBusy) return;
   const dllPath = els.customPluginPath.value.trim();
   if (dllPath === '') {
-    setCustomPluginStatus(t('ui.customPlugin.needDllPath'), 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needDllPath'), 'error', {
+      label: t('ui.app.focusField'),
+      icon: 'folder',
+      title: t('ui.app.focusField'),
+      onClick: () => els.customPluginPath.focus(),
+    });
     return;
   }
 
@@ -5426,7 +5498,12 @@ async function createCustomPlugin(): Promise<void> {
   if (customPluginBusy) return;
   const libraryRootPath = els.customPluginRoot.value.trim();
   if (libraryRootPath === '') {
-    setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'error', {
+      label: t('ui.app.focusField'),
+      icon: 'folder',
+      title: t('ui.app.focusField'),
+      onClick: () => els.customPluginRoot.focus(),
+    });
     return;
   }
   const folderName = els.customPluginFolder.value.trim();
@@ -5446,7 +5523,12 @@ async function createCustomPlugin(): Promise<void> {
   }
   const sourceDllPath = els.customPluginPath.value.trim();
   if (sourceDllPath === '') {
-    setCustomPluginStatus(t('ui.customPlugin.needDll'), 'error');
+    setCustomPluginStatus(t('ui.customPlugin.needDll'), 'error', {
+      label: t('ui.app.focusField'),
+      icon: 'folder',
+      title: t('ui.app.focusField'),
+      onClick: () => els.customPluginPath.focus(),
+    });
     return;
   }
 
@@ -6006,14 +6088,22 @@ function renderImportPackageInspection(result: LibraryInspectPackageResponse): v
 async function inspectPackage(): Promise<void> {
   const pkgPath = els.importPackagePath.value.trim();
   if (!pkgPath) {
-    els.importPackageStatus.textContent = t('ui.importPackage.needPath');
-    els.importPackageStatus.className = 'status error';
+    renderStatusWithAction(els.importPackageStatus, t('ui.importPackage.needPath'), 'error', {
+      label: t('ui.app.focusField'),
+      icon: 'folder',
+      title: t('ui.app.focusField'),
+      onClick: () => els.importPackagePath.focus(),
+    });
     els.importPackagePath.focus();
     return;
   }
   if (!libraryRoot) {
-    els.importPackageStatus.textContent = t('ui.importPackage.needLibrary');
-    els.importPackageStatus.className = 'status error';
+    renderStatusWithAction(
+      els.importPackageStatus,
+      t('ui.importPackage.needLibrary'),
+      'error',
+      openSettingsForLibraryRootAction(),
+    );
     return;
   }
 
@@ -6049,7 +6139,15 @@ async function inspectPackage(): Promise<void> {
 
 async function executeImportPackage(): Promise<void> {
   if (!importPackageInspection || importPackageBusy) return;
-  if (!libraryRoot) return;
+  if (!libraryRoot) {
+    renderStatusWithAction(
+      els.importPackageStatus,
+      t('ui.importPackage.needLibrary'),
+      'error',
+      openSettingsForLibraryRootAction(),
+    );
+    return;
+  }
 
   const pkgPath = els.importPackagePath.value.trim();
   const selectedPlugins = [...selectedImportPlugins];
@@ -6365,9 +6463,8 @@ function destroyAssociationAuditTable(): void {
   els.auditTable.replaceChildren();
 }
 
-function setAuditStatus(message: string, kind = ''): void {
-  els.auditStatus.textContent = message;
-  els.auditStatus.className = kind ? `status ${kind}` : 'status';
+function setAuditStatus(message: string, kind = '', action?: StatusAction): void {
+  renderStatusWithAction(els.auditStatus, message, kind, action);
 }
 
 async function loadAssociationAudit(options?: { silent?: boolean }): Promise<void> {
@@ -6379,7 +6476,7 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
     destroyAssociationAuditTable();
     els.auditPath.textContent = '';
     els.auditSummary.textContent = '';
-    setAuditStatus(t('ui.audit.needRoot'), 'error');
+    setAuditStatus(t('ui.audit.needRoot'), 'error', openSettingsForLibraryRootAction());
     return;
   }
 
@@ -6788,9 +6885,8 @@ function closeDataAuditDetail(): void {
   }
 }
 
-function setDataAuditApplyStatus(message: string, kind = ''): void {
-  els.dataAuditApplyStatus.textContent = message;
-  els.dataAuditApplyStatus.className = kind ? `status ${kind}` : 'status';
+function setDataAuditApplyStatus(message: string, kind = '', action?: StatusAction): void {
+  renderStatusWithAction(els.dataAuditApplyStatus, message, kind, action);
 }
 
 function closeDataAuditApplyConfirm(): void {
@@ -6825,7 +6921,7 @@ async function applyDataAuditProposals(): Promise<void> {
   const plugin = dataAuditDetailPlugin;
   if (plugin === null || dataAuditApplyBusy) return;
   if (!libraryRoot) {
-    setDataAuditApplyStatus(t('ui.dataAudit.needRoot'), 'error');
+    setDataAuditApplyStatus(t('ui.dataAudit.needRoot'), 'error', openSettingsForLibraryRootAction());
     return;
   }
 
@@ -6873,9 +6969,8 @@ function destroyDataAuditTable(): void {
   els.dataAuditTable.replaceChildren();
 }
 
-function setDataAuditStatus(message: string, kind = ''): void {
-  els.dataAuditStatus.textContent = message;
-  els.dataAuditStatus.className = kind ? `status ${kind}` : 'status';
+function setDataAuditStatus(message: string, kind = '', action?: StatusAction): void {
+  renderStatusWithAction(els.dataAuditStatus, message, kind, action);
 }
 
 /**
@@ -6890,7 +6985,7 @@ async function loadDataAudit(): Promise<void> {
     destroyDataAuditTable();
     els.dataAuditPath.textContent = '';
     els.dataAuditSummary.textContent = '';
-    setDataAuditStatus(t('ui.dataAudit.needRootAudit'), 'error');
+    setDataAuditStatus(t('ui.dataAudit.needRootAudit'), 'error', openSettingsForLibraryRootAction());
     return;
   }
 
@@ -7076,6 +7171,9 @@ onLocaleChange((locale) => {
   syncLocaleInputs(locale);
   applyI18n();
   if (scanData !== null) render(scanData);
+  else if (!libraryRoot) {
+    setStatus(t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction());
+  }
 });
 
 initAppI18n();
@@ -7088,5 +7186,5 @@ void pruneRecents();
 if (libraryRoot) {
   void scan();
 } else {
-  setStatus(t('ui.app.needRoot'), 'info');
+  setStatus(t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction());
 }

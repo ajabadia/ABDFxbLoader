@@ -247,6 +247,10 @@ export const appEs = {
   ui: {
     app: {
       needRoot: 'Elige la carpeta de la librería VFX para empezar.',
+      openSettings: 'Configurar en Ajustes',
+      openSettingsTitle: 'Abrir Ajustes y situar el foco en el campo de la ruta',
+      focusField: 'Ir al campo',
+      goToLibraryField: 'Ir a la ruta de librería',
     },
     audit: {
       emptyValue: '(vacío)',
