@@ -70,7 +70,14 @@ export async function bootstrapDesktop(): Promise<void> {
       },
     );
 
-    child.on('exit', async () => {
+    const launchTime = Date.now();
+    child.on('exit', async (code) => {
+      // Si el proceso lanzador de Edge termina inmediatamente (< 3.5 segundos, ej. código 21 o 0
+      // al delegar la ventana a la instancia existente de Edge), no cerrar el servidor.
+      if (Date.now() - launchTime < 3500) {
+        console.log(`[ABDfxbloader Desktop] Proceso lanzador finalizado (${code}). Servidor activo.`);
+        return;
+      }
       console.log('[ABDfxbloader Desktop] Ventana cerrada por el usuario. Deteniendo servidor...');
       await app.close();
       process.exit(0);

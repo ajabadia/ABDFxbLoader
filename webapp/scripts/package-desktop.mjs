@@ -58,7 +58,34 @@ execSync(
   { cwd: rootDir, stdio: 'inherit' },
 );
 
-console.log('[package-desktop] 6. Copiando activos web (public/ y vendor/)...');
+console.log('[package-desktop] 6. Configurando icono de la aplicación...');
+const icoPath = path.resolve(rootDir, 'public', 'favicon.ico');
+if (!existsSync(icoPath)) {
+  console.log('[package-desktop] Generando iconos y manifest desde SVG...');
+  execSync('node scripts/generate-icons.mjs', { cwd: rootDir, stdio: 'inherit' });
+}
+if (existsSync(icoPath)) {
+  console.log('[package-desktop] Inyectando icono en ABDfxbloader.exe...');
+  try {
+    const ResEdit = await import('resedit');
+    const exe = ResEdit.NtExecutable.from(readFileSync(targetExe), { ignoreCert: true });
+    const res = ResEdit.NtExecutableResource.from(exe);
+    const iconFile = ResEdit.Data.IconFile.from(readFileSync(icoPath));
+    ResEdit.Resource.IconGroupEntry.replaceIconsForResource(
+      res.entries,
+      1,
+      1033,
+      iconFile.icons.map((item) => item.data),
+    );
+    res.outputResource(exe);
+    writeFileSync(targetExe, Buffer.from(exe.generate()));
+    console.log('[package-desktop] Icono inyectado con éxito en el ejecutable.');
+  } catch (err) {
+    console.warn('[package-desktop] Aviso: no se pudo inyectar el icono en el ejecutable:', err.message);
+  }
+}
+
+console.log('[package-desktop] 7. Copiando activos web (public/ y vendor/)...');
 const publicSrc = path.resolve(rootDir, 'public');
 const publicDest = path.resolve(outDir, 'public');
 cpSync(publicSrc, publicDest, { recursive: true });
