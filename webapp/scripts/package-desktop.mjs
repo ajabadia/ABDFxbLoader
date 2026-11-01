@@ -10,12 +10,8 @@ const outDir = path.resolve(rootDir, 'dist-desktop');
 console.log('[package-desktop] 1. Preparando directorio de salida...');
 mkdirSync(outDir, { recursive: true });
 
-console.log('[package-desktop] 2. Bundling con @vercel/ncc...');
-const entryFile = path.resolve(rootDir, 'dist', 'desktop.js');
-if (!existsSync(entryFile)) {
-  console.log('[package-desktop] Compilando TypeScript primero...');
-  execSync('npm run build', { cwd: rootDir, stdio: 'inherit' });
-}
+console.log('[package-desktop] 2. Compilando TypeScript y bundling con @vercel/ncc...');
+execSync('npm run build', { cwd: rootDir, stdio: 'inherit' });
 
 // Empaquetar todo el backend y node_modules en dist-desktop/index.js
 execSync(
