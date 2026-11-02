@@ -4199,6 +4199,7 @@ const langIcons = [...els.langToggle.querySelectorAll<SVGElement>('[data-icon]')
 function applyLanguage(): void {
   const locale = getLocale();
   els.langToggle.title = locale === 'es' ? t('title.langToEn') : t('title.langToEs');
+  els.langToggle.setAttribute('aria-label', t('header.langLabel'));
   for (const icon of langIcons) {
     icon.toggleAttribute('hidden', icon.dataset['icon'] !== locale);
   }
