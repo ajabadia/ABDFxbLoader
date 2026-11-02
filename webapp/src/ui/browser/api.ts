@@ -31,7 +31,6 @@ export const client: FxbClient = new Proxy({} as FxbClient, {
 
 export { createFxbClient, isFxbApiError };
 
-/** Texto para la UI: el mensaje del API, sus `issues` y los fallos de red. */
 /**
  * Texto del fallo en el idioma de la vista. Si el servidor manda un código con
  * traducción, manda ella; si no, se enseña el mensaje recibido tal cual: mejor
@@ -49,6 +48,7 @@ function messageOf(error: FxbApiError): string {
   return translated === key ? error.message : translated;
 }
 
+/** Texto para la UI: el mensaje del API, sus `issues` y los fallos de red. */
 export function describeError(error: unknown): string {
   if (isFxbApiError(error)) {
     const body = error.body as { issues?: unknown } | null;

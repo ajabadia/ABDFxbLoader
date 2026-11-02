@@ -306,7 +306,7 @@ function mapDomainError(error: unknown): never {
   }
   if (error instanceof PluginStateError || error instanceof FxbConfigConflictError) {
     throw new ConflictException({
-      message: error.message,
+      ...domainBody(error),
       ...(error instanceof FxbConfigConflictError ? { current: error.current } : {}),
     });
   }

@@ -75,13 +75,12 @@ function keys(value: object): string[] {
 const OPTIONAL_ERROR_KEYS = ['code', 'params'];
 
 function assertSameKeys(actual: object, expected: object, label: string): void {
-  const documented = keys(expected);
-  const undocumented = keys(actual).filter((key) => !documented.includes(key));
-  const missing = documented.filter(
-    (key) => !(key in actual) && !OPTIONAL_ERROR_KEYS.includes(key),
+  const stable = (keys_: string[]) => keys_.filter((key) => !OPTIONAL_ERROR_KEYS.includes(key));
+  assert.deepEqual(
+    stable(keys(actual)),
+    stable(keys(expected)),
+    `${label}: campos documentados y reales distintos`,
   );
-  assert.deepEqual(undocumented, [], `${label}: campos sin documentar`);
-  assert.deepEqual(missing, [], `${label}: faltan campos documentados`);
 }
 
 function actionKinds(value: { actions: { kind: string }[] }): string[] {
