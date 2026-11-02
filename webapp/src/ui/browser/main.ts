@@ -231,6 +231,12 @@ let captureBankDir: string | null = null;
 let captureStickDrives: StickDrive[] = [];
 let captureStickInventory: StickInventory | null = null;
 let captureStickBusy = false;
+
+/** Vista del medio: unidades, inventario y comparación con la librería. */
+let vmDrives: StickDrive[] = [];
+let vmInventory: StickInventory | null = null;
+let vmSync: VmSync | null = null;
+let vmBusy = false;
 /** Archivos previos del snapshot inicial que entrarían en el paquete; `null` hasta consultarlo. */
 let capturePreExistingCount: number | null = null;
 /** Aviso del servidor al contar los previos (snapshot inicial perdido, por ejemplo). */
@@ -5309,9 +5315,8 @@ function stickStatusText(plugin: StickPlugin): string {
     : t('ui.capture.stickCatalogDiffers', { 0: stickCatalogLabel(plugin) });
 }
 
-function renderStickInventory(): void {
-  els.captureStickInventory.replaceChildren();
-  const inventory = captureStickInventory;
+function renderStickInventory(target: HTMLElement, inventory: StickInventory | null): void {
+  target.replaceChildren();
   if (inventory === null) return;
 
   const list = document.createElement('ul');
@@ -5352,7 +5357,7 @@ function renderStickInventory(): void {
     }
   }
 
-  if (list.childElementCount > 0) els.captureStickInventory.append(list);
+  if (list.childElementCount > 0) target.append(list);
 }
 
 async function captureStickLoad(): Promise<void> {
@@ -5431,7 +5436,7 @@ async function captureStickSelect(
     if (els.captureStickDrive.value !== driveId) return;
     captureStickInventory = inventory;
     els.captureStickSummary.textContent = stickSummaryText(drive, inventory);
-    renderStickInventory();
+    renderStickInventory(els.captureStickInventory, inventory);
     for (const warning of inventory.warnings) captureLog(warning, 'error');
     if (!options.keepStatus) setStickStatus('', 'info');
     els.captureStickInstall.disabled = captureBankDir === null;
@@ -5491,6 +5496,285 @@ async function captureStickCopy(): Promise<void> {
   } finally {
     els.captureStickInstall.disabled = captureBankDir === null;
   }
+}
+
+
+type VmSyncEntry = {
+  folder: string;
+  path: string;
+  name: string | null;
+  id: string | null;
+  version: string | null;
+  files: number;
+  bytes: number;
+  stickFolder: string | null;
+  stickVersion: string | null;
+  state: 'missing' | 'differs' | 'same';
+};
+
+type VmSync = {
+  drive: string;
+  library: string;
+  targetLibrary: string;
+  entries: VmSyncEntry[];
+  extra: { library: string; folder: string; name: string | null; version: string | null; bytes: number }[];
+  missing: number;
+  differs: number;
+  same: number;
+  pendingBytes: number;
+  warnings: string[];
+};
+
+type VmCopyResult = {
+  drive: string;
+  libraryDir: string;
+  results: {
+    folder: string;
+    ok: boolean;
+    copied: number;
+    bytes: number;
+    verified: number;
+    replaced: number;
+    error?: { message: string; code?: string; params?: Record<string, string | number> };
+  }[];
+  copied: number;
+  bytes: number;
+  verified: number;
+  failed: number;
+  warnings: string[];
+};
+
+function setVmStatus(message: string, kind: 'info' | 'ok' | 'error' | 'busy' = 'info'): void {
+  els.vmachineStatus.textContent = message;
+  els.vmachineStatus.className = `status ${kind}`;
+}
+
+/** Error del API traducido por su código, con el mensaje como último recurso. */
+function vmErrorText(error: { message: string; code?: string; params?: Record<string, string | number> }): string {
+  if (error.code === undefined) return error.message;
+  const key = `msg.apiError.${error.code}`;
+  const translated = t(key, error.params ?? {});
+  return translated === key ? error.message : translated;
+}
+
+async function loadVmachineDrives(): Promise<void> {
+  if (vmBusy) return;
+  vmBusy = true;
+  els.vmachineRefresh.disabled = true;
+  setVmStatus(t('ui.vmachine.loading'), 'busy');
+  try {
+    const res = await fetch('/vmachine/drives');
+    if (!res.ok) throw new Error(await stickErrorText(res));
+    const data = (await res.json()) as {
+      supported: boolean;
+      drives: StickDrive[];
+      warnings: string[];
+    };
+    vmDrives = data.drives;
+    for (const warning of data.warnings) captureLog(warning, 'error');
+
+    if (!data.supported || data.drives.length === 0) {
+      els.vmachineDrive.replaceChildren();
+      els.vmachineSummary.textContent = '';
+      els.vmachineInventory.replaceChildren();
+      els.vmachineSync.replaceChildren();
+      els.vmachineSyncNote.textContent = '';
+      els.vmachineCopy.disabled = true;
+      setVmStatus(
+        t(data.supported ? 'ui.vmachine.noDrives' : 'ui.vmachine.unsupported'),
+        'error',
+      );
+      return;
+    }
+
+    const previous = els.vmachineDrive.value;
+    els.vmachineDrive.replaceChildren(
+      ...data.drives.map((drive) => {
+        const option = document.createElement('option');
+        option.value = drive.id;
+        option.textContent = stickDriveOption(drive);
+        return option;
+      }),
+    );
+    // Se conserva la unidad elegida y, si ya no está, se prefiere la extraíble:
+    // el disco del sistema nunca es el destino.
+    const keep =
+      data.drives.find((drive) => drive.id === previous) ??
+      data.drives.find((drive) => drive.removable) ??
+      data.drives[0]!;
+    els.vmachineDrive.value = keep.id;
+    await loadVmachineSelection();
+  } catch (error) {
+    setVmStatus(t('ui.vmachine.unreadable', { 0: describeError(error) }), 'error');
+  } finally {
+    vmBusy = false;
+    els.vmachineRefresh.disabled = false;
+  }
+}
+
+async function loadVmachineSelection(): Promise<void> {
+  const driveId = els.vmachineDrive.value;
+  vmInventory = null;
+  vmSync = null;
+  els.vmachineInventory.replaceChildren();
+  els.vmachineSync.replaceChildren();
+  els.vmachineSyncNote.textContent = '';
+  els.vmachineCopy.disabled = true;
+  els.vmachineSummary.textContent = '';
+  if (driveId === '') return;
+
+  const drive = vmDrives.find((entry) => entry.id === driveId) ?? null;
+  setVmStatus(t('ui.vmachine.loading'), 'busy');
+  try {
+    const inventoryRes = await fetch(`/vmachine/inventory?drive=${encodeURIComponent(driveId)}`);
+    if (!inventoryRes.ok) throw new Error(await stickErrorText(inventoryRes));
+    const inventory = (await inventoryRes.json()) as StickInventory;
+    // Otra unidad se eligió mientras se leía esta: la respuesta ya no vale.
+    if (els.vmachineDrive.value !== driveId) return;
+
+    vmInventory = inventory;
+    els.vmachineSummary.textContent = stickSummaryText(drive, inventory);
+    renderStickInventory(els.vmachineInventory, inventory);
+
+    if (libraryRoot === '') {
+      els.vmachineLibraryNote.textContent = t('ui.vmachine.noLibrary');
+      setVmStatus('', 'info');
+      return;
+    }
+    els.vmachineLibraryNote.textContent = libraryRoot;
+
+    const syncRes = await fetch(
+      `/vmachine/sync?drive=${encodeURIComponent(driveId)}&library=${encodeURIComponent(libraryRoot)}`,
+    );
+    if (els.vmachineDrive.value !== driveId) return;
+    if (!syncRes.ok) {
+      setVmStatus(t('ui.vmachine.syncError', { 0: await stickErrorText(syncRes) }), 'error');
+      return;
+    }
+
+    const sync = (await syncRes.json()) as VmSync;
+    if (els.vmachineDrive.value !== driveId) return;
+    vmSync = sync;
+    renderVmSync();
+    setVmStatus('', 'info');
+  } catch (error) {
+    if (els.vmachineDrive.value !== driveId) return;
+    setVmStatus(t('ui.vmachine.unreadable', { 0: describeError(error) }), 'error');
+  }
+}
+
+function renderVmSync(): void {
+  els.vmachineSync.replaceChildren();
+  const sync = vmSync;
+  if (sync === null) return;
+
+  const list = document.createElement('ul');
+  list.style.listStyle = 'none';
+  list.style.margin = '8px 0 0';
+  list.style.padding = '0';
+  list.style.display = 'grid';
+  list.style.gap = '4px';
+
+  for (const entry of sync.entries) {
+    const item = document.createElement('li');
+    item.style.display = 'flex';
+    item.style.alignItems = 'center';
+    item.style.gap = '8px';
+    item.style.flexWrap = 'wrap';
+
+    const name = document.createElement('span');
+    name.style.fontWeight = '600';
+    name.textContent = entry.name ?? entry.folder;
+    if (entry.name !== null && entry.name !== entry.folder) name.title = entry.folder;
+
+    const badge = document.createElement('span');
+    badge.className = `badge ${entry.state === 'same' ? 'on' : 'bad'}`;
+    badge.textContent =
+      entry.state === 'missing'
+        ? t('ui.vmachine.missing')
+        : entry.state === 'same'
+          ? t('ui.vmachine.same')
+          : t('ui.vmachine.differs', { 0: entry.stickVersion ?? '—' });
+
+    const size = document.createElement('span');
+    size.className = 'note';
+    size.textContent = formatBytes(entry.bytes);
+
+    item.append(name, badge, size);
+    list.append(item);
+  }
+
+  if (list.childElementCount > 0) els.vmachineSync.append(list);
+
+  const pending = sync.entries.filter((entry) => entry.state !== 'same');
+  els.vmachineCopy.disabled = pending.length === 0 || libraryRoot === '';
+  els.vmachineSyncNote.textContent = t('ui.vmachine.syncCount', {
+    0: sync.entries.length,
+    1: sync.missing,
+    2: sync.differs,
+    3: sync.same,
+  });
+
+  if (sync.extra.length > 0) {
+    const extra = document.createElement('p');
+    extra.className = 'note';
+    extra.textContent = t('ui.vmachine.extra', { 0: sync.extra.length });
+    els.vmachineSync.append(extra);
+  }
+}
+
+async function copyVmachineMissing(): Promise<void> {
+  const sync = vmSync;
+  const driveId = els.vmachineDrive.value;
+  if (sync === null || driveId === '' || libraryRoot === '') return;
+
+  const folders = sync.entries
+    .filter((entry) => entry.state !== 'same')
+    .map((entry) => entry.folder);
+  if (folders.length === 0) return;
+
+  els.vmachineCopy.disabled = true;
+  const copying = t('ui.vmachine.copying', { 0: folders.length });
+  setVmStatus(copying, 'busy');
+  captureLog(copying, 'busy');
+  try {
+    const res = await fetch('/vmachine/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive: driveId, library: libraryRoot, folders }),
+    });
+    if (!res.ok) throw new Error(await stickErrorText(res));
+    const result = (await res.json()) as VmCopyResult;
+
+    for (const outcome of result.results) {
+      if (outcome.ok || outcome.error === undefined) continue;
+      captureLog(
+        t('ui.vmachine.failed', { 0: outcome.folder, 1: vmErrorText(outcome.error) }),
+        'error',
+      );
+    }
+
+    const text = t('ui.vmachine.copied', {
+      0: result.results.length - result.failed,
+      1: result.copied,
+      2: formatBytes(result.bytes),
+      3: result.failed,
+    });
+    // El inventario y la comparación se releen: lo copiado tiene que aparecer ya
+    // como presente, no como si el medio siguiera igual.
+    await loadVmachineSelection();
+    setVmStatus(text, result.failed > 0 ? 'error' : 'ok');
+    captureLog(text, result.failed > 0 ? 'error' : 'ok');
+  } catch (error) {
+    const text = t('ui.vmachine.copyError', { 0: describeError(error) });
+    setVmStatus(text, 'error');
+    captureLog(text, 'error');
+  }
+}
+
+/** Pinta la vista del medio. La llama el router al entrar; siempre relee. */
+export async function refreshVmachineView(): Promise<void> {
+  await loadVmachineDrives();
 }
 
 /** Pinta el resultado de `/library/inspect-dll` y, con lo detectado, rellena el
@@ -5862,6 +6146,29 @@ if (els.captureStickInstall) {
     void captureStickCopy();
   });
 }
+
+if (els.vmachineRefresh) {
+  els.vmachineRefresh.addEventListener('click', () => {
+    void loadVmachineDrives();
+  });
+}
+
+if (els.vmachineDrive) {
+  els.vmachineDrive.addEventListener('change', () => {
+    void loadVmachineSelection();
+  });
+}
+
+if (els.vmachineCopy) {
+  els.vmachineCopy.addEventListener('click', () => {
+    void copyVmachineMissing();
+  });
+}
+
+els.vmachineNavBtn.addEventListener('click', () => {
+  navigateTo('medio');
+});
+
 
 els.customPluginClose.addEventListener('click', () => {
   closeCustomPluginDrawer();

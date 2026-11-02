@@ -1097,6 +1097,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vmachine/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Comparar la librería con las bibliotecas del medio
+         * @description Lee en modo lectura los plugins de la librería del equipo (`plugs\<Plugin>\vfxinfo.txt`) y los empareja con los del medio por id VST, nombre de carpeta o nombre declarado. `state` dice si el plugin solo está en la librería (`missing`), si el medio tiene otra versión (`differs`) o si coinciden (`same`); `extra` son los del medio que la librería no tiene, que no se tocan. No escribe nada.
+         */
+        get: operations["VMachineController_sync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vmachine/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copiar en lote a la biblioteca del medio, con verificación
+         * @description Copia las carpetas de `plugs\` que se piden —lo que `GET /vmachine/sync` marca como `missing` o `differs`— envolviéndolas en `<Biblioteca>.vfxlibrary\plugs\<Plugin>\`. El espacio libre se comprueba para todo el lote antes de escribir el primer archivo; un fallo posterior en un plugin se informa en `results` y no cancela los demás. Cada archivo se verifica por tamaño y, hasta 32 MiB, por SHA-256.
+         */
+        post: operations["VMachineController_copy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4732,6 +4772,259 @@ export interface components {
             sizeOnly: string[];
             /**
              * @description Avisos de la copia; vacío cuando todo salió como se esperaba.
+             * @example []
+             */
+            warnings: string[];
+        };
+        VMachineSyncEntryDto: {
+            /**
+             * @description Carpeta del plugin en la librería.
+             * @example SuperWave P8
+             */
+            folder: string;
+            /**
+             * @description Ruta absoluta de la carpeta del plugin en la librería.
+             * @example D:\VFX\plugs\SuperWave P8
+             */
+            path: string;
+            /**
+             * @description `name` del vfxinfo de la librería, o `null` si no lo declara.
+             * @example SuperWave P8
+             */
+            name?: string | null;
+            /**
+             * @description `id` VST del vfxinfo: la clave con la que se empareja con el medio.
+             * @example 1316377392
+             */
+            id?: string | null;
+            /**
+             * @description Versión que declara la librería.
+             * @example 1.3
+             */
+            version?: string | null;
+            /**
+             * @description Archivos que ocupa en la librería.
+             * @example 12
+             */
+            files: number;
+            /**
+             * @description Bytes que ocupa en la librería.
+             * @example 48210432
+             */
+            bytes: number;
+            /**
+             * @description Carpeta del mismo plugin en el medio, o `null` si no está.
+             * @example SuperWave P8
+             */
+            stickFolder?: string | null;
+            /**
+             * @description Versión que declara el vfxinfo del medio, si la declara.
+             * @example 1.2
+             */
+            stickVersion?: string | null;
+            /**
+             * @description `missing` si solo está en la librería, `differs` si el medio tiene otra versión y `same` si coinciden o no hay versión que comparar.
+             * @example differs
+             * @enum {string}
+             */
+            state: "missing" | "differs" | "same";
+        };
+        VMachineSyncExtraDto: {
+            /**
+             * @description Biblioteca del medio que lo contiene.
+             * @example V-MACHINE.vfxlibrary
+             */
+            library: string;
+            /**
+             * @description Carpeta dentro de `plugs\` del medio.
+             * @example Old Delay
+             */
+            folder: string;
+            /**
+             * @description Nombre declarado en el medio.
+             * @example Old Delay
+             */
+            name?: string | null;
+            /**
+             * @description Versión declarada en el medio.
+             * @example 1.0
+             */
+            version?: string | null;
+            /**
+             * @description Bytes que ocupa en el medio.
+             * @example 1048576
+             */
+            bytes: number;
+        };
+        VMachineSyncResponseDto: {
+            /**
+             * @description Raíz del medio leída.
+             * @example E:\
+             */
+            drive: string;
+            /**
+             * @description Raíz de la librería comparada.
+             * @example D:\VFX
+             */
+            library: string;
+            /**
+             * @description Biblioteca del medio en la que se copiaría: la única que ya está en la raíz o `V-MACHINE.vfxlibrary` si no hay ninguna.
+             * @example V-MACHINE.vfxlibrary
+             */
+            targetLibrary: string;
+            /** @description Plugins de la librería, por nombre de carpeta, con su comparación. */
+            entries: components["schemas"]["VMachineSyncEntryDto"][];
+            /** @description Plugins que el medio tiene y la librería no. No se tocan. */
+            extra: components["schemas"]["VMachineSyncExtraDto"][];
+            /**
+             * @description Plugins que solo están en la librería.
+             * @example 1
+             */
+            missing: number;
+            /**
+             * @description Plugins que están en los dos con otra versión.
+             * @example 1
+             */
+            differs: number;
+            /**
+             * @description Plugins que coinciden o no tienen versión que comparar.
+             * @example 0
+             */
+            same: number;
+            /**
+             * @description Bytes de lo que habría que copiar para igualar el medio.
+             * @example 69181952
+             */
+            pendingBytes: number;
+            /**
+             * @description Avisos al leer el medio; vacío si todo salió bien.
+             * @example []
+             */
+            warnings: string[];
+        };
+        VMachineCopyRequestDto: {
+            /**
+             * @description Raíz del medio («E:», «E:\») o una carpeta montada.
+             * @example E:
+             */
+            drive: string;
+            /**
+             * @description Raíz de la librería del equipo que contiene `plugs\`.
+             * @example D:\VFX
+             */
+            library: string;
+            /**
+             * @description Carpetas de `plugs\` a copiar, tal como las devuelve `GET /vmachine/sync` en `folder`.
+             * @example [
+             *       "SuperWave P8",
+             *       "Korg M1"
+             *     ]
+             */
+            folders: string[];
+            /**
+             * @description Biblioteca de destino; si se omite se reusa la única de la raíz.
+             * @example V-MACHINE
+             */
+            libraryName?: string;
+        };
+        VMachineCopyErrorDto: {
+            /**
+             * @description Mensaje del servidor, en castellano, para los logs.
+             * @example La copia de M1/M1.dll no llegó íntegra a la unidad.
+             */
+            message: string;
+            /**
+             * @description Código estable que la vista traduce.
+             * @example copyMismatch
+             */
+            code?: string;
+            /**
+             * @description Valores para `{0}`, `{1}`… del texto traducido.
+             * @example {
+             *       "0": "M1/M1.dll"
+             *     }
+             */
+            params?: Record<string, never>;
+        };
+        VMachineCopyOutcomeDto: {
+            /**
+             * @description Carpeta copiada.
+             * @example SuperWave P8
+             */
+            folder: string;
+            /**
+             * @description `false` si este plugin no se copió; el resto sigue.
+             * @example true
+             */
+            ok: boolean;
+            /**
+             * @description Archivos copiados de este plugin.
+             * @example 12
+             */
+            copied: number;
+            /**
+             * @description Archivos que pisaron una versión anterior.
+             * @example 1
+             */
+            replaced: number;
+            /**
+             * @description Bytes copiados de este plugin.
+             * @example 48210432
+             */
+            bytes: number;
+            /**
+             * @description Archivos con SHA-256 comprobado.
+             * @example 12
+             */
+            verified: number;
+            /**
+             * @description Archivos de más de 32 MiB comprobados solo por tamaño.
+             * @example []
+             */
+            sizeOnly: string[];
+            /**
+             * @description Avisos de la copia.
+             * @example []
+             */
+            warnings: string[];
+            /** @description Por qué no se copió este plugin. */
+            error?: components["schemas"]["VMachineCopyErrorDto"] | null;
+        };
+        VMachineCopyResultDto: {
+            /**
+             * @description Raíz del medio donde se copió.
+             * @example E:\
+             */
+            drive: string;
+            /**
+             * @description Biblioteca del medio en la que se copió; vacía si no se copió nada.
+             * @example E:\V-MACHINE.vfxlibrary
+             */
+            libraryDir: string;
+            /** @description Resultado por plugin, en el orden pedido. */
+            results: components["schemas"]["VMachineCopyOutcomeDto"][];
+            /**
+             * @description Archivos copiados en total.
+             * @example 12
+             */
+            copied: number;
+            /**
+             * @description Bytes copiados en total.
+             * @example 48210432
+             */
+            bytes: number;
+            /**
+             * @description Archivos verificados con SHA-256 en total.
+             * @example 12
+             */
+            verified: number;
+            /**
+             * @description Plugins que no se copiaron.
+             * @example 1
+             */
+            failed: number;
+            /**
+             * @description Avisos del lote.
              * @example []
              */
             warnings: string[];
@@ -8739,6 +9032,215 @@ export interface operations {
                      *       "code": "notEnoughSpace",
                      *       "params": {
                      *         "0": "1,2 GB",
+                     *         "1": "340 MB"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+        };
+    };
+    VMachineController_sync: {
+        parameters: {
+            query: {
+                /** @description Raíz del medio, tal como la devuelve `GET /vmachine/drives`. */
+                drive: string;
+                /** @description Raíz de la librería del equipo: la carpeta que contiene `plugs\`. */
+                library: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparación por plugin y totales. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "drive": "E:\\",
+                     *       "library": "D:\\VFX",
+                     *       "targetLibrary": "V-MACHINE.vfxlibrary",
+                     *       "entries": [
+                     *         {
+                     *           "folder": "SuperWave P8",
+                     *           "path": "D:\\VFX\\plugs\\SuperWave P8",
+                     *           "name": "SuperWave P8",
+                     *           "id": "1316377392",
+                     *           "version": "1.3",
+                     *           "files": 12,
+                     *           "bytes": 48210432,
+                     *           "stickFolder": "SuperWave P8",
+                     *           "stickVersion": "1.2",
+                     *           "state": "differs"
+                     *         },
+                     *         {
+                     *           "folder": "Korg M1",
+                     *           "path": "D:\\VFX\\plugs\\Korg M1",
+                     *           "name": "Korg M1",
+                     *           "id": "222222222",
+                     *           "version": "1.0",
+                     *           "files": 8,
+                     *           "bytes": 20971520,
+                     *           "stickFolder": null,
+                     *           "stickVersion": null,
+                     *           "state": "missing"
+                     *         }
+                     *       ],
+                     *       "extra": [
+                     *         {
+                     *           "library": "V-MACHINE.vfxlibrary",
+                     *           "folder": "Old Delay",
+                     *           "name": "Old Delay",
+                     *           "version": "1.0",
+                     *           "bytes": 1048576
+                     *         }
+                     *       ],
+                     *       "missing": 1,
+                     *       "differs": 1,
+                     *       "same": 0,
+                     *       "pendingBytes": 69181952,
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineSyncResponseDto"];
+                };
+            };
+            /** @description Falta `drive` o `library`, o la librería no tiene `plugs`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description La unidad no existe o no es una carpeta. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                     *       "code": "driveNotFound",
+                     *       "params": {
+                     *         "0": "Z:"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+        };
+    };
+    VMachineController_copy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VMachineCopyRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Lo copiado por plugin y el total. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "drive": "E:\\",
+                     *       "libraryDir": "E:\\V-MACHINE.vfxlibrary",
+                     *       "results": [
+                     *         {
+                     *           "folder": "SuperWave P8",
+                     *           "ok": true,
+                     *           "copied": 12,
+                     *           "replaced": 1,
+                     *           "bytes": 48210432,
+                     *           "verified": 12,
+                     *           "sizeOnly": [],
+                     *           "warnings": []
+                     *         },
+                     *         {
+                     *           "folder": "Korg M1",
+                     *           "ok": false,
+                     *           "copied": 0,
+                     *           "replaced": 0,
+                     *           "bytes": 0,
+                     *           "verified": 0,
+                     *           "sizeOnly": [],
+                     *           "warnings": [],
+                     *           "error": {
+                     *             "message": "La copia de M1/M1.dll no llegó íntegra a la unidad.",
+                     *             "code": "copyMismatch",
+                     *             "params": {
+                     *               "0": "M1/M1.dll"
+                     *             }
+                     *           }
+                     *         }
+                     *       ],
+                     *       "copied": 12,
+                     *       "bytes": 48210432,
+                     *       "verified": 12,
+                     *       "failed": 1,
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineCopyResultDto"];
+                };
+            };
+            /** @description Falta `drive`, `library` o `folders`, o alguno de los plugins no está en la librería. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description La unidad o la carpeta de algún plugin no existen. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                     *       "code": "driveNotFound",
+                     *       "params": {
+                     *         "0": "Z:"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description El lote completo no cabe en el espacio libre del medio. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No cabe en \"E:\": hacen falta 640 MB y quedan 340 MB.",
+                     *       "code": "notEnoughSpace",
+                     *       "params": {
+                     *         "0": "640 MB",
                      *         "1": "340 MB"
                      *       }
                      *     }

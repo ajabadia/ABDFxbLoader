@@ -29,14 +29,20 @@ import {
   VMACHINE_INVENTORY_EXAMPLE,
   VMACHINE_INSTALL_REQUEST_EXAMPLE,
   VMACHINE_INSTALL_RESULT_EXAMPLE,
+  VMachineCopyRequestDto,
+  VMachineCopyResultDto,
   VMachineDrivesResponseDto,
   VMachineErrorDto,
+  VMACHINE_COPY_REQUEST_EXAMPLE,
+  VMACHINE_COPY_RESULT_EXAMPLE,
+  VMACHINE_SYNC_EXAMPLE,
   VMachineInstallRequestDto,
   VMachineInventoryResponseDto,
   VMachineInstallResultDto,
+  VMachineSyncResponseDto,
 } from './vmachine.dto';
 import { VMachineService } from './vmachine.service';
-import type { VMachineInstallOptions } from './vmachine.types';
+import type { VMachineCopyOptions, VMachineInstallOptions } from './vmachine.types';
 
 /**
  * Estado con el que viaja cada código. El resto de la API hace lo mismo: la
@@ -48,6 +54,8 @@ const STATUS_BY_CODE: Partial<Record<ApiErrorCode, HttpStatus>> = {
   pluginFolderMissing: HttpStatus.NOT_FOUND,
   vfxinfoMissing: HttpStatus.BAD_REQUEST,
   libraryNameInvalid: HttpStatus.BAD_REQUEST,
+  plugsMissing: HttpStatus.BAD_REQUEST,
+  batchPluginsEmpty: HttpStatus.BAD_REQUEST,
   notEnoughSpace: HttpStatus.CONFLICT,
   copyMismatch: HttpStatus.INTERNAL_SERVER_ERROR,
 };
@@ -87,6 +95,45 @@ export function readInstallRequest(body: unknown): VMachineInstallOptions {
   const libraryName = text('libraryName');
 
   return libraryName === null ? { drive, pluginDir } : { drive, pluginDir, libraryName };
+}
+
+/**
+ * Petición de copia en lote: unidad, raíz de la librería y nombres de carpeta. Cada
+ * nombre se valida contra el disco en el servicio; aquí solo se comprueba la forma.
+ */
+export function readCopyRequest(body: unknown): VMachineCopyOptions {
+  const record = asRecord(body);
+  const text = (key: string): string | null => {
+    const value = record[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${key} debe ser una cadena`);
+    }
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  };
+
+  const drive = text('drive');
+  if (drive === null) throw new BadRequestException('drive requerido');
+  const library = text('library');
+  if (library === null) throw new BadRequestException('library requerido');
+
+  const raw = record['folders'];
+  if (!Array.isArray(raw)) throw new BadRequestException('folders requerido');
+  const folders = raw.map((entry: unknown) => {
+    if (typeof entry !== 'string') {
+      throw new BadRequestException('folders debe ser una lista de nombres');
+    }
+    return entry.trim();
+  });
+  if (folders.every((folder: string) => folder === '')) {
+    throw new BadRequestException('folders requerido');
+  }
+
+  const libraryName = text('libraryName');
+  return libraryName === null
+    ? { drive, libraryRoot: library, folders }
+    : { drive, libraryRoot: library, folders, libraryName };
 }
 
 @ApiTags('vmachine')
@@ -220,6 +267,126 @@ export class VMachineController {
   async install(@Body() body: unknown): Promise<VMachineInstallResultDto> {
     try {
       return await this.service.install(readInstallRequest(body));
+    } catch (error) {
+      throw asHttpException(error);
+    }
+  }
+
+  @Get('sync')
+  @ApiOperation({
+    summary: 'Comparar la librería con las bibliotecas del medio',
+    description:
+      'Lee en modo lectura los plugins de la librería del equipo (`plugs\\<Plugin>\\vfxinfo.txt`) ' +
+      'y los empareja con los del medio por id VST, nombre de carpeta o nombre declarado. ' +
+      '`state` dice si el plugin solo está en la librería (`missing`), si el medio tiene otra ' +
+      'versión (`differs`) o si coinciden (`same`); `extra` son los del medio que la librería no ' +
+      'tiene, que no se tocan. No escribe nada.',
+  })
+  @ApiQuery({
+    name: 'drive',
+    required: true,
+    description: 'Raíz del medio, tal como la devuelve `GET /vmachine/drives`.',
+    example: 'E:',
+  })
+  @ApiQuery({
+    name: 'library',
+    required: true,
+    description: 'Raíz de la librería del equipo: la carpeta que contiene `plugs\\`.',
+    example: 'D:\\VFX',
+  })
+  @ApiOkResponse({
+    description: 'Comparación por plugin y totales.',
+    type: VMachineSyncResponseDto,
+    example: VMACHINE_SYNC_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta `drive` o `library`, o la librería no tiene `plugs`.',
+    type: VMachineErrorDto,
+    examples: {
+      sinDrive: { summary: 'Falta la unidad', value: { message: 'drive requerido' } },
+      sinPlugs: {
+        summary: 'La ruta no es una librería',
+        value: {
+          message: 'No existe la carpeta plugs de la librería "D:/VFX".',
+          code: 'plugsMissing',
+          params: { 0: 'D:/VFX' },
+        },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'La unidad no existe o no es una carpeta.',
+    type: VMachineErrorDto,
+    example: VMACHINE_DRIVE_MISSING_EXAMPLE,
+  })
+  async sync(
+    @Query('drive') drive?: string,
+    @Query('library') library?: string,
+  ): Promise<VMachineSyncResponseDto> {
+    try {
+      const value = (drive ?? '').trim();
+      if (value === '') throw new BadRequestException('drive requerido');
+      const root = (library ?? '').trim();
+      if (root === '') throw new BadRequestException('library requerido');
+      return await this.service.sync(value, root);
+    } catch (error) {
+      throw asHttpException(error);
+    }
+  }
+
+  @Post('copy')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Copiar en lote a la biblioteca del medio, con verificación',
+    description:
+      'Copia las carpetas de `plugs\\` que se piden —lo que `GET /vmachine/sync` marca como ' +
+      '`missing` o `differs`— envolviéndolas en `<Biblioteca>.vfxlibrary\\plugs\\<Plugin>\\`. ' +
+      'El espacio libre se comprueba para todo el lote antes de escribir el primer archivo; ' +
+      'un fallo posterior en un plugin se informa en `results` y no cancela los demás. Cada ' +
+      'archivo se verifica por tamaño y, hasta 32 MiB, por SHA-256.',
+  })
+  @ApiBody({
+    type: VMachineCopyRequestDto,
+    examples: { estandar: { value: VMACHINE_COPY_REQUEST_EXAMPLE } },
+  })
+  @ApiOkResponse({
+    description: 'Lo copiado por plugin y el total.',
+    type: VMachineCopyResultDto,
+    example: VMACHINE_COPY_RESULT_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Falta `drive`, `library` o `folders`, o alguno de los plugins no está en la librería.',
+    type: VMachineErrorDto,
+    examples: {
+      sinFolders: { summary: 'Sin plugins que copiar', value: { message: 'folders requerido' } },
+      sinVfxinfo: {
+        summary: 'El plugin no tiene vfxinfo',
+        value: {
+          message: 'El plugin "Roto" no tiene vfxinfo.txt; la máquina no lo reconocería.',
+          code: 'vfxinfoMissing',
+          params: { 0: 'Roto' },
+        },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'La unidad o la carpeta de algún plugin no existen.',
+    type: VMachineErrorDto,
+    example: VMACHINE_DRIVE_MISSING_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description: 'El lote completo no cabe en el espacio libre del medio.',
+    type: VMachineErrorDto,
+    example: {
+      message: 'No cabe en "E:": hacen falta 640 MB y quedan 340 MB.',
+      code: 'notEnoughSpace',
+      params: { 0: '640 MB', 1: '340 MB' },
+    },
+  })
+  async copy(@Body() body: unknown): Promise<VMachineCopyResultDto> {
+    try {
+      return await this.service.copyToStick(readCopyRequest(body));
     } catch (error) {
       throw asHttpException(error);
     }

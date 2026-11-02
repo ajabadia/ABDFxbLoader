@@ -6367,6 +6367,287 @@
           "vmachine"
         ]
       }
+    },
+    "/vmachine/sync": {
+      "get": {
+        "description": "Lee en modo lectura los plugins de la librería del equipo (`plugs\\<Plugin>\\vfxinfo.txt`) y los empareja con los del medio por id VST, nombre de carpeta o nombre declarado. `state` dice si el plugin solo está en la librería (`missing`), si el medio tiene otra versión (`differs`) o si coinciden (`same`); `extra` son los del medio que la librería no tiene, que no se tocan. No escribe nada.",
+        "operationId": "VMachineController_sync",
+        "parameters": [
+          {
+            "name": "drive",
+            "required": true,
+            "in": "query",
+            "description": "Raíz del medio, tal como la devuelve `GET /vmachine/drives`.",
+            "schema": {
+              "example": "E:",
+              "type": "string"
+            }
+          },
+          {
+            "name": "library",
+            "required": true,
+            "in": "query",
+            "description": "Raíz de la librería del equipo: la carpeta que contiene `plugs\\`.",
+            "schema": {
+              "example": "D:\\VFX",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comparación por plugin y totales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineSyncResponseDto"
+                },
+                "example": {
+                  "drive": "E:\\",
+                  "library": "D:\\VFX",
+                  "targetLibrary": "V-MACHINE.vfxlibrary",
+                  "entries": [
+                    {
+                      "folder": "SuperWave P8",
+                      "path": "D:\\VFX\\plugs\\SuperWave P8",
+                      "name": "SuperWave P8",
+                      "id": "1316377392",
+                      "version": "1.3",
+                      "files": 12,
+                      "bytes": 48210432,
+                      "stickFolder": "SuperWave P8",
+                      "stickVersion": "1.2",
+                      "state": "differs"
+                    },
+                    {
+                      "folder": "Korg M1",
+                      "path": "D:\\VFX\\plugs\\Korg M1",
+                      "name": "Korg M1",
+                      "id": "222222222",
+                      "version": "1.0",
+                      "files": 8,
+                      "bytes": 20971520,
+                      "stickFolder": null,
+                      "stickVersion": null,
+                      "state": "missing"
+                    }
+                  ],
+                  "extra": [
+                    {
+                      "library": "V-MACHINE.vfxlibrary",
+                      "folder": "Old Delay",
+                      "name": "Old Delay",
+                      "version": "1.0",
+                      "bytes": 1048576
+                    }
+                  ],
+                  "missing": 1,
+                  "differs": 1,
+                  "same": 0,
+                  "pendingBytes": 69181952,
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `drive` o `library`, o la librería no tiene `plugs`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "examples": {
+                  "sinDrive": {
+                    "summary": "Falta la unidad",
+                    "value": {
+                      "message": "drive requerido"
+                    }
+                  },
+                  "sinPlugs": {
+                    "summary": "La ruta no es una librería",
+                    "value": {
+                      "message": "No existe la carpeta plugs de la librería \"D:/VFX\".",
+                      "code": "plugsMissing",
+                      "params": {
+                        "0": "D:/VFX"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La unidad no existe o no es una carpeta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                  "code": "driveNotFound",
+                  "params": {
+                    "0": "Z:"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Comparar la librería con las bibliotecas del medio",
+        "tags": [
+          "vmachine"
+        ]
+      }
+    },
+    "/vmachine/copy": {
+      "post": {
+        "description": "Copia las carpetas de `plugs\\` que se piden —lo que `GET /vmachine/sync` marca como `missing` o `differs`— envolviéndolas en `<Biblioteca>.vfxlibrary\\plugs\\<Plugin>\\`. El espacio libre se comprueba para todo el lote antes de escribir el primer archivo; un fallo posterior en un plugin se informa en `results` y no cancela los demás. Cada archivo se verifica por tamaño y, hasta 32 MiB, por SHA-256.",
+        "operationId": "VMachineController_copy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMachineCopyRequestDto"
+              },
+              "examples": {
+                "estandar": {
+                  "value": {
+                    "drive": "E:",
+                    "library": "D:\\VFX",
+                    "folders": [
+                      "SuperWave P8",
+                      "Korg M1"
+                    ],
+                    "libraryName": "V-MACHINE"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lo copiado por plugin y el total.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineCopyResultDto"
+                },
+                "example": {
+                  "drive": "E:\\",
+                  "libraryDir": "E:\\V-MACHINE.vfxlibrary",
+                  "results": [
+                    {
+                      "folder": "SuperWave P8",
+                      "ok": true,
+                      "copied": 12,
+                      "replaced": 1,
+                      "bytes": 48210432,
+                      "verified": 12,
+                      "sizeOnly": [],
+                      "warnings": []
+                    },
+                    {
+                      "folder": "Korg M1",
+                      "ok": false,
+                      "copied": 0,
+                      "replaced": 0,
+                      "bytes": 0,
+                      "verified": 0,
+                      "sizeOnly": [],
+                      "warnings": [],
+                      "error": {
+                        "message": "La copia de M1/M1.dll no llegó íntegra a la unidad.",
+                        "code": "copyMismatch",
+                        "params": {
+                          "0": "M1/M1.dll"
+                        }
+                      }
+                    }
+                  ],
+                  "copied": 12,
+                  "bytes": 48210432,
+                  "verified": 12,
+                  "failed": 1,
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `drive`, `library` o `folders`, o alguno de los plugins no está en la librería.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "examples": {
+                  "sinFolders": {
+                    "summary": "Sin plugins que copiar",
+                    "value": {
+                      "message": "folders requerido"
+                    }
+                  },
+                  "sinVfxinfo": {
+                    "summary": "El plugin no tiene vfxinfo",
+                    "value": {
+                      "message": "El plugin \"Roto\" no tiene vfxinfo.txt; la máquina no lo reconocería.",
+                      "code": "vfxinfoMissing",
+                      "params": {
+                        "0": "Roto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La unidad o la carpeta de algún plugin no existen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                  "code": "driveNotFound",
+                  "params": {
+                    "0": "Z:"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El lote completo no cabe en el espacio libre del medio.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "No cabe en \"E:\": hacen falta 640 MB y quedan 340 MB.",
+                  "code": "notEnoughSpace",
+                  "params": {
+                    "0": "640 MB",
+                    "1": "340 MB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Copiar en lote a la biblioteca del medio, con verificación",
+        "tags": [
+          "vmachine"
+        ]
+      }
     }
   },
   "info": {
@@ -12396,6 +12677,388 @@
           "bytes",
           "verified",
           "sizeOnly",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineSyncEntryDto": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "Carpeta del plugin en la librería.",
+            "example": "SuperWave P8"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta de la carpeta del plugin en la librería.",
+            "example": "D:\\VFX\\plugs\\SuperWave P8"
+          },
+          "name": {
+            "type": "string",
+            "description": "`name` del vfxinfo de la librería, o `null` si no lo declara.",
+            "example": "SuperWave P8",
+            "nullable": true
+          },
+          "id": {
+            "type": "string",
+            "description": "`id` VST del vfxinfo: la clave con la que se empareja con el medio.",
+            "example": "1316377392",
+            "nullable": true
+          },
+          "version": {
+            "type": "string",
+            "description": "Versión que declara la librería.",
+            "example": "1.3",
+            "nullable": true
+          },
+          "files": {
+            "type": "number",
+            "description": "Archivos que ocupa en la librería.",
+            "example": 12
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes que ocupa en la librería.",
+            "example": 48210432
+          },
+          "stickFolder": {
+            "type": "string",
+            "description": "Carpeta del mismo plugin en el medio, o `null` si no está.",
+            "example": "SuperWave P8",
+            "nullable": true
+          },
+          "stickVersion": {
+            "type": "string",
+            "description": "Versión que declara el vfxinfo del medio, si la declara.",
+            "example": "1.2",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "`missing` si solo está en la librería, `differs` si el medio tiene otra versión y `same` si coinciden o no hay versión que comparar.",
+            "enum": [
+              "missing",
+              "differs",
+              "same"
+            ],
+            "example": "differs"
+          }
+        },
+        "required": [
+          "folder",
+          "path",
+          "files",
+          "bytes",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineSyncExtraDto": {
+        "type": "object",
+        "properties": {
+          "library": {
+            "type": "string",
+            "description": "Biblioteca del medio que lo contiene.",
+            "example": "V-MACHINE.vfxlibrary"
+          },
+          "folder": {
+            "type": "string",
+            "description": "Carpeta dentro de `plugs\\` del medio.",
+            "example": "Old Delay"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre declarado en el medio.",
+            "example": "Old Delay",
+            "nullable": true
+          },
+          "version": {
+            "type": "string",
+            "description": "Versión declarada en el medio.",
+            "example": "1.0",
+            "nullable": true
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes que ocupa en el medio.",
+            "example": 1048576
+          }
+        },
+        "required": [
+          "library",
+          "folder",
+          "bytes"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineSyncResponseDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio leída.",
+            "example": "E:\\"
+          },
+          "library": {
+            "type": "string",
+            "description": "Raíz de la librería comparada.",
+            "example": "D:\\VFX"
+          },
+          "targetLibrary": {
+            "type": "string",
+            "description": "Biblioteca del medio en la que se copiaría: la única que ya está en la raíz o `V-MACHINE.vfxlibrary` si no hay ninguna.",
+            "example": "V-MACHINE.vfxlibrary"
+          },
+          "entries": {
+            "description": "Plugins de la librería, por nombre de carpeta, con su comparación.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineSyncEntryDto"
+            }
+          },
+          "extra": {
+            "description": "Plugins que el medio tiene y la librería no. No se tocan.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineSyncExtraDto"
+            }
+          },
+          "missing": {
+            "type": "number",
+            "description": "Plugins que solo están en la librería.",
+            "example": 1
+          },
+          "differs": {
+            "type": "number",
+            "description": "Plugins que están en los dos con otra versión.",
+            "example": 1
+          },
+          "same": {
+            "type": "number",
+            "description": "Plugins que coinciden o no tienen versión que comparar.",
+            "example": 0
+          },
+          "pendingBytes": {
+            "type": "number",
+            "description": "Bytes de lo que habría que copiar para igualar el medio.",
+            "example": 69181952
+          },
+          "warnings": {
+            "description": "Avisos al leer el medio; vacío si todo salió bien.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "drive",
+          "library",
+          "targetLibrary",
+          "entries",
+          "extra",
+          "missing",
+          "differs",
+          "same",
+          "pendingBytes",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineCopyRequestDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio («E:», «E:\\») o una carpeta montada.",
+            "example": "E:"
+          },
+          "library": {
+            "type": "string",
+            "description": "Raíz de la librería del equipo que contiene `plugs\\`.",
+            "example": "D:\\VFX"
+          },
+          "folders": {
+            "description": "Carpetas de `plugs\\` a copiar, tal como las devuelve `GET /vmachine/sync` en `folder`.",
+            "example": [
+              "SuperWave P8",
+              "Korg M1"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "libraryName": {
+            "type": "string",
+            "description": "Biblioteca de destino; si se omite se reusa la única de la raíz.",
+            "example": "V-MACHINE"
+          }
+        },
+        "required": [
+          "drive",
+          "library",
+          "folders"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineCopyErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Mensaje del servidor, en castellano, para los logs.",
+            "example": "La copia de M1/M1.dll no llegó íntegra a la unidad."
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable que la vista traduce.",
+            "example": "copyMismatch"
+          },
+          "params": {
+            "type": "object",
+            "description": "Valores para `{0}`, `{1}`… del texto traducido.",
+            "example": {
+              "0": "M1/M1.dll"
+            }
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineCopyOutcomeDto": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "Carpeta copiada.",
+            "example": "SuperWave P8"
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "`false` si este plugin no se copió; el resto sigue.",
+            "example": true
+          },
+          "copied": {
+            "type": "number",
+            "description": "Archivos copiados de este plugin.",
+            "example": 12
+          },
+          "replaced": {
+            "type": "number",
+            "description": "Archivos que pisaron una versión anterior.",
+            "example": 1
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes copiados de este plugin.",
+            "example": 48210432
+          },
+          "verified": {
+            "type": "number",
+            "description": "Archivos con SHA-256 comprobado.",
+            "example": 12
+          },
+          "sizeOnly": {
+            "description": "Archivos de más de 32 MiB comprobados solo por tamaño.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Avisos de la copia.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "description": "Por qué no se copió este plugin.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VMachineCopyErrorDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "folder",
+          "ok",
+          "copied",
+          "replaced",
+          "bytes",
+          "verified",
+          "sizeOnly",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineCopyResultDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio donde se copió.",
+            "example": "E:\\"
+          },
+          "libraryDir": {
+            "type": "string",
+            "description": "Biblioteca del medio en la que se copió; vacía si no se copió nada.",
+            "example": "E:\\V-MACHINE.vfxlibrary"
+          },
+          "results": {
+            "description": "Resultado por plugin, en el orden pedido.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineCopyOutcomeDto"
+            }
+          },
+          "copied": {
+            "type": "number",
+            "description": "Archivos copiados en total.",
+            "example": 12
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes copiados en total.",
+            "example": 48210432
+          },
+          "verified": {
+            "type": "number",
+            "description": "Archivos verificados con SHA-256 en total.",
+            "example": 12
+          },
+          "failed": {
+            "type": "number",
+            "description": "Plugins que no se copiaron.",
+            "example": 1
+          },
+          "warnings": {
+            "description": "Avisos del lote.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "drive",
+          "libraryDir",
+          "results",
+          "copied",
+          "bytes",
+          "verified",
+          "failed",
           "warnings"
         ],
         "additionalProperties": false

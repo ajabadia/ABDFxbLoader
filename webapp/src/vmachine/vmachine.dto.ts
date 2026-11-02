@@ -381,3 +381,353 @@ export class VMachineInventoryResponseDto {
   })
   warnings!: string[];
 }
+
+export const VMACHINE_SYNC_EXAMPLE = {
+  drive: 'E:\\',
+  library: 'D:\\VFX',
+  targetLibrary: 'V-MACHINE.vfxlibrary',
+  entries: [
+    {
+      folder: 'SuperWave P8',
+      path: 'D:\\VFX\\plugs\\SuperWave P8',
+      name: 'SuperWave P8',
+      id: '1316377392',
+      version: '1.3',
+      files: 12,
+      bytes: 48210432,
+      stickFolder: 'SuperWave P8',
+      stickVersion: '1.2',
+      state: 'differs',
+    },
+    {
+      folder: 'Korg M1',
+      path: 'D:\\VFX\\plugs\\Korg M1',
+      name: 'Korg M1',
+      id: '222222222',
+      version: '1.0',
+      files: 8,
+      bytes: 20971520,
+      stickFolder: null,
+      stickVersion: null,
+      state: 'missing',
+    },
+  ],
+  extra: [
+    {
+      library: 'V-MACHINE.vfxlibrary',
+      folder: 'Old Delay',
+      name: 'Old Delay',
+      version: '1.0',
+      bytes: 1048576,
+    },
+  ],
+  missing: 1,
+  differs: 1,
+  same: 0,
+  pendingBytes: 69181952,
+  warnings: [],
+};
+
+export const VMACHINE_COPY_REQUEST_EXAMPLE = {
+  drive: 'E:',
+  library: 'D:\\VFX',
+  folders: ['SuperWave P8', 'Korg M1'],
+  libraryName: 'V-MACHINE',
+};
+
+export const VMACHINE_COPY_RESULT_EXAMPLE = {
+  drive: 'E:\\',
+  libraryDir: 'E:\\V-MACHINE.vfxlibrary',
+  results: [
+    {
+      folder: 'SuperWave P8',
+      ok: true,
+      copied: 12,
+      replaced: 1,
+      bytes: 48210432,
+      verified: 12,
+      sizeOnly: [],
+      warnings: [],
+    },
+    {
+      folder: 'Korg M1',
+      ok: false,
+      copied: 0,
+      replaced: 0,
+      bytes: 0,
+      verified: 0,
+      sizeOnly: [],
+      warnings: [],
+      error: {
+        message: 'La copia de M1/M1.dll no llegó íntegra a la unidad.',
+        code: 'copyMismatch',
+        params: { 0: 'M1/M1.dll' },
+      },
+    },
+  ],
+  copied: 12,
+  bytes: 48210432,
+  verified: 12,
+  failed: 1,
+  warnings: [],
+};
+
+export class VMachineSyncEntryDto {
+  @ApiProperty({ description: 'Carpeta del plugin en la librería.', example: 'SuperWave P8' })
+  folder!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta de la carpeta del plugin en la librería.',
+    example: 'D:\\VFX\\plugs\\SuperWave P8',
+  })
+  path!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`name` del vfxinfo de la librería, o `null` si no lo declara.',
+    example: 'SuperWave P8',
+    nullable: true,
+  })
+  name!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`id` VST del vfxinfo: la clave con la que se empareja con el medio.',
+    example: '1316377392',
+    nullable: true,
+  })
+  id!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Versión que declara la librería.',
+    example: '1.3',
+    nullable: true,
+  })
+  version!: string | null;
+
+  @ApiProperty({ description: 'Archivos que ocupa en la librería.', example: 12 })
+  files!: number;
+
+  @ApiProperty({ description: 'Bytes que ocupa en la librería.', example: 48210432 })
+  bytes!: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Carpeta del mismo plugin en el medio, o `null` si no está.',
+    example: 'SuperWave P8',
+    nullable: true,
+  })
+  stickFolder!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Versión que declara el vfxinfo del medio, si la declara.',
+    example: '1.2',
+    nullable: true,
+  })
+  stickVersion!: string | null;
+
+  @ApiProperty({
+    description:
+      '`missing` si solo está en la librería, `differs` si el medio tiene otra versión y ' +
+      '`same` si coinciden o no hay versión que comparar.',
+    enum: ['missing', 'differs', 'same'],
+    example: 'differs',
+  })
+  state!: 'missing' | 'differs' | 'same';
+}
+
+export class VMachineSyncExtraDto {
+  @ApiProperty({ description: 'Biblioteca del medio que lo contiene.', example: 'V-MACHINE.vfxlibrary' })
+  library!: string;
+
+  @ApiProperty({ description: 'Carpeta dentro de `plugs\\` del medio.', example: 'Old Delay' })
+  folder!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Nombre declarado en el medio.',
+    example: 'Old Delay',
+    nullable: true,
+  })
+  name!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Versión declarada en el medio.',
+    example: '1.0',
+    nullable: true,
+  })
+  version!: string | null;
+
+  @ApiProperty({ description: 'Bytes que ocupa en el medio.', example: 1048576 })
+  bytes!: number;
+}
+
+export class VMachineSyncResponseDto {
+  @ApiProperty({ description: 'Raíz del medio leída.', example: 'E:\\' })
+  drive!: string;
+
+  @ApiProperty({ description: 'Raíz de la librería comparada.', example: 'D:\\VFX' })
+  library!: string;
+
+  @ApiProperty({
+    description:
+      'Biblioteca del medio en la que se copiaría: la única que ya está en la raíz o ' +
+      '`V-MACHINE.vfxlibrary` si no hay ninguna.',
+    example: 'V-MACHINE.vfxlibrary',
+  })
+  targetLibrary!: string;
+
+  @ApiProperty({
+    description: 'Plugins de la librería, por nombre de carpeta, con su comparación.',
+    type: [VMachineSyncEntryDto],
+  })
+  entries!: VMachineSyncEntryDto[];
+
+  @ApiProperty({
+    description: 'Plugins que el medio tiene y la librería no. No se tocan.',
+    type: [VMachineSyncExtraDto],
+  })
+  extra!: VMachineSyncExtraDto[];
+
+  @ApiProperty({ description: 'Plugins que solo están en la librería.', example: 1 })
+  missing!: number;
+
+  @ApiProperty({ description: 'Plugins que están en los dos con otra versión.', example: 1 })
+  differs!: number;
+
+  @ApiProperty({ description: 'Plugins que coinciden o no tienen versión que comparar.', example: 0 })
+  same!: number;
+
+  @ApiProperty({
+    description: 'Bytes de lo que habría que copiar para igualar el medio.',
+    example: 69181952,
+  })
+  pendingBytes!: number;
+
+  @ApiProperty({
+    description: 'Avisos al leer el medio; vacío si todo salió bien.',
+    type: [String],
+    example: [],
+  })
+  warnings!: string[];
+}
+
+export class VMachineCopyRequestDto {
+  @ApiProperty({
+    description: 'Raíz del medio («E:», «E:\\») o una carpeta montada.',
+    example: VMACHINE_COPY_REQUEST_EXAMPLE.drive,
+  })
+  drive!: string;
+
+  @ApiProperty({
+    description: 'Raíz de la librería del equipo que contiene `plugs\\`.',
+    example: VMACHINE_COPY_REQUEST_EXAMPLE.library,
+  })
+  library!: string;
+
+  @ApiProperty({
+    description:
+      'Carpetas de `plugs\\` a copiar, tal como las devuelve `GET /vmachine/sync` en `folder`.',
+    type: [String],
+    example: VMACHINE_COPY_REQUEST_EXAMPLE.folders,
+  })
+  folders!: string[];
+
+  @ApiPropertyOptional({
+    description: 'Biblioteca de destino; si se omite se reusa la única de la raíz.',
+    example: VMACHINE_COPY_REQUEST_EXAMPLE.libraryName,
+  })
+  libraryName?: string;
+}
+
+export class VMachineCopyErrorDto {
+  @ApiProperty({
+    description: 'Mensaje del servidor, en castellano, para los logs.',
+    example: VMACHINE_COPY_RESULT_EXAMPLE.results[1]!.error!.message,
+  })
+  message!: string;
+
+  @ApiPropertyOptional({
+    description: 'Código estable que la vista traduce.',
+    example: 'copyMismatch',
+  })
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Valores para `{0}`, `{1}`… del texto traducido.',
+    example: { 0: 'M1/M1.dll' },
+  })
+  params?: Record<string, string | number>;
+}
+
+export class VMachineCopyOutcomeDto {
+  @ApiProperty({ description: 'Carpeta copiada.', example: 'SuperWave P8' })
+  folder!: string;
+
+  @ApiProperty({ description: '`false` si este plugin no se copió; el resto sigue.', example: true })
+  ok!: boolean;
+
+  @ApiProperty({ description: 'Archivos copiados de este plugin.', example: 12 })
+  copied!: number;
+
+  @ApiProperty({ description: 'Archivos que pisaron una versión anterior.', example: 1 })
+  replaced!: number;
+
+  @ApiProperty({ description: 'Bytes copiados de este plugin.', example: 48210432 })
+  bytes!: number;
+
+  @ApiProperty({ description: 'Archivos con SHA-256 comprobado.', example: 12 })
+  verified!: number;
+
+  @ApiProperty({
+    description: 'Archivos de más de 32 MiB comprobados solo por tamaño.',
+    type: [String],
+    example: [],
+  })
+  sizeOnly!: string[];
+
+  @ApiProperty({ description: 'Avisos de la copia.', type: [String], example: [] })
+  warnings!: string[];
+
+  @ApiPropertyOptional({
+    description: 'Por qué no se copió este plugin.',
+    type: () => VMachineCopyErrorDto,
+    nullable: true,
+  })
+  error?: VMachineCopyErrorDto;
+}
+
+export class VMachineCopyResultDto {
+  @ApiProperty({ description: 'Raíz del medio donde se copió.', example: 'E:\\' })
+  drive!: string;
+
+  @ApiProperty({
+    description: 'Biblioteca del medio en la que se copió; vacía si no se copió nada.',
+    example: 'E:\\V-MACHINE.vfxlibrary',
+  })
+  libraryDir!: string;
+
+  @ApiProperty({
+    description: 'Resultado por plugin, en el orden pedido.',
+    type: [VMachineCopyOutcomeDto],
+  })
+  results!: VMachineCopyOutcomeDto[];
+
+  @ApiProperty({ description: 'Archivos copiados en total.', example: 12 })
+  copied!: number;
+
+  @ApiProperty({ description: 'Bytes copiados en total.', example: 48210432 })
+  bytes!: number;
+
+  @ApiProperty({ description: 'Archivos verificados con SHA-256 en total.', example: 12 })
+  verified!: number;
+
+  @ApiProperty({ description: 'Plugins que no se copiaron.', example: 1 })
+  failed!: number;
+
+  @ApiProperty({ description: 'Avisos del lote.', type: [String], example: [] })
+  warnings!: string[];
+}

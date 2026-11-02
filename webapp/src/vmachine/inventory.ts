@@ -37,7 +37,7 @@ export function parseVfxinfoFields(text: string): Map<string, string> {
 }
 
 /** Archivos y bytes de una carpeta de plugin. Los enlaces no se siguen. */
-async function countFiles(dir: string): Promise<{ files: number; bytes: number }> {
+export async function countFiles(dir: string): Promise<{ files: number; bytes: number }> {
   let files = 0;
   let bytes = 0;
   const entries = await fs.readdir(dir, { withFileTypes: true });

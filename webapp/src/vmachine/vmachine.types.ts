@@ -128,6 +128,95 @@ export interface VMachineInventory {
   warnings: string[];
 }
 
+
+/** Plugin de la librería del equipo y cómo se compara con el medio. */
+export interface VMachineSyncEntry {
+  folder: string;
+  path: string;
+  name: string | null;
+  id: string | null;
+  version: string | null;
+  files: number;
+  bytes: number;
+  /** Carpeta del mismo plugin en el medio, o `null` si no está. */
+  stickFolder: string | null;
+  /** Versión que declara el medio, si la declara. */
+  stickVersion: string | null;
+  /**
+   * `missing` si solo está en la librería, `differs` si el medio tiene otra
+   * versión y `same` si coinciden o no hay versiones que comparar.
+   */
+  state: 'missing' | 'differs' | 'same';
+}
+
+/** Plugin que el medio tiene y la librería no: se informa, no se borra. */
+export interface VMachineSyncExtra {
+  library: string;
+  folder: string;
+  name: string | null;
+  version: string | null;
+  bytes: number;
+}
+
+/** Resultado puro de comparar librería y medio. */
+export interface VMachineSyncPlan {
+  entries: VMachineSyncEntry[];
+  extra: VMachineSyncExtra[];
+  missing: number;
+  differs: number;
+  same: number;
+  /** Bytes de lo que habría que copiar para igualar el medio. */
+  pendingBytes: number;
+}
+
+export interface VMachineSync extends VMachineSyncPlan {
+  drive: string;
+  /** Raíz de la librería comparada. */
+  library: string;
+  /** Biblioteca del medio en la que se copiaría. */
+  targetLibrary: string;
+  warnings: string[];
+}
+
+export interface VMachineCopyOptions {
+  drive: string;
+  /** Raíz de la librería (la que contiene `plugs\\`). */
+  libraryRoot: string;
+  /** Carpetas de `plugs\\` a copiar, tal como las devuelve `sync`. */
+  folders: string[];
+  /** Biblioteca de destino; si se omite se reusa la única de la raíz. */
+  libraryName?: string;
+  /** Inyectable para las pruebas: bytes libres del medio. */
+  spaceAvailable?: (root: string) => Promise<number | null>;
+}
+
+/** Lo que pasó con un plugin del lote. Un fallo no cancela los siguientes. */
+export interface VMachineCopyOutcome {
+  folder: string;
+  ok: boolean;
+  copied: number;
+  replaced: number;
+  bytes: number;
+  verified: number;
+  sizeOnly: string[];
+  warnings: string[];
+  /** Motivo del fallo, con el código que la vista traduce. */
+  error?: { message: string; code?: ApiErrorCode; params?: Record<string, string | number> };
+}
+
+export interface VMachineCopyResult {
+  drive: string;
+  /** Biblioteca del medio en la que se copió; vacía si no se copió nada. */
+  libraryDir: string;
+  results: VMachineCopyOutcome[];
+  copied: number;
+  bytes: number;
+  verified: number;
+  /** Plugins que no se copiaron. */
+  failed: number;
+  warnings: string[];
+}
+
 /**
  * Fallo de la gestión de la unidad extraíble. Lleva `apiCode` para que la vista
  * lo traduzca y el mensaje quede para los logs, igual que los errores de

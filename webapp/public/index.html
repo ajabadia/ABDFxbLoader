@@ -177,6 +177,14 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg><span data-i18n="nav.audit">Audit</span>
         </button>
         <button
+          id="vmachine-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="The drive the V-Machine reads, and what it is missing" data-i18n-title="vmachine.navTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span data-i18n="vmachine.nav">Drive</span>
+        </button>
+        <button
           id="settings-nav-btn"
           class="nav-btn"
           type="button"
@@ -1319,6 +1327,50 @@
         </div>
 
         <p id="custom-plugin-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="vmachine-view" class="view" hidden aria-labelledby="vmachine-title">
+        <section class="card">
+          <div class="summary">
+            <h2 id="vmachine-title" data-i18n="vmachine.title">V-Machine drive</h2>
+          </div>
+          <p class="note" data-i18n="vmachine.note">
+            What the machine will read when the drive is inserted, and what that drive is missing compared with the library on this computer. Reading is all that happens until you copy: nothing is deleted from the drive.
+          </p>
+
+          <div class="row">
+            <div class="field" style="flex: 1; min-width: 220px;">
+              <label for="vmachine-drive" data-i18n="vmachine.drive">Drive</label>
+              <select id="vmachine-drive"></select>
+            </div>
+            <div class="field" style="flex: 0 0 auto;">
+              <label>&nbsp;</label>
+              <button id="vmachine-refresh" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          <p id="vmachine-summary" class="note" role="status" aria-live="polite"></p>
+          <div id="vmachine-inventory"></div>
+
+          <div class="summary">
+            <h3 data-i18n="vmachine.compare">Compared with the library</h3>
+          </div>
+          <p id="vmachine-library-note" class="note"></p>
+          <div id="vmachine-sync"></div>
+          <p id="vmachine-sync-note" class="note"></p>
+
+          <div class="row">
+            <button id="vmachine-copy" class="primary" type="button" disabled>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg><span data-i18n="vmachine.copy">Copy what is missing</span>
+            </button>
+          </div>
+          <p id="vmachine-status" class="status" role="status" aria-live="polite"></p>
+          <p class="note" style="font-size: 11px;" data-i18n="vmachine.eject">
+            When it finishes, eject the drive safely from Windows before unplugging it: a pending write leaves the library half-written and the machine loads a broken plugin.
+          </p>
+        </section>
       </section>
 
       <section

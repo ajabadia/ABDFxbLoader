@@ -18,6 +18,7 @@ import {
   loadAssociationAudit,
   startAuditPolling,
   stopAuditPolling,
+  refreshVmachineView,
   scanData,
 } from './main.js';
 
@@ -30,12 +31,13 @@ import {
  * cajones quedan para lo que cuelga de un plugin concreto: sus bancos, sus
  * metadatos y su historial.
  */
-export type ViewId = 'libreria' | 'wizards' | 'auditoria';
+export type ViewId = 'libreria' | 'wizards' | 'medio' | 'auditoria';
 export type AuditTab = 'data' | 'associations';
 
 const VIEW_HASH: Record<ViewId, string> = {
   libreria: '#/libreria',
   wizards: '#/wizards',
+  medio: '#/medio',
   auditoria: '#/auditoria',
 };
 
@@ -45,13 +47,14 @@ const viewScroll = new Map<ViewId, number>();
 
 export function viewFromHash(): ViewId {
   const raw = window.location.hash.replace(/^#\/?/, '');
-  return raw === 'wizards' || raw === 'auditoria' ? raw : 'libreria';
+  return raw === 'wizards' || raw === 'medio' || raw === 'auditoria' ? raw : 'libreria';
 }
 
 function viewButtons(): [ViewId, HTMLButtonElement][] {
   return [
     ['libreria', els.libraryNavBtn],
     ['wizards', els.wizardsNavBtn],
+    ['medio', els.vmachineNavBtn],
     ['auditoria', els.auditViewBtn],
   ];
 }
@@ -79,6 +82,7 @@ export function applyView(view: ViewId): void {
 
   els.libraryView.hidden = view !== 'libreria';
   els.wizards.hidden = view !== 'wizards';
+  els.vmachineView.hidden = view !== 'medio';
   els.auditView.hidden = view !== 'auditoria';
 
   for (const [id, button] of viewButtons()) {
@@ -88,6 +92,7 @@ export function applyView(view: ViewId): void {
 
   if (view === 'libreria') syncLibraryView();
   if (view === 'wizards') void ensureWizardsLoaded();
+  if (view === 'medio') void refreshVmachineView();
   if (view === 'auditoria') showAuditTab(activeAuditTab, true);
   else stopAuditPolling();
 

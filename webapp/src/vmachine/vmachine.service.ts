@@ -9,16 +9,23 @@ import {
   type DriveRunner,
   type RawDrive,
 } from './drives';
+import { CodedError } from '../common/api-errors';
+import { VFXINFO_FILENAME } from '../library/vfxinfo';
 import { readStickPlugin } from './inventory';
+import { planSync, readLibraryPlugins } from './sync';
 import {
   VMachineError,
   type VMachineDrive,
   type VMachineDrives,
   type VMachineInstallOptions,
   type VMachineInstallResult,
+  type VMachineCopyOptions,
+  type VMachineCopyOutcome,
+  type VMachineCopyResult,
   type VMachineInventory,
   type VMachineInventoryLibrary,
   type VMachineInventoryPlugin,
+  type VMachineSync,
   type WizardLookup,
 } from './vmachine.types';
 
@@ -400,6 +407,169 @@ export class VMachineService {
     }
 
     return { drive, libraries, plugins, warnings };
+  }
+
+
+  /**
+   * Compara la librería del equipo con el medio. Es de solo lectura: la vista lo
+   * pide al abrir la unidad y antes de copiar, y no cambia nada.
+   */
+  async sync(driveInput: string, libraryInput: string): Promise<VMachineSync> {
+    const library = path.resolve(libraryInput);
+    const inventory = await this.inventory(driveInput);
+    const plugins = await readLibraryPlugins(library);
+    const plan = planSync(
+      plugins,
+      inventory.libraries.flatMap((entry) => entry.plugins),
+    );
+
+    let targetLibrary: string;
+    try {
+      targetLibrary = withLibrarySuffix((await librariesIn(inventory.drive))[0] ?? 'V-MACHINE');
+    } catch {
+      targetLibrary = withLibrarySuffix('V-MACHINE');
+    }
+
+    return {
+      drive: inventory.drive,
+      library,
+      targetLibrary,
+      ...plan,
+      warnings: inventory.warnings,
+    };
+  }
+
+  /**
+   * Copia en lote los plugins de la librería que la vista ha elegido.
+   *
+   * El espacio se comprueba antes de escribir el primero: quedarse a medias por
+   * falta de sitio es justo lo que deja un stick que la máquina lee a trozos. Un
+   * fallo posterior —un archivo que no llega íntegro— no cancela el resto: se
+   * informa en `results` y el medio queda con lo que sí se copió bien.
+   */
+  async copyToStick(options: VMachineCopyOptions): Promise<VMachineCopyResult> {
+    const libraryRoot = path.resolve(options.libraryRoot);
+    const plugsDir = path.join(libraryRoot, 'plugs');
+    if (!(await exists(plugsDir))) {
+      throw new VMachineError(
+        `No existe la carpeta plugs de la librería "${libraryRoot}".`,
+        'plugsMissing',
+        { 0: libraryRoot },
+      );
+    }
+
+    const folders = [
+      ...new Set(options.folders.map((folder) => folder.trim()).filter((folder) => folder !== '')),
+    ];
+    if (folders.length === 0) {
+      throw new VMachineError('No hay plugins que copiar.', 'batchPluginsEmpty');
+    }
+
+    const sources: { folder: string; dir: string }[] = [];
+    let total = 0;
+    for (const folder of folders) {
+      if (path.basename(folder) !== folder || folder === '.' || folder === '..') {
+        throw new VMachineError(
+          `El nombre de carpeta "${folder}" no es un plugin de la librería.`,
+          'pluginFolderMissing',
+          { 0: folder },
+        );
+      }
+      const dir = path.join(plugsDir, folder);
+      if (!(await exists(dir))) {
+        throw new VMachineError(
+          `No existe la carpeta del plugin "${folder}" en la librería.`,
+          'pluginFolderMissing',
+          { 0: folder },
+        );
+      }
+      if (!(await exists(path.join(dir, VFXINFO_FILENAME)))) {
+        throw new VMachineError(
+          `El plugin "${folder}" no tiene vfxinfo.txt; la máquina no lo reconocería.`,
+          'vfxinfoMissing',
+          { 0: folder },
+        );
+      }
+      sources.push({ folder, dir });
+      total += (await collectFiles(dir)).files.reduce((sum, file) => sum + file.size, 0);
+    }
+
+    const drive = path.resolve(options.drive);
+    let stats;
+    try {
+      stats = await fs.stat(drive);
+    } catch {
+      throw this.driveMissing(options.drive);
+    }
+    if (!stats.isDirectory()) throw this.driveMissing(options.drive);
+
+    const warnings: string[] = [];
+    const free = options.spaceAvailable
+      ? await options.spaceAvailable(drive)
+      : await freeBytes(drive);
+    if (free === null) {
+      warnings.push(
+        'El sistema no informa del espacio libre: el lote puede quedarse a medias si el medio se llena.',
+      );
+    } else if (total > free) {
+      throw new VMachineError(
+        `No cabe en "${options.drive}": hacen falta ${formatBytes(total)} y quedan ${formatBytes(free)}.`,
+        'notEnoughSpace',
+        { 0: formatBytes(total), 1: formatBytes(free) },
+      );
+    }
+
+    const results: VMachineCopyOutcome[] = [];
+    let libraryDir = '';
+    let copied = 0;
+    let bytes = 0;
+    let verified = 0;
+    let failed = 0;
+
+    for (const source of sources) {
+      try {
+        const result = await this.install({
+          drive: options.drive,
+          pluginDir: source.dir,
+          ...(options.libraryName === undefined ? {} : { libraryName: options.libraryName }),
+        });
+        libraryDir = result.libraryDir;
+        copied += result.copied;
+        bytes += result.bytes;
+        verified += result.verified;
+        warnings.push(...result.warnings);
+        results.push({
+          folder: source.folder,
+          ok: true,
+          copied: result.copied,
+          replaced: result.replaced,
+          bytes: result.bytes,
+          verified: result.verified,
+          sizeOnly: result.sizeOnly,
+          warnings: result.warnings,
+        });
+      } catch (error) {
+        failed += 1;
+        const coded = error instanceof CodedError ? error : null;
+        results.push({
+          folder: source.folder,
+          ok: false,
+          copied: 0,
+          replaced: 0,
+          bytes: 0,
+          verified: 0,
+          sizeOnly: [],
+          warnings: [],
+          error: {
+            message: (error as Error).message,
+            ...(coded?.apiCode === undefined ? {} : { code: coded.apiCode }),
+            ...(coded?.apiParams === undefined ? {} : { params: coded.apiParams }),
+          },
+        });
+      }
+    }
+
+    return { drive, libraryDir, results, copied, bytes, verified, failed, warnings };
   }
 
   /** La unidad que se pidió no está montada o no es una carpeta. */
