@@ -158,7 +158,8 @@ h1 {
  * leía como piezas sueltas de alturas distintas.
  */
 .top-actions .nav-btn,
-.top-actions .theme-toggle {
+.top-actions .theme-toggle,
+.top-actions .lang-toggle {
   height: 32px;
   gap: 6px;
   padding: 0 11px;
@@ -185,7 +186,8 @@ h1 {
 }
 
 /* Botón cuadrado: solo el icono, misma altura que el resto de la fila. */
-.theme-toggle {
+.theme-toggle,
+.lang-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -199,13 +201,15 @@ h1 {
 
 /* La fila le pone `padding: 0 11px` a todo, incluido este botón cuadrado:
  * con 32 px de ancho solo dejaba 8 de contenido y el icono se encogía. */
-.top-actions .theme-toggle {
+.top-actions .theme-toggle,
+.top-actions .lang-toggle {
   padding: 0;
 }
 
 /* Icono monocromo: hereda el color del botón y se apaga con el tema. El
  * dibujo crece dentro del botón, que mantiene los 32 px de la fila. */
-.theme-toggle svg {
+.theme-toggle svg,
+.lang-toggle svg {
   display: block;
   flex: none;
   width: 20px;
@@ -213,11 +217,20 @@ h1 {
 }
 
 /* El `hidden` del HTML no basta dentro de un `<svg>`: se apaga aquí. */
-.theme-toggle svg[hidden] {
+.theme-toggle svg[hidden],
+.lang-toggle svg[hidden] {
   display: none;
 }
 
-.theme-toggle:hover {
+/* Las banderas son mas anchas que altas: conservan la proporcion 3:2. */
+.lang-toggle svg {
+  width: 22px;
+  height: 15px;
+  border-radius: 2px;
+}
+
+.theme-toggle:hover,
+.lang-toggle:hover {
   border-color: var(--accent);
 }
 /* Tema dentro de Ajustes: el mismo estado que el botón de la cabecera. */

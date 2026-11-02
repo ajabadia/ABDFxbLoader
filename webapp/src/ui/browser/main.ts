@@ -4192,6 +4192,39 @@ for (const input of themeInputs) {
   });
 }
 
+// Idioma: solo hay dos, así que el botón es un conmutador con la bandera del
+// idioma activo, igual que el del tema enseña el modo vigente.
+const langIcons = [...els.langToggle.querySelectorAll<SVGElement>('[data-icon]')];
+
+function applyLanguage(): void {
+  const locale = getLocale();
+  els.langToggle.title = locale === 'es' ? t('title.langToEn') : t('title.langToEs');
+  for (const icon of langIcons) {
+    icon.toggleAttribute('hidden', icon.dataset['icon'] !== locale);
+  }
+}
+
+/** Repinta lo que el idioma cambia fuera de `data-i18n`: `lang`, tema e iconos. */
+function syncLanguageUi(): void {
+  applyI18n();
+  syncDocumentLang();
+  applyTheme(readTheme());
+  applyLanguage();
+}
+
+function switchLanguage(): void {
+  setLocale(getLocale() === 'es' ? 'en' : 'es');
+  syncLanguageUi();
+}
+
+els.langToggle.addEventListener('click', switchLanguage);
+
+// El motor ya reescribe los `data-i18n`; aquí se cubre el resto y el caso de un
+// cambio de idioma que llegue por otra vía.
+onLocaleChange(syncLanguageUi);
+
+applyLanguage();
+
 let importPackageInspection: LibraryInspectPackageResponse | null = null;
 let importPackageBusy = false;
 let selectedImportPlugins = new Set<string>();

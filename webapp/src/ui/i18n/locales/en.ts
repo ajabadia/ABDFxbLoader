@@ -291,10 +291,13 @@ export const appEn = {
     dllDraftText: 'The catalog has a modified DLL preference that has not been saved yet. “Continue without changes” discards it and uses the saved one; “Cancel” keeps the draft. Nothing is saved from here: go back to the catalog and use Save preference.',
   },
   header: {
+    langLabel: 'Change language',
     themeTitle: 'Theme: System (click to switch to Dark)',
     themeLabel: 'Change colour theme',
   },
   title: {
+    langToEs: 'Language: English (click to switch to Spanish)',
+    langToEn: 'Language: Spanish (click to switch to English)',
     themeAuto: 'Theme: System (click to switch to Dark)',
     themeDark: 'Theme: Dark (click to switch to Light)',
     themeLight: 'Theme: Light (click to switch to System)',

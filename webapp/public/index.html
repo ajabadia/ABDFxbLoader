@@ -185,6 +185,26 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg><span data-i18n="navbar.settings">Settings</span>
         </button>
         <button
+          id="lang-toggle"
+          class="lang-toggle"
+          type="button"
+          title="Language: English (click to switch to Spanish)"
+          aria-label="Change language" data-i18n-label="header.langLabel"
+        >
+          <!-- Una bandera por idioma; `applyLanguage` enseña la del activo. -->
+          <svg data-icon="es" viewBox="0 0 24 16" aria-hidden="true" focusable="false">
+            <rect width="24" height="16" fill="#c60b1e" />
+            <rect y="4" width="24" height="8" fill="#ffc400" />
+          </svg>
+          <svg data-icon="en" viewBox="0 0 24 16" aria-hidden="true" focusable="false" hidden>
+            <rect width="24" height="16" fill="#012169" />
+            <path d="M0 0l24 16M24 0L0 16" stroke="#fff" stroke-width="3.4" />
+            <path d="M0 0l24 16M24 0L0 16" stroke="#c8102e" stroke-width="1.7" />
+            <path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5.4" />
+            <path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="3.2" />
+          </svg>
+        </button>
+        <button
           id="theme-toggle"
           class="theme-toggle"
           type="button"

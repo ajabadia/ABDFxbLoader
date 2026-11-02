@@ -9,6 +9,7 @@ import { byId } from './dom.js';
 
 export const els = {
   themeToggle: byId<HTMLButtonElement>('theme-toggle'),
+  langToggle: byId<HTMLButtonElement>('lang-toggle'),
   form: byId<HTMLFormElement>('scan-form'),
   root: byId<HTMLInputElement>('library-root'),
   rootRecents: byId<HTMLDataListElement>('library-root-recents'),
