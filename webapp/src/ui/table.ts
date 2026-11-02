@@ -1,4 +1,5 @@
 import { t } from './i18n/index.js';
+import { SKELETON_MAX_ROWS, createSkeletonRows } from './skeleton.js';
 
 export type TableSortType = 'text' | 'number' | 'date' | 'boolean';
 export type TableDirection = 'asc' | 'desc';
@@ -229,6 +230,11 @@ export interface TableController<T> {
   setRows(rows: readonly T[], options?: { keepPage?: boolean }): void;
   /** Repinta con las filas actuales: se usa al cambiar de idioma. */
   refresh(): void;
+  /**
+   * Enseña filas de esqueleto mientras el servidor responde. Las filas reales
+   * no se tocan: al volver a `false` (o al llegar `setRows`) se repintan.
+   */
+  setLoading(loading: boolean): void;
   destroy(): void;
   /** El `<tbody>` que pinta la tabla: permite parchear una fila sin re-render. */
   readonly tbody: HTMLTableSectionElement;
@@ -254,6 +260,7 @@ function emptyTextOf(view: { emptyText?: string | (() => string) }): string {
 
 export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows: readonly T[]): TableController<T> {
   let rows = [...initialRows]; const state = createTableState(view, rows);
+  let loading = false;
   const listeners: Array<() => void> = [];
   /** Menús «···» vivos de la página actual; se repueblan en cada render. */
   let rowMenus: Array<{ dropdown: HTMLElement; button: HTMLButtonElement; rowId: string }> = [];
@@ -490,7 +497,30 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
    * menú se vuelve a abrir en la fila con el mismo id, y el foco regresa al
    * mismo botón o acción para no perder el sitio con el teclado.
    */
+  /**
+   * Hueco de carga: barras con la forma de una página y el aviso en el sitio
+   * del vacío. Cuando llegan los datos, `setRows` repinta con las filas.
+   */
+  function paintSkeleton(): void {
+    tbody.replaceChildren();
+    rowMenus = [];
+    shell.setAttribute('aria-busy', 'true');
+    empty.hidden = false;
+    empty.textContent = t('ui.table.loading');
+    pager.hidden = true;
+    info.textContent = '';
+    const count = Math.min(Math.max(1, state.pageSize), SKELETON_MAX_ROWS);
+    const columns = view.columns.length + (view.rowActions ? 1 : 0);
+    for (const tr of createSkeletonRows(count, columns)) tbody.append(tr);
+  }
+
   function render(keepRowMenu = false): void {
+    if (loading) {
+      paintSkeleton();
+      return;
+    }
+    shell.setAttribute('aria-busy', 'false');
+    empty.textContent = emptyTextOf(view);
     const openMenu = keepRowMenu
       ? rowMenus.find((entry) => entry.dropdown.hidden === false)
       : undefined;
@@ -601,8 +631,9 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   const registry = { closeRowMenus, refresh: () => render(true) };
   mountedTables.add(registry);
   return {
-    setRows(nextRows, options) { rows = [...nextRows]; if (options?.keepPage !== true) state.page = 1; render(true); },
+    setRows(nextRows, options) { rows = [...nextRows]; loading = false; if (options?.keepPage !== true) state.page = 1; render(true); },
     refresh() { render(true); },
+    setLoading(next) { if (loading === next) return; loading = next; if (next) paintSkeleton(); else render(true); },
     destroy() {
       for (const remove of listeners) remove();
       if (canListen) document.removeEventListener('click', onDocumentClick);

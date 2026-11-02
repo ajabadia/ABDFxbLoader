@@ -115,8 +115,13 @@ async function waitForRowCount(page: Page, selector: string, count: number): Pro
     await locator.first().waitFor({ state: count === 0 ? 'detached' : 'visible', timeout: 20_000 });
   }
   if (await locator.count() !== count) {
+    // Función con argumentos, no cadena: la CSP de la vista prohíbe `eval`
+    // (con razón) y Playwright compila las cadenas con `eval` antes de
+    // ejecutarlas en la página.
     await page.waitForFunction(
-      `document.querySelectorAll("${selector} tbody tr[data-row-id]").length === ${count}`,
+      ([sel, expected]: [string, number]) =>
+        document.querySelectorAll(`${sel} tbody tr[data-row-id]`).length === expected,
+      [selector, count] as [string, number],
       { timeout: 20_000 },
     );
   }
@@ -564,7 +569,7 @@ test(
       // archivo ya en disco la nota de origen desaparece.
       await page.fill('#meta-name', 'Sin guardar');
       await page.click('#meta-reload');
-      await page.waitForFunction(`document.querySelector('#meta-status').textContent === ''`);
+      await page.waitForFunction(() => document.querySelector('#meta-status')?.textContent === '');
       assert.equal(await page.inputValue('#meta-name'), 'OB-Xd E2E');
       assert.equal(await page.locator('#meta-origin').textContent(), '');
       assert.equal(
@@ -1923,7 +1928,9 @@ test(
       await page.fill('#dll-source', 'C:\\Tools\\fxbLoader.dll');
       await page.click('#dll-browse');
       await page.waitForFunction(
-        `document.querySelector('#dll-source')?.value === ${JSON.stringify(REPO_DLL)}`,
+        (expected: string) =>
+          document.querySelector<HTMLInputElement>('#dll-source')?.value === expected,
+        REPO_DLL,
       );
 
       // El escaneo de validación tarda: se espera a que salga la petición.
@@ -2046,7 +2053,7 @@ test(
       // La poda es asíncrona: se espera a que el datalist quede con una sola
       // sugerencia, y esa tiene que ser la carpeta que sigue existiendo.
       await page.waitForFunction(
-        `document.querySelectorAll('#library-root-recents option').length === 1`,
+        () => document.querySelectorAll('#library-root-recents option').length === 1,
       );
       const suggested = (await page.evaluate(
         `[...document.querySelectorAll('#library-root-recents option')].map((option) => option.value)`,
@@ -2186,7 +2193,6 @@ test(
       title: string;
       aria: string;
       wizardsTitle: string;
-      localeRadio: string | null;
       themeRadio: string | null;
     }
 
@@ -2210,7 +2216,6 @@ test(
             title: toggle.title,
             aria: toggle.getAttribute('aria-label'),
             wizardsTitle: document.getElementById('wizards-title').textContent,
-            localeRadio: checked('ui-locale'),
             themeRadio: checked('theme-mode'),
           };
         })()
@@ -2220,7 +2225,6 @@ test(
     assert.equal(spanish.lang, 'es', 'arranca en el idioma guardado');
     assert.equal(spanish.stored, 'es');
     assert.equal(spanish.flag, 'es', 'la bandera es la del idioma activo');
-    assert.equal(spanish.localeRadio, 'es', 'Ajustes enseña el idioma vigente');
     assert.equal(spanish.wizardsTitle, 'Repositorio de Wizards');
     assert.equal(spanish.aria, spanish.title, 'el rótulo accesible dice lo mismo que el título');
     assert.notEqual(spanish.themeRadio, null, 'el tema arranca con un modo marcado');
@@ -2231,7 +2235,6 @@ test(
     assert.equal(english.lang, 'en', 'html lang sigue al idioma');
     assert.equal(english.stored, 'en', 'se guarda en la clave de la suite');
     assert.equal(english.flag, 'en', 'la bandera cambia con el idioma');
-    assert.equal(english.localeRadio, 'en', 'el radio de Ajustes se sincroniza');
     assert.equal(english.wizardsTitle, 'Wizard repository', 'los textos se re-renderizan');
     assert.equal(english.aria, english.title);
     assert.notEqual(english.title, spanish.title, 'el título anuncia el idioma al que se cambia');
@@ -2409,9 +2412,10 @@ test(
 
       // «Sistema» sigue al SO sin tocar lo guardado.
       await page.emulateMedia({ colorScheme: 'dark' });
-      await page.waitForFunction(
-        `getComputedStyle(document.querySelector('svg[data-icon="dark"]')).display !== 'none'`,
-      );
+      await page.waitForFunction(() => {
+        const svg = document.querySelector('svg[data-icon="dark"]');
+        return svg !== null && getComputedStyle(svg).display !== 'none';
+      });
       const followed = await readTheme();
       assert.equal(followed.stored, 'auto', '«Sistema» sigue guardado como auto');
       assert.equal(followed.theme, null, '«Sistema» no fija data-theme');
@@ -4299,7 +4303,8 @@ test(
 
       // La tabla muestra los dos con el mismo contenido, solo cambia el orden.
       await page.waitForFunction(
-        'document.querySelectorAll("#banks-rows tr").length === 2',
+        () => document.querySelectorAll('#banks-rows tr').length === 2,
+        undefined,
         { timeout: 20_000 },
       );
 

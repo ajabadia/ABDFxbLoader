@@ -173,8 +173,6 @@ export const appEs = {
     recentsNote: 'Las rutas usadas se guardan solo en este navegador.',
     clearRecents: 'Vaciar historial de rutas',
     theme: 'Tema',
-    language: 'Idioma',
-    langNote: 'El cambio se aplica al momento; no se recarga nada.',
     apiNote: 'Documentación interactiva del servidor (Swagger UI).',
     apiLink: 'API OpenAPI',
     chooseRootTitle: 'Elegir la carpeta con el diálogo del sistema',
@@ -182,7 +180,6 @@ export const appEs = {
     clearRecentsTitle: 'Olvidar las rutas sugeridas; lo escrito en los campos no cambia',
     themeGroup: 'Tema de la interfaz',
     rootWarning: 'La carpeta debe contener plugs\\. Poner el cargador modifica vfxinfo.txt y crea fxbLoader.config; quitarlo restaura el respaldo vfxinfo.tx_.',
-    languageGroup: 'Idioma de la interfaz',
   },
   theme: {
     auto: 'Sistema',
@@ -298,6 +295,7 @@ export const appEs = {
   },
   ui: {
     app: {
+      rememberedRootMissing: 'La carpeta que tenías abierta ya no está ({0}). Elige la librería otra vez.',
       needRoot: 'Elige la carpeta de la librería VFX para empezar.',
       chooseRoot: 'Elegir carpeta de librería',
       chooseRootTitle: 'Situar el foco en el campo de la carpeta',
@@ -757,6 +755,7 @@ export const appEs = {
       size: 'Tamaño',
       unverified: 'sin verificar',
       withLoader: 'con cargador',
+      loading: 'Cargando…',
       empty: 'No hay registros.',
       searchLabel: 'Buscar en la tabla',
       searchPlaceholder: 'Buscar…',

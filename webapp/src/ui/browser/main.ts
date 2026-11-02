@@ -171,6 +171,9 @@ function writeRecentList(key: string, values: readonly string[]): void {
 }
 
 let libraryRoot = readStorage(STORAGE_ROOT);
+// Una ruta que viene de la sesión anterior no es una elección de ahora: si ya no
+// existe, la vista lo cuenta sin gritar (ver `scan`).
+let rootRemembered = libraryRoot !== '';
 const lastDll = readStorage(STORAGE_DLL);
 let recentRoots = readRecentList(STORAGE_RECENT_ROOTS);
 let recentDlls = readRecentList(STORAGE_RECENT_DLLS);
@@ -1313,6 +1316,7 @@ async function scan(): Promise<boolean> {
   }
 
   setBusy(true);
+  catalogTable?.setLoading(true);
   setStatus(() => t('ui.app.scanning'), 'busy');
   closeBanks();
   closeMeta();
@@ -1342,11 +1346,24 @@ async function scan(): Promise<boolean> {
     renderLoader(null);
     // Un 400 al escanear es siempre el `libraryRoot`: no es una ruta válida o
     // no contiene `plugs\`, que es justo lo que explica el aviso.
-    setRootWarning(isFxbApiError(error) && error.status === 400);
-    setStatus(describeError(error), 'error');
+    const invalidRoot = isFxbApiError(error) && error.status === 400;
+    if (invalidRoot && rootRemembered) {
+      // La carpeta venía de la sesión anterior: es un hecho, no un error del
+      // usuario ni un fallo del servidor. Se pide elegir otra sin banner rojo.
+      setRootWarning(false);
+      setStatus(
+        () => t('ui.app.rememberedRootMissing', { 0: libraryRoot }),
+        'info',
+        openSettingsForLibraryRootAction,
+      );
+    } else {
+      setRootWarning(invalidRoot);
+      setStatus(describeError(error), 'error');
+    }
     return false;
   } finally {
     setBusy(false);
+    catalogTable?.setLoading(false);
   }
 }
 
@@ -1413,7 +1430,7 @@ async function initCapabilities(): Promise<void> {
 
   if (!appCapabilities.canCaptureRegistry && els.captureNavBtn) {
     els.captureNavBtn.disabled = true;
-    els.captureNavBtn.title = t('ui.capture.windowsOnly');
+    els.captureNavBtn.title = t('capture.windowsOnly');
   }
 }
 
@@ -1483,6 +1500,7 @@ async function chooseLibraryRoot(): Promise<void> {
 
     els.root.value = chosen;
     libraryRoot = chosen;
+    rootRemembered = false;
     writeStorage(STORAGE_ROOT, chosen);
     rememberRoot(chosen);
     await scanFromSettings();
@@ -3453,6 +3471,7 @@ let wizardsLoading = false;
 async function loadWizards(query: string): Promise<void> {
   if (wizardsLoading) return;
   wizardsLoading = true;
+  wizardsTableController?.setLoading(true);
   els.wizardsStatus.textContent = t('ui.wizard.loading');
   els.wizardsStatus.className = 'status busy';
   try {
@@ -3494,6 +3513,7 @@ async function loadWizards(query: string): Promise<void> {
     els.wizardsStatus.className = 'status error';
   } finally {
     wizardsLoading = false;
+    wizardsTableController?.setLoading(false);
   }
 }
 
@@ -3864,6 +3884,7 @@ els.pluginWizardCreateBtn.addEventListener('click', () => {
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
   libraryRoot = els.root.value.trim();
+  rootRemembered = false;
   writeStorage(STORAGE_ROOT, libraryRoot);
   rememberRoot(libraryRoot);
   const dll = currentDll();
@@ -3900,6 +3921,7 @@ els.rootRecentSelect.addEventListener('change', () => {
   if (chosen === '') return;
   els.root.value = chosen;
   libraryRoot = chosen;
+  rootRemembered = false;
   writeStorage(STORAGE_ROOT, chosen);
   rememberRoot(chosen);
   void scanFromSettings();
@@ -4216,10 +4238,6 @@ function applyLanguage(): void {
     .querySelector('input[name="theme-mode"]')
     ?.closest('[role="radiogroup"]')
     ?.setAttribute('aria-label', t('settings.themeGroup'));
-  document
-    .querySelector('input[name="ui-locale"]')
-    ?.closest('[role="radiogroup"]')
-    ?.setAttribute('aria-label', t('settings.languageGroup'));
   for (const icon of langIcons) {
     icon.toggleAttribute('hidden', icon.dataset['icon'] !== locale);
   }
@@ -6426,9 +6444,9 @@ const DATA_AUDIT_SOURCE_LABELS: Record<string, string> = {
 
 /** Gravedad de un hueco en una palabra, para el badge del detalle. */
 const DATA_AUDIT_SEVERITY_LABELS: Record<string, string> = {
-  missing: t('ui.dataAudit.severityMissing'),
+  missing: t('dataAudit.severityMissing'),
   invalid: t('ui.dataAudit.notValid'),
-  note: t('ui.dataAudit.severityNote'),
+  note: t('dataAudit.severityNote'),
 };
 
 /** Un plugin está completo cuando ninguno de sus huecos es `missing`/`invalid`. */
@@ -6484,19 +6502,19 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
       id: 'state',
       get label() { return t('ui.common.state'); },
       sortType: 'text',
-      getValue: (plugin) => (dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : t('ui.dataAudit.complete')),
+      getValue: (plugin) => (dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : t('dataAudit.complete')),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = dataAuditHasGaps(plugin) ? 'badge off' : 'badge on';
         badge.textContent = dataAuditHasGaps(plugin)
           ? t('ui.dataAudit.withGaps')
-          : t('ui.dataAudit.completeBadge');
+          : t('dataAudit.completeBadge');
         return badge;
       },
     },
     {
       id: 'gaps',
-      get label() { return t('ui.dataAudit.gaps'); },
+      get label() { return t('dataAudit.gaps'); },
       sortType: 'number',
       getValue: (plugin) => plugin.issues.length,
       cellTitle: (plugin) =>
@@ -6504,7 +6522,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
     },
     {
       id: 'fillable',
-      get label() { return t('ui.dataAudit.fillableColumn'); },
+      get label() { return t('dataAudit.fillableColumn'); },
       sortType: 'number',
       getValue: (plugin) => plugin.proposals.length,
       cellTitle: (plugin) =>
@@ -6527,7 +6545,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
   ],
   getRowId: (plugin) => plugin.path,
   initialSort: { columnId: 'gaps', direction: 'desc' },
-  emptyText: () => t('ui.dataAudit.empty'),
+  emptyText: () => t('dataAudit.empty'),
   filters: [
     {
       id: 'stateFilter',
@@ -6539,7 +6557,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
         { value: 'incomplete', get label() { return t('ui.dataAudit.withGaps'); }, tone: 'negative', predicate: dataAuditHasGaps },
         {
           value: 'complete',
-          get label() { return t('ui.dataAudit.completePlural'); },
+          get label() { return t('dataAudit.completePlural'); },
           tone: 'positive',
           predicate: (plugin) => !dataAuditHasGaps(plugin),
         },
@@ -6876,17 +6894,13 @@ window.addEventListener('keydown', (event) => {
 // `mountTable`, que es quien los crea.
 
 // ---------------------------------------------------------------- idioma
-const localeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="ui-locale"]')];
-
-function syncLocaleInputs(locale: Locale): void {
-  for (const input of localeInputs) input.checked = input.value === locale;
-}
+// El único control es el de la cabecera: su bandera enseña el idioma activo y
+// el `title` dice a cuál cambia. Ajustes ya no repite los radios.
 
 /** Cambia el idioma de toda la interfaz sin recargar ni perder el estado. */
 function applyLocale(locale: Locale): void {
   setLocale(locale);
   syncDocumentLang(locale);
-  syncLocaleInputs(locale);
   applyI18n();
   applyTheme(readTheme());
   if (scanData !== null) render(scanData);
@@ -6894,15 +6908,8 @@ function applyLocale(locale: Locale): void {
   repaintStatus();
 }
 
-for (const input of localeInputs) {
-  input.addEventListener('change', () => {
-    if (input.checked) applyLocale(input.value as Locale);
-  });
-}
-
 onLocaleChange((locale) => {
   syncDocumentLang(locale);
-  syncLocaleInputs(locale);
   applyI18n();
   applyTheme(readTheme());
   if (scanData !== null) render(scanData);
@@ -6917,7 +6924,6 @@ initAppI18n();
 // El título del botón de tema lo escribe `applyTheme`, no `data-i18n-title`.
 applyTheme(readTheme());
 applyI18n();
-syncLocaleInputs(getLocale());
 
 void initCapabilities();
 void pruneRecents();

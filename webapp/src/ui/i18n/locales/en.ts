@@ -174,8 +174,6 @@ export const appEn = {
     recentsNote: 'Used paths are stored only in this browser.',
     clearRecents: 'Clear path history',
     theme: 'Theme',
-    language: 'Language',
-    langNote: 'The change applies immediately; nothing is reloaded.',
     apiNote: 'Interactive server documentation (Swagger UI).',
     apiLink: 'OpenAPI API',
     chooseRootTitle: 'Choose the folder with the system dialog',
@@ -183,7 +181,6 @@ export const appEn = {
     clearRecentsTitle: 'Forget the suggested paths; what is typed in the fields does not change',
     themeGroup: 'Interface theme',
     rootWarning: 'The folder must contain plugs\\. Setting the loader modifies vfxinfo.txt and creates fxbLoader.config; removing it restores the vfxinfo.tx_ backup.',
-    languageGroup: 'Interface language',
   },
   theme: {
     auto: 'System',
@@ -299,6 +296,7 @@ export const appEn = {
   },
   ui: {
     app: {
+      rememberedRootMissing: 'The folder you had open is gone ({0}). Choose the library again.',
       needRoot: 'Choose the VFX library folder to start.',
       chooseRoot: 'Choose library folder',
       chooseRootTitle: 'Focus the library folder field',
@@ -758,6 +756,7 @@ export const appEn = {
       size: 'Size',
       unverified: 'unverified',
       withLoader: 'with loader',
+      loading: 'Loading…',
       empty: 'No records.',
       searchLabel: 'Search the table',
       searchPlaceholder: 'Search…',
