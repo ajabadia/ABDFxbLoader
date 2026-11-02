@@ -8,6 +8,7 @@ import { LibraryModule } from './library/library.module';
 import { PluginLogModule } from './plugin-log/plugin-log.module';
 import { PluginMetaModule } from './plugin-meta/plugin-meta.module';
 import { SystemModule } from './system/system.module';
+import { VMachineModule } from './vmachine/vmachine.module';
 import { WizardModule } from './wizard/wizard.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { WizardModule } from './wizard/wizard.module';
     PluginLogModule,
     PluginMetaModule,
     SystemModule,
+    VMachineModule,
     WizardModule,
   ],
   // Global: cualquier 400 responde el cuerpo que documentan los DTO, también

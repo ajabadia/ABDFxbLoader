@@ -844,6 +844,11 @@ export const appEn = {
       fileEmpty: 'The file is empty.',
       wizardCatalogUnavailable: 'The wizard catalogue is not available to confirm the selection.',
       wizardNotFound: 'Wizard {0} is no longer in the catalogue.',
+      driveNotFound: 'The drive "{0}" does not exist or is not a folder.',
+      pluginFolderMissing: 'The plugin folder does not exist: "{0}".',
+      libraryNameInvalid: 'That library name is not valid: "{0}".',
+      notEnoughSpace: 'It does not fit on the drive: {0} are needed and {1} are free.',
+      copyMismatch: 'The copy of {0} did not arrive intact on the drive.',
     },
 
     recentsClearConfirm: 'The suggested paths on this page will be forgotten: library folders, DLLs and recent banks. What is typed in the fields does not change. Clear the history?',

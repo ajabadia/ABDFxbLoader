@@ -1037,6 +1037,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vmachine/drives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unidades conectadas y bibliotecas que ya tienen en la raíz
+         * @description Enumera los discos lógicos del sistema con su etiqueta, espacio libre y si son extraíbles, y dice qué bibliotecas `*.vfxlibrary` hay en la raíz de cada uno: es lo que la v-machine reconoce al insertar el medio. Fuera de Windows devuelve `supported: false`.
+         */
+        get: operations["VMachineController_listDrives"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vmachine/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copiar el paquete del plugin a la biblioteca del medio, con verificación
+         * @description Envuelve el paquete generado por `/capture/vmachine/:diffId` en `<Nombre>.vfxlibrary\plugs\<Plugin>\` —la forma que la v-machine lee desde la raíz del medio— y comprueba archivo por archivo que lo copiado es idéntico a lo generado: tamaño siempre, y SHA-256 hasta 32 MiB. Si la unidad ya tiene una única biblioteca se escribe en ella; pisar una versión anterior del mismo plugin se informa en `replaced`. No borra nada que no sea del propio plugin.
+         */
+        post: operations["VMachineController_install"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4432,6 +4472,142 @@ export interface components {
              * @example false
              */
             canFileSystemAccess: boolean;
+        };
+        VMachineErrorDto: {
+            /**
+             * @description Mensaje del servidor, en castellano, para los logs.
+             * @example No existe la carpeta del plugin "C:/fxbLoader/storage/vmachine/plugs/Nada".
+             */
+            message: string;
+            /**
+             * @description Código estable que la vista traduce.
+             * @example pluginFolderMissing
+             */
+            code?: string;
+            /**
+             * @description Valores para `{0}`, `{1}`… del texto traducido.
+             * @example {
+             *       "0": "C:/fxbLoader/storage/vmachine/plugs/Nada"
+             *     }
+             */
+            params?: Record<string, never>;
+        };
+        VMachineDriveDto: {
+            /**
+             * @description Letra con dos puntos («E:») o punto de montaje.
+             * @example E:
+             */
+            id: string;
+            /**
+             * @description Etiqueta del volumen; vacía si no tiene.
+             * @example V-MACHINE
+             */
+            label: string;
+            /**
+             * @description Sistema de archivos del medio.
+             * @example FAT32
+             */
+            fileSystem: string;
+            /**
+             * @description Capacidad en bytes, o `null` si el sistema no la informa.
+             * @example 8004304896
+             */
+            totalBytes?: number | null;
+            /**
+             * @description Espacio libre en bytes, o `null` si no se puede consultar.
+             * @example 5123481600
+             */
+            freeBytes?: number | null;
+            /**
+             * @description Medio extraíble (`true`) o disco fijo, como un externo por USB.
+             * @example true
+             */
+            removable: boolean;
+            /**
+             * @description Bibliotecas `*.vfxlibrary` que ya están en la raíz de la unidad. La máquina solo reconoce las que viven ahí.
+             * @example [
+             *       "V-MACHINE.vfxlibrary"
+             *     ]
+             */
+            libraries: string[];
+        };
+        VMachineDrivesResponseDto: {
+            /**
+             * @description `false` fuera de Windows: no hay tabla de unidades que enumerar.
+             * @example true
+             */
+            supported: boolean;
+            /** @description Unidades conectadas, por letra. */
+            drives: components["schemas"]["VMachineDriveDto"][];
+            /**
+             * @description Unidades que se listaron pero no se pudieron leer, y por qué.
+             * @example []
+             */
+            warnings: string[];
+        };
+        VMachineInstallRequestDto: {
+            /**
+             * @description Raíz del medio, tal como la devuelve `GET /vmachine/drives` («E:», «E:\»). También admite una carpeta montada, útil para probar sin stick.
+             * @example E:
+             */
+            drive: string;
+            /**
+             * @description Carpeta del plugin generada por `/capture/vmachine/:diffId` (`bankDir`). Tiene que contener su `vfxinfo.txt`.
+             * @example C:/fxbLoader/storage/vmachine/plugs/SuperWave P8
+             */
+            pluginDir: string;
+            /**
+             * @description Biblioteca de destino. Si se omite se reusa la única `*.vfxlibrary` de la raíz —el stick que la máquina ya usa— y, si no hay ninguna, se crea `V-MACHINE`.
+             * @example V-MACHINE
+             */
+            libraryName?: string;
+        };
+        VMachineInstallResultDto: {
+            /**
+             * @description Raíz del medio donde se copió.
+             * @example E:\
+             */
+            drive: string;
+            /**
+             * @description Carpeta de la biblioteca; la máquina la lee desde la raíz.
+             * @example E:\V-MACHINE.vfxlibrary
+             */
+            libraryDir: string;
+            /**
+             * @description Carpeta del plugin dentro de la biblioteca.
+             * @example E:\V-MACHINE.vfxlibrary\plugs\SuperWave P8
+             */
+            pluginDir: string;
+            /**
+             * @description Archivos copiados.
+             * @example 12
+             */
+            copied: number;
+            /**
+             * @description De los copiados, cuántos reemplazaron una versión anterior del mismo plugin.
+             * @example 0
+             */
+            replaced: number;
+            /**
+             * @description Bytes copiados.
+             * @example 48210432
+             */
+            bytes: number;
+            /**
+             * @description Archivos con SHA-256 comprobado en origen y destino.
+             * @example 12
+             */
+            verified: number;
+            /**
+             * @description Archivos de más de 32 MiB comprobados solo por tamaño: hashearlos obligaría a leerlos dos veces más.
+             * @example []
+             */
+            sizeOnly: string[];
+            /**
+             * @description Avisos de la copia; vacío cuando todo salió como se esperaba.
+             * @example []
+             */
+            warnings: string[];
         };
     };
     responses: never;
@@ -8208,6 +8384,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemCapabilitiesResponseDto"];
+                };
+            };
+        };
+    };
+    VMachineController_listDrives: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unidades conectadas, por letra. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "supported": true,
+                     *       "drives": [
+                     *         {
+                     *           "id": "E:",
+                     *           "label": "V-MACHINE",
+                     *           "fileSystem": "FAT32",
+                     *           "totalBytes": 8004304896,
+                     *           "freeBytes": 5123481600,
+                     *           "removable": true,
+                     *           "libraries": [
+                     *             "V-MACHINE.vfxlibrary"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineDrivesResponseDto"];
+                };
+            };
+        };
+    };
+    VMachineController_install: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VMachineInstallRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Lo copiado y lo verificado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "drive": "E:\\",
+                     *       "libraryDir": "E:\\V-MACHINE.vfxlibrary",
+                     *       "pluginDir": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8",
+                     *       "copied": 12,
+                     *       "replaced": 0,
+                     *       "bytes": 48210432,
+                     *       "verified": 12,
+                     *       "sizeOnly": [],
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineInstallResultDto"];
+                };
+            };
+            /** @description Falta `drive` o `pluginDir`, no son texto, o el paquete no tiene `vfxinfo.txt`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description La unidad o la carpeta del plugin no existen. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description El paquete no cabe en el espacio libre del medio. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "No cabe en \"E:\": hacen falta 1,2 GB y quedan 340 MB.",
+                     *       "code": "notEnoughSpace",
+                     *       "params": {
+                     *         "0": "1,2 GB",
+                     *         "1": "340 MB"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
                 };
             };
         };

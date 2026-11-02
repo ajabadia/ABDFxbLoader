@@ -6069,6 +6069,177 @@
           "system"
         ]
       }
+    },
+    "/vmachine/drives": {
+      "get": {
+        "description": "Enumera los discos lógicos del sistema con su etiqueta, espacio libre y si son extraíbles, y dice qué bibliotecas `*.vfxlibrary` hay en la raíz de cada uno: es lo que la v-machine reconoce al insertar el medio. Fuera de Windows devuelve `supported: false`.",
+        "operationId": "VMachineController_listDrives",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Unidades conectadas, por letra.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineDrivesResponseDto"
+                },
+                "example": {
+                  "supported": true,
+                  "drives": [
+                    {
+                      "id": "E:",
+                      "label": "V-MACHINE",
+                      "fileSystem": "FAT32",
+                      "totalBytes": 8004304896,
+                      "freeBytes": 5123481600,
+                      "removable": true,
+                      "libraries": [
+                        "V-MACHINE.vfxlibrary"
+                      ]
+                    }
+                  ],
+                  "warnings": []
+                }
+              }
+            }
+          }
+        },
+        "summary": "Unidades conectadas y bibliotecas que ya tienen en la raíz",
+        "tags": [
+          "vmachine"
+        ]
+      }
+    },
+    "/vmachine/install": {
+      "post": {
+        "description": "Envuelve el paquete generado por `/capture/vmachine/:diffId` en `<Nombre>.vfxlibrary\\plugs\\<Plugin>\\` —la forma que la v-machine lee desde la raíz del medio— y comprueba archivo por archivo que lo copiado es idéntico a lo generado: tamaño siempre, y SHA-256 hasta 32 MiB. Si la unidad ya tiene una única biblioteca se escribe en ella; pisar una versión anterior del mismo plugin se informa en `replaced`. No borra nada que no sea del propio plugin.",
+        "operationId": "VMachineController_install",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMachineInstallRequestDto"
+              },
+              "examples": {
+                "estandar": {
+                  "value": {
+                    "drive": "E:",
+                    "pluginDir": "C:/fxbLoader/storage/vmachine/plugs/SuperWave P8",
+                    "libraryName": "V-MACHINE"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lo copiado y lo verificado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineInstallResultDto"
+                },
+                "example": {
+                  "drive": "E:\\",
+                  "libraryDir": "E:\\V-MACHINE.vfxlibrary",
+                  "pluginDir": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8",
+                  "copied": 12,
+                  "replaced": 0,
+                  "bytes": 48210432,
+                  "verified": 12,
+                  "sizeOnly": [],
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `drive` o `pluginDir`, no son texto, o el paquete no tiene `vfxinfo.txt`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "examples": {
+                  "sinDll": {
+                    "summary": "La carpeta no es un plugin",
+                    "value": {
+                      "message": "No hay vfxinfo.txt en C:/fxbLoader/storage/vmachine/plugs/Nada.",
+                      "code": "vfxinfoMissing",
+                      "params": {
+                        "0": "C:/fxbLoader/storage/vmachine/plugs/Nada"
+                      }
+                    }
+                  },
+                  "sinCampo": {
+                    "summary": "Falta el campo",
+                    "value": {
+                      "message": "pluginDir requerido"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La unidad o la carpeta del plugin no existen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "examples": {
+                  "sinUnidad": {
+                    "summary": "La unidad no está conectada",
+                    "value": {
+                      "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                      "code": "driveNotFound",
+                      "params": {
+                        "0": "Z:"
+                      }
+                    }
+                  },
+                  "sinPlugin": {
+                    "summary": "La carpeta del plugin no existe",
+                    "value": {
+                      "message": "No existe la carpeta del plugin \"C:/fxbLoader/storage/vmachine/plugs/Nada\".",
+                      "code": "pluginFolderMissing",
+                      "params": {
+                        "0": "C:/fxbLoader/storage/vmachine/plugs/Nada"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El paquete no cabe en el espacio libre del medio.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "No cabe en \"E:\": hacen falta 1,2 GB y quedan 340 MB.",
+                  "code": "notEnoughSpace",
+                  "params": {
+                    "0": "1,2 GB",
+                    "1": "340 MB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Copiar el paquete del plugin a la biblioteca del medio, con verificación",
+        "tags": [
+          "vmachine"
+        ]
+      }
     }
   },
   "info": {
@@ -11715,6 +11886,211 @@
           "canRevealInExplorer",
           "canNativePick",
           "canFileSystemAccess"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineErrorDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Mensaje del servidor, en castellano, para los logs.",
+            "example": "No existe la carpeta del plugin \"C:/fxbLoader/storage/vmachine/plugs/Nada\"."
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable que la vista traduce.",
+            "example": "pluginFolderMissing"
+          },
+          "params": {
+            "type": "object",
+            "description": "Valores para `{0}`, `{1}`… del texto traducido.",
+            "example": {
+              "0": "C:/fxbLoader/storage/vmachine/plugs/Nada"
+            }
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineDriveDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Letra con dos puntos («E:») o punto de montaje.",
+            "example": "E:"
+          },
+          "label": {
+            "type": "string",
+            "description": "Etiqueta del volumen; vacía si no tiene.",
+            "example": "V-MACHINE"
+          },
+          "fileSystem": {
+            "type": "string",
+            "description": "Sistema de archivos del medio.",
+            "example": "FAT32"
+          },
+          "totalBytes": {
+            "type": "number",
+            "description": "Capacidad en bytes, o `null` si el sistema no la informa.",
+            "example": 8004304896,
+            "nullable": true
+          },
+          "freeBytes": {
+            "type": "number",
+            "description": "Espacio libre en bytes, o `null` si no se puede consultar.",
+            "example": 5123481600,
+            "nullable": true
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Medio extraíble (`true`) o disco fijo, como un externo por USB.",
+            "example": true
+          },
+          "libraries": {
+            "description": "Bibliotecas `*.vfxlibrary` que ya están en la raíz de la unidad. La máquina solo reconoce las que viven ahí.",
+            "example": [
+              "V-MACHINE.vfxlibrary"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "fileSystem",
+          "removable",
+          "libraries"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineDrivesResponseDto": {
+        "type": "object",
+        "properties": {
+          "supported": {
+            "type": "boolean",
+            "description": "`false` fuera de Windows: no hay tabla de unidades que enumerar.",
+            "example": true
+          },
+          "drives": {
+            "description": "Unidades conectadas, por letra.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineDriveDto"
+            }
+          },
+          "warnings": {
+            "description": "Unidades que se listaron pero no se pudieron leer, y por qué.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "supported",
+          "drives",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineInstallRequestDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio, tal como la devuelve `GET /vmachine/drives` («E:», «E:\\»). También admite una carpeta montada, útil para probar sin stick.",
+            "example": "E:"
+          },
+          "pluginDir": {
+            "type": "string",
+            "description": "Carpeta del plugin generada por `/capture/vmachine/:diffId` (`bankDir`). Tiene que contener su `vfxinfo.txt`.",
+            "example": "C:/fxbLoader/storage/vmachine/plugs/SuperWave P8"
+          },
+          "libraryName": {
+            "type": "string",
+            "description": "Biblioteca de destino. Si se omite se reusa la única `*.vfxlibrary` de la raíz —el stick que la máquina ya usa— y, si no hay ninguna, se crea `V-MACHINE`.",
+            "example": "V-MACHINE"
+          }
+        },
+        "required": [
+          "drive",
+          "pluginDir"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineInstallResultDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio donde se copió.",
+            "example": "E:\\"
+          },
+          "libraryDir": {
+            "type": "string",
+            "description": "Carpeta de la biblioteca; la máquina la lee desde la raíz.",
+            "example": "E:\\V-MACHINE.vfxlibrary"
+          },
+          "pluginDir": {
+            "type": "string",
+            "description": "Carpeta del plugin dentro de la biblioteca.",
+            "example": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8"
+          },
+          "copied": {
+            "type": "number",
+            "description": "Archivos copiados.",
+            "example": 12
+          },
+          "replaced": {
+            "type": "number",
+            "description": "De los copiados, cuántos reemplazaron una versión anterior del mismo plugin.",
+            "example": 0
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes copiados.",
+            "example": 48210432
+          },
+          "verified": {
+            "type": "number",
+            "description": "Archivos con SHA-256 comprobado en origen y destino.",
+            "example": 12
+          },
+          "sizeOnly": {
+            "description": "Archivos de más de 32 MiB comprobados solo por tamaño: hashearlos obligaría a leerlos dos veces más.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "description": "Avisos de la copia; vacío cuando todo salió como se esperaba.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "drive",
+          "libraryDir",
+          "pluginDir",
+          "copied",
+          "replaced",
+          "bytes",
+          "verified",
+          "sizeOnly",
+          "warnings"
         ],
         "additionalProperties": false
       }

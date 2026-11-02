@@ -22,6 +22,11 @@ export const API_ERROR_CODES = [
   'fileEmpty',
   'wizardCatalogUnavailable',
   'wizardNotFound',
+  'driveNotFound',
+  'pluginFolderMissing',
+  'libraryNameInvalid',
+  'notEnoughSpace',
+  'copyMismatch',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

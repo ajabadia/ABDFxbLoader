@@ -843,6 +843,11 @@ export const appEs = {
       fileEmpty: 'El archivo está vacío.',
       wizardCatalogUnavailable: 'El catálogo de wizards no está disponible para confirmar la selección.',
       wizardNotFound: 'El wizard {0} ya no está en el catálogo.',
+      driveNotFound: 'La unidad «{0}» no existe o no es una carpeta.',
+      pluginFolderMissing: 'No existe la carpeta del plugin: «{0}».',
+      libraryNameInvalid: 'El nombre de la biblioteca no es válido: «{0}».',
+      notEnoughSpace: 'No cabe en la unidad: hacen falta {0} y quedan {1}.',
+      copyMismatch: 'La copia de {0} no llegó íntegra a la unidad.',
     },
 
     recentsClearConfirm: 'Se olvidarán las rutas sugeridas en esta página: carpetas de librería, DLL y bancos recientes. Lo escrito en los campos no cambia. ¿Vaciar el historial?',
