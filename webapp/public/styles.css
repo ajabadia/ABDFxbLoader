@@ -2515,19 +2515,8 @@ details.import label[for='import-paths'] {
   width: 78%;
 }
 
-.skeleton-lines {
-  display: grid;
-  gap: 8px;
-  padding: 8px 0;
-}
 
-.skeleton-lines .skeleton-bar:nth-child(2n) {
-  width: 84%;
-}
 
-.skeleton-lines .skeleton-bar:nth-child(3n) {
-  width: 55%;
-}
 
 @keyframes skeleton-pulse {
   0%,
