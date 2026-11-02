@@ -1,4 +1,5 @@
 import { createFxbClient, isFxbApiError, type FxbClient } from '../../client/fxb-client.js';
+import { t } from '../i18n/index.js';
 
 let currentBaseUrl = '';
 let activeClient: FxbClient = createFxbClient({ baseUrl: currentBaseUrl });
@@ -41,7 +42,7 @@ export function describeError(error: unknown): string {
       error.message.includes('NetworkError') ||
       error.message.includes('Failed to fetch'))
   ) {
-    return `No se pudo contactar con el servidor: ${error.message}`;
+    return t('msg.serverUnreachable', { 0: error.message });
   }
   return error instanceof Error ? error.message : String(error);
 }

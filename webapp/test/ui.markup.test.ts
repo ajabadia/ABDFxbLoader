@@ -353,11 +353,13 @@ test('index.html no tiene ids, clases, data-* ni estados ARIA que no use nadie',
 
 test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.html', async () => {
   const { html, css, sources } = await realMarkup();
-  // `aria-selected` no lo usa nadie: `aria-checked` lo mantienen las opciones de
-  // los filtros, `aria-pressed` sus chips y `aria-expanded` los menús.
+  // Los cinco estados ARIA que pueden quedarse congelados (busy, checked,
+  // expanded, pressed y selected) los mantiene ya la vista: las pestañas de la
+  // auditoría escriben `aria-selected`. Para seguir comprobando que se detecta
+  // ARIA muerto se inyecta uno vacío, que no lee nadie.
   const marker =
     '<p id="fxb-id-fantasma" class="fxb-clase-fantasma" data-fantasma="fxb-campo-fantasma" ' +
-    'aria-selected="false">x</p>';
+    'aria-label="">x</p>';
   const mutated = html.replace('</main>', `${marker}\n    </main>`);
   assert.notEqual(mutated, html, 'la mutación debe llegar al documento');
 
@@ -370,9 +372,5 @@ test('la auditoría detecta id, clase, data-* y ARIA muertos añadidos a index.h
     ['data-fantasma="fxb-campo-fantasma"'],
     'la vista no lee ese atributo ni su valor',
   );
-  assert.deepEqual(
-    audit.deadAria,
-    ['aria-selected="false"'],
-    'nadie mantiene ese estado aria-selected en la vista real',
-  );
+  assert.deepEqual(audit.deadAria, ['aria-label'], 'un ARIA vacío no lo lee nadie');
 });

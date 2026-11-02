@@ -59,7 +59,10 @@ test('sirve la UI y carga el módulo tipado', async () => {
   // usa como descripción cuando aparece.
   assert.match(response.text, /aria-describedby="root-warning"/);
   assert.match(response.text, /id="root-warning" class="warning" hidden/);
-  assert.match(response.text, /La carpeta debe contener <code>plugs\\<\/code>/);
+  assert.match(
+    response.text,
+    /id="root-warning" class="warning" hidden data-i18n="settings\.rootWarning">The folder must contain plugs\\./,
+  );
   assert.doesNotMatch(response.text, /class="hint"/);
   assert.match(response.text, /id="root-browse"/);
   assert.match(response.text, /(?:Elegir carpeta…|Choose folder…)/);
@@ -149,13 +152,13 @@ test('sirve la UI y carga el módulo tipado', async () => {
   // su contenedor y la tbody estática desaparece del HTML.
   assert.match(response.text, /id="wizards-table"/);
   assert.doesNotMatch(response.text, /id="wizards-rows"/);
-  // El visor de auditoría durable es un cajón modal más, con su contenedor
-  // para mountTable y sin ninguna fila estática en el HTML.
-  assert.match(response.text, /id="audit-nav-btn"/);
+  // La auditoría es una vista con dos pestañas: datos y asociaciones. Cada una
+  // trae su contenedor para mountTable y ninguna fila estática en el HTML.
   assert.match(
     response.text,
-    /id="audit-drawer"[\s\S]{0,200}role="dialog"[\s\S]{0,200}aria-modal="true"[\s\S]{0,200}aria-labelledby="audit-drawer-title"[\s\S]{0,200}tabindex="-1"/,
+    /id="audit-view"[\s\S]{0,600}id="data-audit-nav-btn"[\s\S]{0,600}id="audit-nav-btn"/,
   );
+  assert.match(response.text, /id="audit-data"[\s\S]{0,20000}id="audit-associations"/);
   assert.match(response.text, /id="audit-table"/);
   assert.match(response.text, /id="audit-refresh"/);
   // El cajón no trae campo de búsqueda propio: la única búsqueda del visor
@@ -172,116 +175,129 @@ test('sirve la UI y carga el módulo tipado', async () => {
   assert.doesNotMatch(response.text, /\/batch\.js/);
 });
 
+/** `main.js` ya no contiene toda la vista: se suman los modulos emitidos. */
+async function uiSource(): Promise<string> {
+  const dir = path.resolve(__dirname, '..', '..', 'public', 'js', 'ui', 'browser');
+  const files = (await readdir(dir, { recursive: true }))
+    .filter((file) => file.endsWith('.js'))
+    .map((file) => path.join(dir, file));
+  const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
+  return sources.reduce((all, text) => all + String.fromCharCode(10) + text, '');
+}
+
 test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () => {
   const main = await request(app.getHttpServer())
     .get('/js/ui/browser/main.js')
     .expect(200)
     .expect('content-type', /javascript/);
 
+  // `uiSource()` ya incluye main.js: sumarlo otra vez duplicaria los modulos.
+  const source = await uiSource();
+
   // La vista usa el cliente tipado y conserva las operaciones de bancos.
-  assert.match(main.text, /client\.library\.scan/);
+  assert.match(source, /client\.library\.scan/);
   // Elegir carpetas y archivos sin teclearlos: el diálogo lo abre el servidor.
-  assert.match(main.text, /client\.system\.pick/);
-  assert.match(main.text, /appendPaths/);
+  assert.match(source, /client\.system\.pick/);
+  assert.match(source, /appendPaths/);
   // Las rutas usadas se recuerdan y se ofrecen como sugerencias en su campo.
-  assert.match(main.text, /parseRecents/);
-  assert.match(main.text, /rememberRecent/);
-  assert.match(main.text, /rememberRecentPaths/);
-  assert.match(main.text, /recentRoots/);
-  assert.match(main.text, /recentDlls/);
-  assert.match(main.text, /recentBanks/);
+  assert.match(source, /parseRecents/);
+  assert.match(source, /rememberRecent/);
+  assert.match(source, /rememberRecentPaths/);
+  assert.match(source, /recentRoots/);
+  assert.match(source, /recentDlls/);
+  assert.match(source, /recentBanks/);
   // Las sugerencias caducadas se podan contra el disco al cargar la vista.
-  assert.match(main.text, /client\.system\.paths/);
-  assert.match(main.text, /existingRecents/);
+  assert.match(source, /client\.system\.paths/);
+  assert.match(source, /existingRecents/);
   // Y se pueden olvidar a mano desde Opciones avanzadas, o solo los bancos
   // desde el propio panel de bancos.
-  assert.match(main.text, /recentsClear/);
-  assert.match(main.text, /clearRecents/);
-  assert.match(main.text, /clearRecentBanks/);
-  assert.match(main.text, /recent-clear/);
+  assert.match(source, /recentsClear/);
+  assert.match(source, /clearRecents/);
+  assert.match(source, /clearRecentBanks/);
+  assert.match(source, /recent-clear/);
   // Cada chip se puede olvidar por separado con su «×».
-  assert.match(main.text, /forgetRecentBank/);
-  assert.match(main.text, /recent-chip-remove/);
-  assert.match(main.text, /client\.library\.listBanks/);
-  assert.match(main.text, /client\.library\.importBanksStream/);
-  assert.match(main.text, /client\.library\.convertDefaultBank/);
-  assert.match(main.text, /client\.library\.restoreDefaultBank/);
-  assert.match(main.text, /client\.library\.discardDefaultBankBackup/);
+  assert.match(source, /forgetRecentBank/);
+  assert.match(source, /recent-chip-remove/);
+  assert.match(source, /client\.library\.listBanks/);
+  assert.match(source, /client\.library\.importBanksStream/);
+  assert.match(source, /client\.library\.convertDefaultBank/);
+  assert.match(source, /client\.library\.restoreDefaultBank/);
+  assert.match(source, /client\.library\.discardDefaultBankBackup/);
   // Restaurar pide confirmación y respeta el respaldo anunciado por la lista.
-  assert.match(main.text, /defaultBackup/);
-  assert.match(main.text, /client\.library\.exportBank/);
-  assert.match(main.text, /renderExportOptions/);
+  assert.match(source, /defaultBackup/);
+  assert.match(source, /client\.library\.exportBank/);
+  assert.match(source, /renderExportOptions/);
   // Importar bancos lee NDJSON y acumula el resultado; la barra avanza con
   // cada banco, no solo al terminar el trozo.
-  assert.match(main.text, /runImportInChunks/);
-  assert.match(main.text, /onEvent/);
-  assert.match(main.text, /importProgressLabel/);
-  assert.match(main.text, /importProgress/);
-  assert.match(main.text, /client\.config\.write/);
-  assert.match(main.text, /expectedMtimeMs/);
+  assert.match(source, /runImportInChunks/);
+  assert.match(source, /onEvent/);
+  assert.match(source, /importProgressLabel/);
+  assert.match(source, /importProgress/);
+  assert.match(source, /client\.config\.write/);
+  assert.match(source, /expectedMtimeMs/);
   // El lote lo ejecuta el servidor, que además manda el progreso en caliente:
   // la vista pinta qué plugin va y el resultado por plugin al terminar.
-  assert.match(main.text, /client\.library\.batchStream/);
-  assert.match(main.text, /failuresOf/);
-  assert.match(main.text, /progressLabel/);
-  assert.match(main.text, /batchProgress/);
+  assert.match(source, /client\.library\.batchStream/);
+  assert.match(source, /failuresOf/);
+  assert.match(source, /progressLabel/);
+  assert.match(source, /batchProgress/);
   // Reanudar solo los plugins sin confirmar: el botón se pinta con lo pendiente.
-  assert.match(main.text, /resumablePlugins/);
-  assert.match(main.text, /batchResume/);
+  assert.match(source, /resumablePlugins/);
+  assert.match(source, /batchResume/);
   // Los fallos se pueden reintentar de uno en uno o todos en orden.
-  assert.match(main.text, /retryAllFailures/);
-  assert.match(main.text, /retryAll/);
-  assert.doesNotMatch(main.text, /runPluginBatch/);
-  assert.doesNotMatch(main.text, /callWithRetry/);
+  assert.match(source, /retryAllFailures/);
+  assert.match(source, /retryAll/);
+  assert.doesNotMatch(source, /runPluginBatch/);
+  assert.doesNotMatch(source, /callWithRetry/);
   // El escaneo bloquea los plugins incompatibles: ni el «toggle» del lote ni
   // la acción de fila de la tabla se activan sobre ellos.
-  assert.match(main.text, /plugin\.compatible === false/);
-  assert.match(main.text, /dataset\[['"]action['"]\] === 'toggle' && blocked/);
+  assert.match(source, /plugin\.compatible === false/);
+  assert.match(source, /dataset\[['"]action['"]\] === 'toggle' && blocked/);
   // Los cuatro ejes de tres estados ya no viven en la vista: son filtros
   // `chip` del catálogo que `mountTable` pinta y gobierna; la vista conserva
   // el recuento de lo filtrado en su propio elemento.
-  assert.doesNotMatch(main.text, /setFilterAxis|FILTER_AXES/);
-  assert.match(main.text, /type: 'chip'/);
-  assert.match(main.text, /value: 'installed'/);
-  assert.match(main.text, /value: 'with-banks'/);
-  assert.match(main.text, /value: 'with-wizard'/);
-  assert.match(main.text, /value: 'compatible'/);
-  assert.match(main.text, /filterCount/);
+  assert.doesNotMatch(source, /setFilterAxis|FILTER_AXES/);
+  assert.match(source, /type: 'chip'/);
+  assert.match(source, /value: 'installed'/);
+  assert.match(source, /value: 'with-banks'/);
+  assert.match(source, /value: 'with-wizard'/);
+  assert.match(source, /value: 'compatible'/);
+  assert.match(source, /filterCount/);
   // Los botones de fila («Catálogo», «Historial»…) son acciones de la tabla:
   // el `data-action` lo escribe `mountTable` y la vista declara sus ids.
-  assert.match(main.text, /id: 'meta'/);
-  assert.match(main.text, /id: 'log'/);
+  assert.match(source, /id: 'meta'/);
+  assert.match(source, /id: 'log'/);
   // El catálogo del plugin se lee y se guarda con el cliente tipado, y el
   // `mtimeMs` leído es el testigo que se manda al guardar.
-  assert.match(main.text, /client\.plugins\.meta\.read/);
-  assert.match(main.text, /client\.plugins\.meta\.write/);
-  assert.match(main.text, /renderMeta/);
-  assert.match(main.text, /readExtended/);
+  assert.match(source, /client\.plugins\.meta\.read/);
+  assert.match(source, /client\.plugins\.meta\.write/);
+  assert.match(source, /renderMeta/);
+  assert.match(source, /readExtended/);
   // Cuando aún no hay archivo, el panel dice si los campos vienen del vfxinfo
   // y qué falta para poder guardar, en vez de abrirse vacío sin explicación.
-  assert.match(main.text, /metaOriginText/);
-  assert.match(main.text, /metaOrigin/);
+  assert.match(source, /metaOriginText/);
+  assert.match(source, /metaOrigin/);
   // El historial del plugin se lee con el cliente tipado y se pinta por partes.
-  assert.match(main.text, /client\.plugins\.log\.read/);
-  assert.match(main.text, /renderPluginLog/);
-  assert.match(main.text, /pluginHistoryTableView/);
-  assert.match(main.text, /banksTableView/);
-  assert.match(main.text, /importPackagePluginsTableView/);
-  assert.match(main.text, /importPackageBanksTableView/);
-  assert.match(main.text, /wizardsTableView/);
+  assert.match(source, /client\.plugins\.log\.read/);
+  assert.match(source, /renderPluginLog/);
+  assert.match(source, /pluginHistoryTableView/);
+  assert.match(source, /banksTableView/);
+  assert.match(source, /importPackagePluginsTableView/);
+  assert.match(source, /importPackageBanksTableView/);
+  assert.match(source, /wizardsTableView/);
   // El repositorio de wizards usa los mismos `rowActions` que el catálogo:
   // el menú «···» de la fila con Instalar… e Historial.
-  assert.match(main.text, /label: 'Instalar…'/);
-  assert.match(main.text, /openWizardLog/);
+  assert.match(source, /get label\(\) \{ return t\('ui\.wizard\.installNow'\); \}/);
+  assert.match(source, /openWizardLog/);
   // «Historial» es la MISMA acción en catálogo y wizards: id `log` con icono
   // `list`, declarado exactamente en esas dos tablas.
   assert.equal(
-    (main.text.match(/id: 'log'/g) ?? []).length,
+    (source.match(/id: 'log'/g) ?? []).length,
     2,
     'log debe declararlo el catálogo y la tabla de wizards',
   );
   assert.equal(
-    (main.text.match(/label: 'Historial'/g) ?? []).length,
+    (source.match(/get label\(\) \{ return t\('ui\.common\.history'\); \}/g) ?? []).length,
     2,
     'Historial debe declararlo el catálogo y la tabla de wizards',
   );
@@ -289,29 +305,29 @@ test('sirve el módulo de la UI, el orquestador y el cliente tipado', async () =
   // historial, la entrada del log; en la de auditoría, el evento. Las dos
   // conservan el icono `file`.
   assert.equal(
-    (main.text.match(/id: 'view-record'/g) ?? []).length,
+    (source.match(/id: 'view-record'/g) ?? []).length,
     2,
     'view-record lo declaran la tabla del historial y la de auditoría',
   );
   assert.match(
-    main.text,
-    /label: t\('ui\.log\.viewRecord'\),\s*icon: 'file'/,
+    source,
+    /get label\(\) \{ return t\('ui\.log\.viewRecord'\); \},\s*icon: 'file'/,
     'el registro sigue en el historial con el icono file',
   );
   // El visor de auditoría usa el cliente tipado y su propia vista de tabla.
-  assert.match(main.text, /associationAuditTableView/);
-  assert.match(main.text, /client\.associationAudit\.list/);
+  assert.match(source, /associationAuditTableView/);
+  assert.match(source, /client\.associationAudit\.list/);
   // El visor no manda filtros al servidor: pide el snapshot y lo estrecha en
   // el navegador con la búsqueda y los filtros del componente de tabla.
-  assert.doesNotMatch(main.text, /auditPluginFilter/);
-  assert.doesNotMatch(main.text, /\{ plugin \}/);
+  assert.doesNotMatch(source, /auditPluginFilter/);
+  assert.doesNotMatch(source, /\{ plugin \}/);
   // Y con el cajón abierto el visor se recarga solo cuando crece el almacén.
-  assert.match(main.text, /pollAssociationAudit/);
-  assert.match(main.text, /startAuditPolling/);
-  assert.match(main.text, /stopAuditPolling/);
-  assert.match(main.text, /import-result/);
+  assert.match(source, /pollAssociationAudit/);
+  assert.match(source, /startAuditPolling/);
+  assert.match(source, /stopAuditPolling/);
+  assert.match(source, /import-result/);
   // Y la columna de la tabla se actualiza al guardar, sin volver a escanear.
-  assert.match(main.text, /markPluginHasMeta/);
+  assert.match(source, /markPluginHasMeta/);
 
   const batch = await request(app.getHttpServer())
     .get('/js/ui/batch.js')

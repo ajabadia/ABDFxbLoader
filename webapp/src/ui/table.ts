@@ -80,7 +80,7 @@ export const TABLE_DEFAULT_PAGE_SIZE = 10;
 export interface TableView<T> {
   columns: readonly TableColumn<T>[];
   getRowId: (row: T) => string;
-  emptyText?: string;
+  emptyText?: string | (() => string);
   initialSort: { columnId: string; direction: TableDirection };
   pageSize?: number;
   searchColumns?: readonly string[];
@@ -227,17 +227,29 @@ export interface TableRowActions<T> {
 export interface TableController<T> {
   /** Reemplaza las filas; `keepPage` conserva la página vigente (recortando si hace falta). */
   setRows(rows: readonly T[], options?: { keepPage?: boolean }): void;
+  /** Repinta con las filas actuales: se usa al cambiar de idioma. */
+  refresh(): void;
   destroy(): void;
   /** El `<tbody>` que pinta la tabla: permite parchear una fila sin re-render. */
   readonly tbody: HTMLTableSectionElement;
 }
 
-/** Tablas montadas, para cerrar sus menús de fila desde cualquier sitio. */
-const mountedTables = new Set<{ closeRowMenus(): void }>();
+/** Tablas montadas, para cerrar sus menús de fila y repintarlas desde cualquier sitio. */
+const mountedTables = new Set<{ closeRowMenus(): void; refresh(): void }>();
 
 /** Cierra los menús «···» abiertos en cualquier tabla montada. */
 export function closeAllRowMenus(): void {
   for (const table of mountedTables) table.closeRowMenus();
+}
+
+/** Repinta todas las tablas vivas: conserva filas, página y filtros. */
+export function refreshTables(): void {
+  for (const table of mountedTables) table.refresh();
+}
+
+function emptyTextOf(view: { emptyText?: string | (() => string) }): string {
+  const raw = view.emptyText;
+  return (typeof raw === 'function' ? raw() : raw) ?? t('ui.table.empty');
 }
 
 export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows: readonly T[]): TableController<T> {
@@ -256,7 +268,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     element.addEventListener(type, listener); listeners.push(() => element.removeEventListener(type, listener));
   };
   const shell = document.createElement('div'); shell.className = 'table-view';
-  shell.setAttribute('data-table-empty-text', view.emptyText ?? 'No hay registros.');
+  shell.setAttribute('data-table-empty-text', emptyTextOf(view));
   const toolbar = document.createElement('div'); toolbar.className = 'table-toolbar';
   let search: HTMLInputElement | null = null;
   if (
@@ -265,7 +277,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   ) {
     search = document.createElement('input'); search.type = 'search'; search.className = 'table-search';
     if (view.searchId) search.id = view.searchId;
-    search.setAttribute('aria-label', 'Buscar en la tabla'); search.placeholder = 'Buscar…';
+    search.setAttribute('aria-label', t('ui.table.searchLabel')); search.placeholder = t('ui.table.searchPlaceholder');
     listen(search, 'input', () => { state.query = search!.value; state.page = 1; view.onSearchChange?.(state.query); render(); }); toolbar.append(search);
   }
   /** Chips de tres estados: se agrupan en su barra y se repintan en cada render. */
@@ -277,7 +289,10 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
       const group = document.createElement('div'); group.className = 'table-filter table-date-range';
       const legend = document.createElement('span'); legend.className = 'table-filter-label'; legend.textContent = filter.label; group.append(legend);
       const range = state.filters[filter.id] as { from: string; to: string };
-      for (const [key, text] of [['from', 'Desde'], ['to', 'Hasta']] as const) {
+      for (const [key, text] of [
+        ['from', t('ui.table.from')],
+        ['to', t('ui.table.to')],
+      ] as const) {
         const label = document.createElement('label'); label.textContent = text;
         const input = document.createElement('input'); input.type = 'date'; input.setAttribute('aria-label', `${filter.label} ${text.toLowerCase()}`); input.value = range[key];
         listen(input, 'change', () => { range[key] = input.value; state.page = 1; render(); }); label.append(input); group.append(label);
@@ -306,7 +321,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
         chipGroup = document.createElement('div');
         chipGroup.className = 'filter-chips';
         chipGroup.setAttribute('role', 'group');
-        chipGroup.setAttribute('aria-label', 'Filtros de la tabla');
+        chipGroup.setAttribute('aria-label', t('ui.table.filtersLabel'));
         toolbar.append(chipGroup);
       }
       chipGroup.append(buildChip(filter));
@@ -347,24 +362,24 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     if (column.sortable === false) th.textContent = column.label;
     else {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'table-sort'; button.textContent = column.label;
-      button.setAttribute('aria-label', `Ordenar por ${column.label}`);
+      button.setAttribute('aria-label', t('ui.table.sortBy', { 0: column.label }));
       button.addEventListener('click', () => { state.sort = { columnId: column.id, direction: state.sort.columnId === column.id && state.sort.direction === 'asc' ? 'desc' : 'asc' }; state.page = 1; view.onSortChange?.({ ...state.sort }); render(); }); th.append(button);
     }
     header.append(th);
   }
-  if (view.rowActions) { const th = document.createElement('th'); th.scope = 'col'; th.className = 'table-actions-heading'; th.setAttribute('aria-label', 'Acciones'); header.append(th); }
+  if (view.rowActions) { const th = document.createElement('th'); th.scope = 'col'; th.className = 'table-actions-heading'; th.setAttribute('aria-label', t('ui.table.actionsLabel')); header.append(th); }
   thead.append(header); table.append(thead); const tbody = document.createElement('tbody');
   if (view.tbodyId) tbody.id = view.tbodyId;
   table.append(tbody); wrap.append(table); shell.append(wrap);
-  const empty = document.createElement('p'); empty.className = 'table-empty'; empty.hidden = true; empty.textContent = view.emptyText ?? 'No hay registros.'; shell.append(empty);
+  const empty = document.createElement('p'); empty.className = 'table-empty'; empty.hidden = true; empty.textContent = emptyTextOf(view); shell.append(empty);
   const pager = document.createElement('div'); pager.className = 'pagination table-pagination';
-  const sizeLabel = document.createElement('label'); sizeLabel.className = 'pagination-size'; sizeLabel.append(document.createTextNode('Mostrar: '));
+  const sizeLabel = document.createElement('label'); sizeLabel.className = 'pagination-size'; sizeLabel.append(document.createTextNode(t('ui.table.show')));
   const sizeSelect = document.createElement('select'); sizeSelect.className = 'pagination-select'; sizeSelect.setAttribute('aria-label', t('msg.rowsPerPage'));
   for (const size of TABLE_PAGE_SIZES) { const option = document.createElement('option'); option.value = String(size); option.textContent = String(size); sizeSelect.append(option); }
   sizeLabel.append(sizeSelect, document.createTextNode(t('msg.perPageSuffix')));
-  const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'pagination-btn'; prev.textContent = 'Anterior';
+  const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'pagination-btn'; prev.textContent = t('ui.table.previous');
   const info = document.createElement('span'); info.className = 'pagination-info'; info.setAttribute('aria-live', 'polite');
-  const next = document.createElement('button'); next.type = 'button'; next.className = 'pagination-btn'; next.textContent = 'Siguiente';
+  const next = document.createElement('button'); next.type = 'button'; next.className = 'pagination-btn'; next.textContent = t('ui.table.next');
   listen(sizeSelect, 'change', () => { state.pageSize = Number(sizeSelect.value); state.page = 1; render(); });
   listen(prev, 'click', () => { state.page -= 1; render(); }); listen(next, 'click', () => { state.page += 1; render(); });
   pager.append(sizeLabel, prev, info, next); shell.append(pager); root.replaceChildren(shell);
@@ -419,7 +434,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
       trigger.dataset['tone'] = option.tone;
       trigger.classList.toggle('active', filtering);
       trigger.setAttribute('aria-pressed', String(filtering));
-      trigger.title = `${filter.label}: ${option.label.toLowerCase()}. Abrir las opciones`;
+      trigger.title = t('ui.table.chipTitle', { 0: filter.label, 1: option.label.toLowerCase() });
       text.textContent = option.label;
       for (const item of items) {
         const checked = item.dataset['value'] === option.value;
@@ -494,7 +509,7 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
       const emptyTr = document.createElement('tr'); emptyTr.className = 'table-empty-row';
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = view.columns.length + (view.rowActions ? 1 : 0);
-      emptyTd.textContent = view.emptyText ?? 'No hay registros.';
+      emptyTd.textContent = emptyTextOf(view);
       emptyTr.append(emptyTd);
       tbody.append(emptyTr);
     } else {
@@ -526,8 +541,8 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
           const menu = document.createElement('div'); menu.className = 'row-menu';
           const button = document.createElement('button'); button.type = 'button'; button.className = 'row-menu-btn'; button.textContent = '···';
           button.dataset['action'] = 'menu';
-          button.title = 'Acciones del registro';
-          button.setAttribute('aria-label', 'Acciones del registro'); button.setAttribute('aria-expanded', 'false');
+          button.title = t('ui.table.rowActions');
+          button.setAttribute('aria-label', t('ui.table.rowActions')); button.setAttribute('aria-expanded', 'false');
           const dropdown = document.createElement('div'); dropdown.className = 'row-menu-dropdown'; dropdown.hidden = true;
           const actions = typeof view.rowActions.actions === 'function' ? view.rowActions.actions(row) : view.rowActions.actions;
           for (const action of actions) {
@@ -565,7 +580,11 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
       if (column.sortable !== false) { th.setAttribute('aria-sort', active ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'); th.querySelector('button')!.dataset['direction'] = active ? state.sort.direction : 'none'; }
     }
     sizeSelect.value = String(result.pageSize); pager.hidden = result.total === 0; empty.hidden = result.total !== 0;
-    info.textContent = result.total === 0 ? '' : `${(result.page - 1) * result.pageSize + 1}–${Math.min(result.page * result.pageSize, result.total)} de ${result.total}`;
+    info.textContent = result.total === 0 ? '' : t('ui.table.rangeOf', {
+      0: (result.page - 1) * result.pageSize + 1,
+      1: Math.min(result.page * result.pageSize, result.total),
+      2: result.total,
+    });
     prev.disabled = result.page <= 1; next.disabled = result.page >= result.totalPages;
     for (const paintChip of chipPaints) paintChip();
     view.onProcessed?.({
@@ -579,10 +598,11 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
     });
   }
   render();
-  const registry = { closeRowMenus };
+  const registry = { closeRowMenus, refresh: () => render(true) };
   mountedTables.add(registry);
   return {
     setRows(nextRows, options) { rows = [...nextRows]; if (options?.keepPage !== true) state.page = 1; render(true); },
+    refresh() { render(true); },
     destroy() {
       for (const remove of listeners) remove();
       if (canListen) document.removeEventListener('click', onDocumentClick);

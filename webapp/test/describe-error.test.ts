@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FxbApiError } from '../src/client/fxb-client';
 import { describeError } from '../src/ui/browser/api';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 /**
  * `describeError` es el único sitio donde la vista convierte un fallo en texto.

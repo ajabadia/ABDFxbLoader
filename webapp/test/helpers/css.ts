@@ -952,7 +952,7 @@ export function auditPaginatedTableScroll(root: HtmlNode, css: string): TableScr
 
   for (const container of tableContainers(root)) {
     const ancestors = wrapAncestors(container);
-    if (!ancestors.some((element) => element.classes.has('drawer'))) continue;
+    if (!ancestors.some((element) => element.classes.has('drawer') || element.classes.has('view'))) continue;
 
     const name = label(container);
     tables.push(name);

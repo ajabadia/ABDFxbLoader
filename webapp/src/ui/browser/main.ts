@@ -73,18 +73,31 @@ import {
 } from '../capture.js';
 import { client, createFxbClient, describeError, isFxbApiError, setClientBaseUrl } from './api.js';
 import { byId } from './dom.js';
-import { mountTable, closeAllRowMenus, type TableController, type TableView } from '../table.js';
+import { mountTable, closeAllRowMenus, refreshTables, type TableController, type TableView } from '../table.js';
 
 import {
   applyI18n,
   getLocale,
-  initAppI18n,
   onLocaleChange,
   setLocale,
-  syncDocumentLang,
   t,
   type Locale,
 } from '../i18n/index.js';
+import { initAppI18n, syncDocumentLang } from './i18n-dom.js';
+import { els } from './elements.js';
+import { createIcon } from './icons.js';
+import { renderStatusWithAction, repaintStatus, setStatus, type StatusAction } from './status.js';
+import { hidePanel, openPanel, panelFocusables, showPanel } from './drawers.js';
+import {
+  activeAuditTab,
+  activeView,
+  applyView,
+  navigateTo,
+  showAuditTab,
+  syncLibraryView,
+  viewFromHash,
+} from './views.js';
+
 
 const STORAGE_ROOT = 'fxbLoader.libraryRoot';
 const STORAGE_DLL = 'fxbLoader.dllSource';
@@ -112,307 +125,6 @@ function fourCcFromId(id: string | number | undefined): string {
   return chars.join('');
 }
 
-const els = {
-  themeToggle: byId<HTMLButtonElement>('theme-toggle'),
-  form: byId<HTMLFormElement>('scan-form'),
-  root: byId<HTMLInputElement>('library-root'),
-  rootRecents: byId<HTMLDataListElement>('library-root-recents'),
-  rootRecentWrap: byId<HTMLElement>('library-root-recent-wrap'),
-  rootRecentSelect: byId<HTMLSelectElement>('library-root-recent-select'),
-  rootWarning: byId<HTMLParagraphElement>('root-warning'),
-  rootBrowse: byId<HTMLButtonElement>('root-browse'),
-  dll: byId<HTMLInputElement>('dll-source'),
-  dllRecents: byId<HTMLDataListElement>('dll-source-recents'),
-  dllRecentWrap: byId<HTMLElement>('dll-source-recent-wrap'),
-  dllRecentSelect: byId<HTMLSelectElement>('dll-source-recent-select'),
-  dllBrowse: byId<HTMLButtonElement>('dll-browse'),
-  recentsClear: byId<HTMLButtonElement>('recents-clear'),
-  scanButton: byId<HTMLButtonElement>('scan-button'),
-  status: byId<HTMLParagraphElement>('status'),
-  results: byId<HTMLElement>('results'),
-  summary: byId<HTMLSpanElement>('summary-text'),
-  plugsPath: byId<HTMLElement>('plugs-path'),
-  loaderStatus: byId<HTMLParagraphElement>('loader-status'),
-  pluginsTable: byId<HTMLElement>('plugins-table'),
-  filterCount: byId<HTMLElement>('filter-count'),
-  installAll: byId<HTMLButtonElement>('install-all'),
-  uninstallAll: byId<HTMLButtonElement>('uninstall-all'),
-  batchCancel: byId<HTMLButtonElement>('batch-cancel'),
-  batchResume: byId<HTMLButtonElement>('batch-resume'),
-  retryAll: byId<HTMLButtonElement>('retry-all'),
-  batchStatus: byId<HTMLParagraphElement>('batch-status'),
-  batchProgress: byId<HTMLProgressElement>('batch-progress'),
-  batchStep: byId<HTMLElement>('batch-step'),
-  batchClock: byId<HTMLParagraphElement>('batch-clock'),
-  batchErrors: byId<HTMLDetailsElement>('batch-errors'),
-  batchErrorsLabel: byId<HTMLElement>('batch-errors-label'),
-  batchErrorList: byId<HTMLElement>('batch-error-list'),
-  banks: byId<HTMLElement>('banks'),
-  banksTitle: byId<HTMLElement>('banks-plugin'),
-  banksClose: byId<HTMLButtonElement>('banks-close'),
-  banksPresets: byId<HTMLElement>('banks-presets'),
-  banksExists: byId<HTMLElement>('banks-exists'),
-  banksStatus: byId<HTMLParagraphElement>('banks-status'),
-  banksTable: byId<HTMLElement>('banks-table'),
-  defaultBank: byId<HTMLSelectElement>('default-bank'),
-  loadFxb: byId<HTMLInputElement>('load-fxb'),
-  defaultSave: byId<HTMLButtonElement>('default-save'),
-  defaultConvert: byId<HTMLButtonElement>('default-convert'),
-  defaultRestore: byId<HTMLButtonElement>('default-restore'),
-  defaultDiscard: byId<HTMLButtonElement>('default-discard'),
-  importPaths: byId<HTMLTextAreaElement>('import-paths'),
-  recentBanks: byId<HTMLElement>('recent-banks'),
-  importBrowse: byId<HTMLButtonElement>('import-browse'),
-  importOverwrite: byId<HTMLInputElement>('import-overwrite'),
-  importButton: byId<HTMLButtonElement>('import-button'),
-  importCancel: byId<HTMLButtonElement>('import-cancel'),
-  importProgress: byId<HTMLProgressElement>('import-progress'),
-  importResults: byId<HTMLElement>('import-results'),
-  exportBank: byId<HTMLSelectElement>('export-bank'),
-  exportOrder: byId<HTMLSelectElement>('export-order'),
-  exportOverwrite: byId<HTMLInputElement>('export-overwrite'),
-  exportButton: byId<HTMLButtonElement>('export-button'),
-  createMode: byId<HTMLSelectElement>('create-mode'),
-  createBankName: byId<HTMLInputElement>('create-bank-name'),
-  createOrder: byId<HTMLSelectElement>('create-order'),
-  createProgramRows: byId<HTMLElement>('create-program-rows'),
-  createProgramNames: byId<HTMLTextAreaElement>('create-program-names'),
-  createFxVersion: byId<HTMLInputElement>('create-fx-version'),
-  createNumParams: byId<HTMLInputElement>('create-num-params'),
-  createChunkRows: byId<HTMLElement>('create-chunk-rows'),
-  createChunkHex: byId<HTMLTextAreaElement>('create-chunk-hex'),
-  createChunkVersion: byId<HTMLSelectElement>('create-chunk-version'),
-  createCurrentProgram: byId<HTMLInputElement>('create-current-program'),
-  createChunkPrograms: byId<HTMLInputElement>('create-chunk-programs'),
-  createOverwrite: byId<HTMLInputElement>('create-overwrite'),
-  createBankButton: byId<HTMLButtonElement>('create-bank-button'),
-  drawerBackdrop: byId<HTMLElement>('drawer-backdrop'),
-  meta: byId<HTMLElement>('meta'),
-  metaPlugin: byId<HTMLElement>('meta-plugin'),
-  metaClose: byId<HTMLButtonElement>('meta-close'),
-  metaPath: byId<HTMLElement>('meta-path'),
-  metaExists: byId<HTMLElement>('meta-exists'),
-  metaOrigin: byId<HTMLElement>('meta-origin'),
-  metaId: byId<HTMLInputElement>('meta-id'),
-  metaName: byId<HTMLInputElement>('meta-name'),
-  metaVendor: byId<HTMLInputElement>('meta-vendor'),
-  metaVendorUrl: byId<HTMLInputElement>('meta-vendor-url'),
-  metaGenre: byId<HTMLInputElement>('meta-genre'),
-  metaAbbreviation: byId<HTMLInputElement>('meta-abbreviation'),
-  metaCreated: byId<HTMLInputElement>('meta-created'),
-  metaNotes: byId<HTMLTextAreaElement>('meta-notes'),
-  metaExtended: byId<HTMLTextAreaElement>('meta-extended'),
-  metaSave: byId<HTMLButtonElement>('meta-save'),
-  metaReload: byId<HTMLButtonElement>('meta-reload'),
-  metaStatus: byId<HTMLParagraphElement>('meta-status'),
-  metaDll: byId<HTMLInputElement>('meta-dll'),
-  metaDllNote: byId<HTMLElement>('meta-dll-note'),
-  metaDllSave: byId<HTMLButtonElement>('meta-dll-save'),
-  metaDllCancel: byId<HTMLButtonElement>('meta-dll-cancel'),
-  metaDllActions: byId<HTMLElement>('meta-dll-actions'),
-  dialogDllDraft: byId<HTMLDialogElement>('dialog-dll-draft'),
-  dialogDllDraftText: byId<HTMLElement>('dialog-dll-draft-text'),
-  dialogDllDraftContinue: byId<HTMLButtonElement>('dialog-dll-draft-continue'),
-  dialogDllDraftCancel: byId<HTMLButtonElement>('dialog-dll-draft-cancel'),
-  metaWizardBanner: byId<HTMLElement>('meta-wizard-banner'),
-  metaWizardTitle: byId<HTMLElement>('meta-wizard-title'),
-  metaWizardApply: byId<HTMLButtonElement>('meta-wizard-apply'),
-  pluginWizard: byId<HTMLElement>('plugin-wizard'),
-  pluginWizardPlugin: byId<HTMLElement>('plugin-wizard-plugin'),
-  pluginWizardClose: byId<HTMLButtonElement>('plugin-wizard-close'),
-  pluginWizardEmpty: byId<HTMLElement>('plugin-wizard-empty'),
-  pluginWizardCreateWrap: byId<HTMLElement>('plugin-wizard-create-wrap'),
-  pluginWizardCreateBtn: byId<HTMLButtonElement>('plugin-wizard-create-btn'),
-  pluginWizardContent: byId<HTMLElement>('plugin-wizard-content'),
-  pluginWizardName: byId<HTMLElement>('plugin-wizard-name'),
-  pluginWizardSource: byId<HTMLElement>('plugin-wizard-source'),
-  pluginWizardVendor: byId<HTMLElement>('plugin-wizard-vendor'),
-  pluginWizardGenre: byId<HTMLElement>('plugin-wizard-genre'),
-  pluginWizardId: byId<HTMLElement>('plugin-wizard-id'),
-  pluginWizardDll: byId<HTMLElement>('plugin-wizard-dll'),
-  pluginWizardDimensions: byId<HTMLElement>('plugin-wizard-dimensions'),
-  pluginWizardParams: byId<HTMLElement>('plugin-wizard-params'),
-  pluginWizardFlags: byId<HTMLElement>('plugin-wizard-flags'),
-  pluginWizardFilesWrap: byId<HTMLElement>('plugin-wizard-files-wrap'),
-  pluginWizardFiles: byId<HTMLElement>('plugin-wizard-files'),
-  pluginWizardRegistryWrap: byId<HTMLElement>('plugin-wizard-registry-wrap'),
-  pluginWizardRegistry: byId<HTMLElement>('plugin-wizard-registry'),
-  pluginWizardNotesWrap: byId<HTMLElement>('plugin-wizard-notes-wrap'),
-  pluginWizardNotes: byId<HTMLElement>('plugin-wizard-notes'),
-  pluginWizardReadmeWrap: byId<HTMLElement>('plugin-wizard-readme-wrap'),
-  pluginWizardReadme: byId<HTMLElement>('plugin-wizard-readme'),
-  pluginWizardVfxinfoBtn: byId<HTMLButtonElement>('plugin-wizard-vfxinfo-btn'),
-  pluginWizardVfxinfoLabel: byId<HTMLElement>('plugin-wizard-vfxinfo-label'),
-  pluginWizardApplyBtn: byId<HTMLButtonElement>('plugin-wizard-apply-btn'),
-  pluginWizardInstallBtn: byId<HTMLButtonElement>('plugin-wizard-install-btn'),
-  pluginWizardStatus: byId<HTMLParagraphElement>('plugin-wizard-status'),
-  logDrawer: byId<HTMLElement>('log-drawer'),
-  logPlugin: byId<HTMLElement>('log-plugin'),
-  logClose: byId<HTMLButtonElement>('log-close'),
-  logPath: byId<HTMLElement>('log-path'),
-  logExists: byId<HTMLElement>('log-exists'),
-  logSummary: byId<HTMLElement>('log-summary'),
-  logTable: byId<HTMLElement>('log-table'),
-  logDetail: byId<HTMLElement>('log-record-detail'),
-  logDetailTitle: byId<HTMLElement>('log-record-detail-title'),
-  logDetailFields: byId<HTMLElement>('log-record-detail-fields'),
-  logDetailClose: byId<HTMLButtonElement>('log-record-detail-close'),
-  logRotated: byId<HTMLElement>('log-rotated'),
-  logStatus: byId<HTMLParagraphElement>('log-status'),
-  wizardsNavBtn: byId<HTMLButtonElement>('wizards-nav-btn'),
-  wizards: byId<HTMLElement>('wizards'),
-  wizardsClose: byId<HTMLButtonElement>('wizards-close'),
-  wizardsFilter: byId<HTMLInputElement>('wizards-filter'),
-  wizardsCount: byId<HTMLElement>('wizards-count'),
-  wizardsTable: byId<HTMLDivElement>('wizards-table'),
-  wizardsStatus: byId<HTMLParagraphElement>('wizards-status'),
-  settingsNavBtn: byId<HTMLButtonElement>('settings-nav-btn'),
-  settingsDrawer: byId<HTMLElement>('settings-drawer'),
-  settingsClose: byId<HTMLButtonElement>('settings-close'),
-  importPkgNavBtn: byId<HTMLButtonElement>('import-pkg-nav-btn'),
-  importPackageDrawer: byId<HTMLElement>('import-package-drawer'),
-  importPackageClose: byId<HTMLButtonElement>('import-package-close'),
-  importPackagePath: byId<HTMLInputElement>('import-package-path'),
-  importPackageBrowse: byId<HTMLButtonElement>('import-package-browse'),
-  importPackageInspectBtn: byId<HTMLButtonElement>('import-package-inspect-btn'),
-  importPackagePreview: byId<HTMLElement>('import-package-preview'),
-  importPackageKind: byId<HTMLElement>('import-package-kind'),
-  importPackageSource: byId<HTMLElement>('import-package-source'),
-  importPackagePluginsWrap: byId<HTMLElement>('import-package-plugins-wrap'),
-  importPackageAllPlugs: byId<HTMLInputElement>('import-package-all-plugs'),
-  importPackagePluginsTable: byId<HTMLElement>('import-package-plugins-table'),
-  importPackageBanksWrap: byId<HTMLElement>('import-package-banks-wrap'),
-  importPackageAllBanks: byId<HTMLInputElement>('import-package-all-banks'),
-  importPackageBanksTable: byId<HTMLElement>('import-package-banks-table'),
-  importPackagePolicy: byId<HTMLSelectElement>('import-package-policy'),
-  importPackageRepair: byId<HTMLInputElement>('import-package-repair'),
-  importPackageExecuteBtn: byId<HTMLButtonElement>('import-package-execute-btn'),
-  importPackageStatus: byId<HTMLParagraphElement>('import-package-status'),
-  auditNavBtn: byId<HTMLButtonElement>('audit-nav-btn'),
-  auditDrawer: byId<HTMLElement>('audit-drawer'),
-  auditClose: byId<HTMLButtonElement>('audit-close'),
-  auditRefresh: byId<HTMLButtonElement>('audit-refresh'),
-  auditPath: byId<HTMLElement>('audit-path'),
-  auditSummary: byId<HTMLElement>('audit-summary'),
-  auditTable: byId<HTMLElement>('audit-table'),
-  auditStatus: byId<HTMLParagraphElement>('audit-status'),
-  auditDetail: byId<HTMLElement>('audit-record-detail'),
-  auditDetailTitle: byId<HTMLElement>('audit-record-detail-title'),
-  auditDetailFields: byId<HTMLElement>('audit-record-detail-fields'),
-  auditDetailClose: byId<HTMLButtonElement>('audit-record-detail-close'),
-  dataAuditNavBtn: byId<HTMLButtonElement>('data-audit-nav-btn'),
-  dataAuditDrawer: byId<HTMLElement>('data-audit-drawer'),
-  dataAuditClose: byId<HTMLButtonElement>('data-audit-close'),
-  dataAuditRefresh: byId<HTMLButtonElement>('data-audit-refresh'),
-  dataAuditPath: byId<HTMLElement>('data-audit-path'),
-  dataAuditSummary: byId<HTMLElement>('data-audit-summary'),
-  dataAuditTable: byId<HTMLElement>('data-audit-table'),
-  dataAuditStatus: byId<HTMLParagraphElement>('data-audit-status'),
-  dataAuditDetail: byId<HTMLElement>('data-audit-detail'),
-  dataAuditDetailTitle: byId<HTMLElement>('data-audit-detail-title'),
-  dataAuditDetailFields: byId<HTMLElement>('data-audit-detail-fields'),
-  dataAuditDetailGaps: byId<HTMLElement>('data-audit-detail-gaps'),
-  dataAuditDetailProposals: byId<HTMLElement>('data-audit-detail-proposals'),
-  dataAuditDetailClose: byId<HTMLButtonElement>('data-audit-detail-close'),
-  dataAuditApply: byId<HTMLButtonElement>('data-audit-apply'),
-  dataAuditApplyConfirm: byId<HTMLElement>('data-audit-apply-confirm'),
-  dataAuditApplyNote: byId<HTMLElement>('data-audit-apply-note'),
-  dataAuditApplyList: byId<HTMLElement>('data-audit-apply-list'),
-  dataAuditApplyConfirmBtn: byId<HTMLButtonElement>('data-audit-apply-confirm-btn'),
-  dataAuditApplyCancel: byId<HTMLButtonElement>('data-audit-apply-cancel'),
-  dataAuditApplyStatus: byId<HTMLParagraphElement>('data-audit-apply-status'),
-  customPluginNavBtn: byId<HTMLButtonElement>('custom-plugin-nav-btn'),
-  customPluginDrawer: byId<HTMLElement>('custom-plugin-drawer'),
-  customPluginClose: byId<HTMLButtonElement>('custom-plugin-close'),
-  customPluginPath: byId<HTMLInputElement>('custom-plugin-path'),
-  customPluginBrowse: byId<HTMLButtonElement>('custom-plugin-browse'),
-  customPluginInspectBtn: byId<HTMLButtonElement>('custom-plugin-inspect-btn'),
-  customPluginResult: byId<HTMLElement>('custom-plugin-result'),
-  customPluginValidPe: byId<HTMLElement>('custom-plugin-valid-pe'),
-  customPluginBitness: byId<HTMLElement>('custom-plugin-bitness'),
-  customPluginVst: byId<HTMLElement>('custom-plugin-vst'),
-  customPluginSuggestion: byId<HTMLElement>('custom-plugin-suggestion'),
-  customPluginWizard: byId<HTMLElement>('custom-plugin-wizard'),
-  customPluginExports: byId<HTMLElement>('custom-plugin-exports'),
-  customPluginIssues: byId<HTMLElement>('custom-plugin-issues'),
-  customPluginBitnessWarning: byId<HTMLElement>('custom-plugin-bitness-warning'),
-  customPluginRoot: byId<HTMLInputElement>('custom-plugin-root'),
-  customPluginFolder: byId<HTMLInputElement>('custom-plugin-folder'),
-  customPluginName: byId<HTMLInputElement>('custom-plugin-name'),
-  customPluginId: byId<HTMLInputElement>('custom-plugin-id'),
-  customPluginVendor: byId<HTMLInputElement>('custom-plugin-vendor'),
-  customPluginGenre: byId<HTMLInputElement>('custom-plugin-genre'),
-  customPluginParams: byId<HTMLInputElement>('custom-plugin-params'),
-  customPluginPrograms: byId<HTMLInputElement>('custom-plugin-programs'),
-  customPluginSynth: byId<HTMLInputElement>('custom-plugin-synth'),
-  customPluginEditor: byId<HTMLInputElement>('custom-plugin-editor'),
-  customPluginEditorRow: byId<HTMLElement>('custom-plugin-editor-row'),
-  customPluginWidth: byId<HTMLInputElement>('custom-plugin-width'),
-  customPluginHeight: byId<HTMLInputElement>('custom-plugin-height'),
-  customPluginSaveWizard: byId<HTMLInputElement>('custom-plugin-save-wizard'),
-  customPluginOverwrite: byId<HTMLInputElement>('custom-plugin-overwrite'),
-  customPluginCreateBtn: byId<HTMLButtonElement>('custom-plugin-create-btn'),
-  customPluginCreated: byId<HTMLElement>('custom-plugin-created'),
-  customPluginCreatedPaths: byId<HTMLElement>('custom-plugin-created-paths'),
-  customPluginCreatedWarnings: byId<HTMLElement>('custom-plugin-created-warnings'),
-  customPluginStatus: byId<HTMLParagraphElement>('custom-plugin-status'),
-  // Capture
-  captureNavBtn: byId<HTMLButtonElement>('capture-nav-btn'),
-  captureDrawer: byId<HTMLElement>('capture-drawer'),
-  captureClose: byId<HTMLButtonElement>('capture-close'),
-  captureStartBtn: byId<HTMLButtonElement>('capture-start-btn'),
-  captureStopBtn: byId<HTMLButtonElement>('capture-stop-btn'),
-  captureLiveIndicator: byId<HTMLElement>('capture-live-indicator'),
-  captureLiveMessage: byId<HTMLElement>('capture-live-message'),
-  captureProgressWrap: byId<HTMLElement>('capture-progress-wrap'),
-  captureProgressBar: byId<HTMLElement>('capture-progress-bar'),
-  captureProgressCount: byId<HTMLElement>('capture-progress-count'),
-  captureProgressRoot: byId<HTMLElement>('capture-progress-root'),
-  captureProgressNative: byId<HTMLProgressElement>('capture-progress-native'),
-  captureLogState: byId<HTMLElement>('capture-log-state'),
-  captureFinishBtn: byId<HTMLButtonElement>('capture-finish-btn'),
-  capturePackageBtn: byId<HTMLButtonElement>('capture-package-btn'),
-  captureVmachineBtn: byId<HTMLButtonElement>('capture-vmachine-btn'),
-  captureIncludeExisting: byId<HTMLInputElement>('capture-include-existing'),
-  capturePreExistingSummary: byId<HTMLElement>('capture-pre-existing-summary'),
-  capturePreExistingDetails: byId<HTMLDetailsElement>('capture-pre-existing-details'),
-  capturePreExistingDetailsLabel: byId<HTMLElement>('capture-pre-existing-details-label'),
-  capturePreExistingList: byId<HTMLUListElement>('capture-pre-existing-list'),
-  captureRefreshStagingBtn: byId<HTMLButtonElement>('capture-refresh-staging-btn'),
-  captureRemovePreExistingBtn: byId<HTMLButtonElement>('capture-remove-pre-existing-btn'),
-  captureRemovePreExistingLabel: byId<HTMLElement>('capture-remove-pre-existing-label'),
-  captureRestorePreExistingBtn: byId<HTMLButtonElement>('capture-restore-pre-existing-btn'),
-  captureRestorePreExistingLabel: byId<HTMLElement>('capture-restore-pre-existing-label'),
-  captureStep1Status: byId<HTMLElement>('capture-step1-status'),
-  captureStep2Status: byId<HTMLElement>('capture-step2-status'),
-  captureStep3Status: byId<HTMLElement>('capture-step3-status'),
-  captureStep4Status: byId<HTMLElement>('capture-step4-status'),
-  captureStartInfo: byId<HTMLElement>('capture-start-info'),
-  captureSnapshotBefore: byId<HTMLElement>('capture-snapshot-before'),
-  captureSnapshotSummary: byId<HTMLElement>('capture-snapshot-summary'),
-  captureViewSnapshotBtn: byId<HTMLButtonElement>('capture-view-snapshot-btn'),
-  captureDownloadSnapshotBtn: byId<HTMLButtonElement>('capture-download-snapshot-btn'),
-  captureSnapshotDialog: byId<HTMLDialogElement>('capture-snapshot-dialog'),
-  captureSnapshotDialogClose: byId<HTMLButtonElement>('capture-snapshot-dialog-close'),
-  captureSnapshotDialogSummary: byId<HTMLElement>('capture-snapshot-dialog-summary'),
-  captureSnapshotContent: byId<HTMLPreElement>('capture-snapshot-content'),
-  captureFinishInfo: byId<HTMLElement>('capture-finish-info'),
-  captureDiffId: byId<HTMLElement>('capture-diff-id'),
-  captureFilesAdded: byId<HTMLElement>('capture-files-added'),
-  captureFilesModified: byId<HTMLElement>('capture-files-modified'),
-  captureFilesDeleted: byId<HTMLElement>('capture-files-deleted'),
-  captureRegistryCount: byId<HTMLElement>('capture-registry-count'),
-  captureStagingInfo: byId<HTMLElement>('capture-staging-info'),
-  captureStagingCount: byId<HTMLElement>('capture-staging-count'),
-  captureStagingList: byId<HTMLElement>('capture-staging-list'),
-  capturePluginName: byId<HTMLInputElement>('capture-plugin-name'),
-  capturePluginVendor: byId<HTMLInputElement>('capture-plugin-vendor'),
-  captureVmachineInfo: byId<HTMLElement>('capture-vmachine-info'),
-  captureVmachinePath: byId<HTMLElement>('capture-vmachine-path'),
-  captureWizardPath: byId<HTMLElement>('capture-wizard-path'),
-  captureLog: byId<HTMLElement>('capture-log'),
-  captureStatus: byId<HTMLParagraphElement>('capture-status'),
-};
 
 interface BanksState {
   pluginName: string;
@@ -471,26 +183,10 @@ if (recentDlls.length === 0 && lastDll !== '') {
 let busy = false;
 let banksBusy = false;
 /** Último resultado de `/library/scan`, o `null` si aún no hay lista. */
-let scanData: LibraryScanResponse | null = null;
-/** Fallos del último lote, con su reintento individual. */
-let batchFailures: BatchFailure[] = [];
-/** Tabla de los fallos del lote, montada sobre `mountTable`. */
-let batchErrorsTableController: TableController<BatchFailure> | null = null;
-/**
- * Plugins del último lote que quedaron sin confirmar (cancelado o cortado),
- * con la acción que había que aplicarles. Alimenta el botón «Reanudar».
- */
-let batchPending: { action: BatchAction; plugins: string[] } | null = null;
-/** Corta el lote en curso; `null` cuando no hay ninguno. */
-let batchController: AbortController | null = null;
+
+export let scanData: LibraryScanResponse | null = null;
 /** Corta la importación de bancos en curso; `null` cuando no hay ninguna. */
 let importController: AbortController | null = null;
-/** Reloj del lote en curso, o `null` si no hay ninguno. */
-let batchClock: BatchClock | null = null;
-/** Último progreso pintado: el reloj lo necesita para estimar entre eventos. */
-let batchProgress: BatchProgress | null = null;
-/** Refresco periódico del reloj para que los segundos corran sin eventos. */
-let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Panel de bancos abierto, o `null`. */
 let banks: BanksState | null = null;
 let banksTableController: TableController<LibraryBanksListResponse['banks'][number]> | null = null;
@@ -539,12 +235,6 @@ els.dll.value = lastDll;
 renderRecents();
 setRootWarning(libraryRoot === '');
 
-export interface StatusAction {
-  label: string;
-  icon?: string;
-  title?: string;
-  onClick: () => void;
-}
 
 function openSettingsAndFocus(targetFieldId: 'library-root' | 'dll-source' = 'library-root'): void {
   showPanel(els.settingsDrawer, els.settingsNavBtn);
@@ -559,51 +249,17 @@ function openSettingsAndFocus(targetFieldId: 'library-root' | 'dll-source' = 'li
 
 function openSettingsForLibraryRootAction(): StatusAction {
   return {
-    label: t('ui.app.openSettings'),
-    icon: 'settings',
-    title: t('ui.app.openSettingsTitle'),
-    onClick: () => openSettingsAndFocus('library-root'),
+    get label() { return t('ui.app.chooseRoot'); },
+    title: t('ui.app.chooseRootTitle'),
+    onClick: () => {
+      navigateTo('libreria');
+      els.root.focus({ preventScroll: false });
+      els.root.select();
+    },
   };
 }
 
-function renderStatusWithAction(
-  container: HTMLElement,
-  message: string,
-  kind = 'info',
-  action?: StatusAction,
-): void {
-  container.replaceChildren();
-  if (!message) {
-    container.className = 'status';
-    return;
-  }
-  container.className = kind ? `status ${kind}` : 'status';
-  const span = document.createElement('span');
-  span.textContent = message;
-  container.appendChild(span);
 
-  if (action) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'status-action-btn';
-    if (action.title) btn.title = action.title;
-    if (action.icon) {
-      btn.appendChild(createIcon(action.icon));
-    }
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = action.label;
-    btn.appendChild(labelSpan);
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      action.onClick();
-    });
-    container.appendChild(btn);
-  }
-}
-
-function setStatus(message: string, kind = 'info', action?: StatusAction): void {
-  renderStatusWithAction(els.status, message, kind, action);
-}
 
 /**
  * La explicación de qué necesita la carpeta solo se enseña cuando hace falta:
@@ -681,7 +337,7 @@ function renderRecentBanks(): void {
 
   const label = document.createElement('span');
   label.className = 'recents-label';
-  label.textContent = 'Recientes:';
+  label.textContent = t('ui.recents.label');
   els.recentBanks.append(label);
 
   for (const bankPath of recentBanks) {
@@ -712,7 +368,7 @@ function renderRecentBanks(): void {
     forget.className = 'recent-chip-remove';
     forget.textContent = '×';
     forget.title = t('ui.recents.forgetTitle', { 0: name });
-    forget.setAttribute('aria-label', `Olvidar ${name} de los recientes`);
+    forget.setAttribute('aria-label', t('ui.recents.forgetTitle', { 0: name }));
     forget.addEventListener('click', () => forgetRecentBank(bankPath));
 
     item.append(chip, forget);
@@ -724,7 +380,7 @@ function renderRecentBanks(): void {
   const clear = document.createElement('button');
   clear.type = 'button';
   clear.className = 'recent-clear';
-  clear.textContent = 'Olvidar';
+  clear.textContent = t('ui.recents.forget');
   clear.prepend(createIcon('trash'));
   clear.title = t('ui.recents.forgetAllTitle');
   clear.addEventListener('click', () => clearRecentBanks());
@@ -922,7 +578,7 @@ function updateBatchControls(): void {
     resume === null
       ? ''
       : t('ui.batch.resumeTitle', { 0: resume.plugins.length }) +
-        ' al cortarse el lote';
+        t('ui.batch.resumeSuffix');
   els.batchResume.disabled = busy || resume === null;
 
   // Reintentar todos aparece solo mientras queden fallos del lote; el texto
@@ -1005,18 +661,6 @@ function renderBatchClock(): void {
 }
 
 /** Icono del sprite para un botón que la vista crea sobre la marcha. */
-function createIcon(name: string): SVGSVGElement {
-  // El espacio de nombres va literal: `renderRecentBanks` corre antes de que se
-  // inicialicen las constantes de la mitad del archivo (zona muerta temporal).
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'icon');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', `#icon-${name}`);
-  svg.append(use);
-  return svg;
-}
 
 /**
  * Cambia el texto de un botón sin borrar su icono: el marcado pone el texto en
@@ -1083,14 +727,32 @@ function renderCaptureTask(task: {
   registryRootsTotal: number; registryRootsCompleted: number; currentRegistryRoot: string | null;
 }): void {
   const isBusy = task.status === 'running' || task.status === 'cancelling';
-  setCaptureBusy(task.status === 'cancelling' ? 'Deteniendo…' : task.message, isBusy, task.status === 'cancelling');
+  // El servidor manda `message` ya redactado (y en castellano): las fases que
+  // se ven aquí se componen con el diccionario y solo se usa `message` para
+  // las demás, que no son progreso de escaneo.
+  const scanMessage =
+    task.phase === 'registry'
+      ? t('ui.capture.scanningRegistry', { 0: task.currentRegistryRoot ?? '' })
+      : task.phase !== 'files'
+        ? task.message
+        : task.rootsCompleted > 0
+          ? t('ui.capture.scanningFiles', {
+              0: Math.min(task.rootsCompleted + 1, task.rootsTotal),
+              1: task.rootsTotal,
+            })
+          : t('ui.capture.scanningFilesTotal', { 0: task.rootsTotal });
+  setCaptureBusy(
+    task.status === 'cancelling' ? t('ui.capture.stoppingShort') : scanMessage,
+    isBusy,
+    task.status === 'cancelling',
+  );
   if (els.captureProgressWrap) {
     els.captureProgressWrap.hidden = false;
     els.captureProgressWrap.setAttribute('aria-valuemin', '0');
   }
   if (els.captureProgressCount) {
     els.captureProgressCount.textContent = task.phase === 'registry'
-      ? t('ui.capture.progressRegistry', { 0: task.registryRootsCompleted, 1: task.registryRootsTotal, 2: task.message })
+      ? t('ui.capture.progressRegistryOnly', { 0: task.registryRootsCompleted, 1: task.registryRootsTotal })
       : t('ui.capture.progressFiles', { 0: task.filesFound.toLocaleString(), 1: task.entriesVisited.toLocaleString() });
   }
   if (els.captureProgressRoot) {
@@ -1230,7 +892,7 @@ const MAX_BANK_NAMES_IN_TITLE = 12;
 
 /** t('ui.banks.countOne'), t('ui.banks.countMany') o t('ui.banks.countNone'). */
 function bankCountLabel(count: number): string {
-  if (count === 0) return 'sin bancos';
+  if (count === 0) return t('ui.banks.countNone');
   return count === 1 ? t('ui.banks.countOne') : t('ui.banks.countMany', { 0: count });
 }
 
@@ -1258,7 +920,7 @@ function paintBanksBadge(
   const shown = names.slice(0, MAX_BANK_NAMES_IN_TITLE);
   const rest = count - shown.length;
   const list = rest > 0 ? [...shown, t('ui.banks.moreNames', { 0: rest })].join('\n') : shown.join('\n');
-  badge.title = `Bancos de ${pluginName}:\n${list}\n\nAbrir el panel de bancos`;
+  badge.title = t('ui.banks.rowTitle', { 0: pluginName, 1: list });
 }
 
 /**
@@ -1298,7 +960,7 @@ const catalogTableView: TableView<ScanPlugin> = {
   columns: [
     {
       id: 'name',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       sortType: 'text',
       getValue: (plugin) => plugin.name,
       cellDataset: () => ({ field: 'name' }),
@@ -1306,7 +968,7 @@ const catalogTableView: TableView<ScanPlugin> = {
     },
     {
       id: 'status',
-      label: 'Estado',
+      get label() { return t('ui.common.state'); },
       sortType: 'text',
       getValue: (plugin) => (plugin.hasLoader ? t('ui.table.withLoader') : t('ui.table.noLoader')),
       renderNode: (plugin) => {
@@ -1319,16 +981,24 @@ const catalogTableView: TableView<ScanPlugin> = {
     },
     {
       id: 'compatibility',
-      label: 'Compatibilidad',
+      get label() { return t('ui.common.compatibility'); },
       sortType: 'text',
       getValue: (plugin) =>
-        plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : t('ui.table.unverified'),
+        plugin.compatible === true
+          ? t('ui.table.compatible')
+          : plugin.compatible === false
+            ? t('ui.table.incompatible')
+            : t('ui.table.unverified'),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = plugin.compatible === true ? 'badge on' : plugin.compatible === false ? 'badge bad' : 'badge';
         badge.dataset['field'] = 'compatibility';
         badge.textContent =
-          plugin.compatible === true ? 'compatible' : plugin.compatible === false ? 'incompatible' : t('ui.table.unverified');
+          plugin.compatible === true
+            ? t('ui.table.compatible')
+            : plugin.compatible === false
+              ? t('ui.table.incompatible')
+              : t('ui.table.unverified');
         badge.title = plugin.compatibilityIssues.join('\n');
         return badge;
       },
@@ -1347,12 +1017,12 @@ const catalogTableView: TableView<ScanPlugin> = {
       label: 'vfxinfo.txt',
       sortType: 'text',
       sortable: false,
-      getValue: (plugin) => (plugin.hasVfxinfo ? 'presente' : 'falta'),
+      getValue: (plugin) => (plugin.hasVfxinfo ? t('msg.metaPresent') : t('msg.metaMissing')),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = plugin.hasVfxinfo ? 'badge on' : 'badge';
         badge.dataset['field'] = 'vfxinfo';
-        badge.textContent = plugin.hasVfxinfo ? 'presente' : 'falta';
+        badge.textContent = plugin.hasVfxinfo ? t('msg.metaPresent') : t('msg.metaMissing');
         return badge;
       },
     },
@@ -1361,19 +1031,22 @@ const catalogTableView: TableView<ScanPlugin> = {
       label: 'Wizard',
       sortType: 'text',
       sortable: false,
-      getValue: (plugin) => (plugin.hasWizard ? 'disponible' : '—'),
+      getValue: (plugin) => (plugin.hasWizard ? t('ui.common.available') : '—'),
       renderNode: (plugin) => {
         const badge = document.createElement('button');
         badge.type = 'button';
         badge.className = plugin.hasWizard ? 'badge badge-action on' : 'badge badge-action';
         badge.dataset['field'] = 'wizard';
-        badge.textContent = plugin.hasWizard ? 'disponible' : '—';
+        badge.textContent = plugin.hasWizard ? t('ui.wizard.available') : '—';
         badge.title = plugin.hasWizard
           ? t('ui.wizard.badgeTitle', { 0: plugin.wizardId ?? '' })
           : t('ui.wizard.badgeTitleNone', { 0: plugin.name });
         badge.setAttribute(
           'aria-label',
-          `Wizard de ${plugin.name}: ${plugin.hasWizard ? 'disponible' : 'no disponible'}. Abrir el panel`,
+          t('ui.wizard.badgeLabel', {
+            0: plugin.name,
+            1: plugin.hasWizard ? t('ui.wizard.available') : t('ui.wizard.unavailable'),
+          }),
         );
         badge.addEventListener('click', () => {
           closeAllRowMenus();
@@ -1386,7 +1059,7 @@ const catalogTableView: TableView<ScanPlugin> = {
       // La pastilla cuenta los bancos del último escaneo y abre el cajón con
       // el listado completo, validado, que se refresca al importar o borrar.
       id: 'banks',
-      label: 'Bancos',
+      get label() { return t('ui.common.banks'); },
       sortType: 'text',
       sortable: false,
       getValue: (plugin) => bankCountLabel(plugin.banks?.count ?? 0),
@@ -1405,16 +1078,16 @@ const catalogTableView: TableView<ScanPlugin> = {
     },
     {
       id: 'meta',
-      label: t('ui.table.catalogBadge'),
+      get label() { return t('ui.table.catalogBadge'); },
       sortType: 'text',
       sortable: false,
-      getValue: (plugin) => (plugin.hasMeta ? 'presente' : 'falta'),
+      getValue: (plugin) => (plugin.hasMeta ? t('msg.metaPresent') : t('msg.metaMissing')),
       renderNode: (plugin) => {
         const badge = document.createElement('button');
         badge.type = 'button';
         badge.className = plugin.hasMeta ? 'badge badge-action on' : 'badge badge-action';
         badge.dataset['field'] = 'meta';
-        badge.textContent = plugin.hasMeta ? 'presente' : 'falta';
+        badge.textContent = plugin.hasMeta ? t('msg.metaPresent') : t('msg.metaMissing');
         badge.title = plugin.hasMeta
           ? t('ui.meta.openTitle', { 0: plugin.name })
           : t('ui.meta.createTitle', { 0: plugin.name });
@@ -1439,74 +1112,74 @@ const catalogTableView: TableView<ScanPlugin> = {
   // El texto de fila cubre lo que buscaba antes el filtro a mano: nombre,
   // `pluginName` y la ruta de la carpeta.
   searchText: (plugin) => [plugin.name, plugin.pluginName ?? '', plugin.path].join('\n'),
-  emptyText: t('ui.table.emptyFilter'),
+  emptyText: () => t('ui.table.emptyFilter'),
   filters: [
     {
       id: 'install',
-      label: t('ui.filter.loaderTitle'),
+      get label() { return t('ui.filter.loaderTitle'); },
       columnId: 'status',
       type: 'chip',
       icon: 'check',
       options: [
-        { value: 'installed', label: t('ui.filter.withLoader'), tone: 'positive', predicate: (plugin) => plugin.hasLoader },
-        { value: 'uninstalled', label: t('ui.filter.withoutLoader'), tone: 'negative', predicate: (plugin) => !plugin.hasLoader },
-        { value: 'all', label: t('ui.filter.anyLoader'), tone: 'neutral' },
+        { value: 'installed', get label() { return t('ui.filter.withLoader'); }, tone: 'positive', predicate: (plugin) => plugin.hasLoader },
+        { value: 'uninstalled', get label() { return t('ui.filter.withoutLoader'); }, tone: 'negative', predicate: (plugin) => !plugin.hasLoader },
+        { value: 'all', get label() { return t('ui.filter.anyLoader'); }, tone: 'neutral' },
       ],
     },
     {
       id: 'banks',
-      label: t('ui.filter.banksTitle'),
+      get label() { return t('ui.filter.banksTitle'); },
       columnId: 'banks',
       type: 'chip',
       icon: 'banks',
       options: [
         {
           value: 'with-banks',
-          label: t('ui.filter.withBanks'),
+          get label() { return t('ui.filter.withBanks'); },
           tone: 'positive',
           predicate: (plugin) => (plugin.banks?.count ?? 0) > 0,
         },
         {
           value: 'without-banks',
-          label: t('ui.filter.withoutBanks'),
+          get label() { return t('ui.filter.withoutBanks'); },
           tone: 'negative',
           predicate: (plugin) => (plugin.banks?.count ?? 0) === 0,
         },
-        { value: 'all', label: t('ui.filter.anyBanks'), tone: 'neutral' },
+        { value: 'all', get label() { return t('ui.filter.anyBanks'); }, tone: 'neutral' },
       ],
     },
     {
       id: 'wizard',
-      label: t('ui.filter.wizardTitle'),
+      get label() { return t('ui.filter.wizardTitle'); },
       columnId: 'wizard',
       type: 'chip',
       icon: 'tag',
       options: [
-        { value: 'with-wizard', label: t('ui.filter.withWizard'), tone: 'positive', predicate: (plugin) => plugin.hasWizard },
-        { value: 'without-wizard', label: t('ui.filter.withoutWizard'), tone: 'negative', predicate: (plugin) => !plugin.hasWizard },
-        { value: 'all', label: t('ui.filter.anyWizard'), tone: 'neutral' },
+        { value: 'with-wizard', get label() { return t('ui.filter.withWizard'); }, tone: 'positive', predicate: (plugin) => plugin.hasWizard },
+        { value: 'without-wizard', get label() { return t('ui.filter.withoutWizard'); }, tone: 'negative', predicate: (plugin) => !plugin.hasWizard },
+        { value: 'all', get label() { return t('ui.filter.anyWizard'); }, tone: 'neutral' },
       ],
     },
     {
       id: 'compat',
-      label: t('ui.filter.compatTitle'),
+      get label() { return t('ui.filter.compatTitle'); },
       columnId: 'compatibility',
       type: 'chip',
       icon: 'ban',
       options: [
         {
           value: 'compatible',
-          label: t('ui.filter.noIncompatible'),
+          get label() { return t('ui.filter.noIncompatible'); },
           tone: 'positive',
           predicate: (plugin) => plugin.compatible !== false,
         },
         {
           value: 'incompatible',
-          label: t('ui.filter.onlyIncompatible'),
+          get label() { return t('ui.filter.onlyIncompatible'); },
           tone: 'negative',
           predicate: (plugin) => plugin.compatible === false,
         },
-        { value: 'all', label: t('ui.filter.anyCompat'), tone: 'neutral' },
+        { value: 'all', get label() { return t('ui.filter.anyCompat'); }, tone: 'neutral' },
       ],
     },
   ],
@@ -1522,13 +1195,13 @@ const catalogTableView: TableView<ScanPlugin> = {
       },
       {
         id: 'banks',
-        label: 'Bancos',
+        get label() { return t('ui.common.banks'); },
         icon: 'folder',
         onSelect: (_plugin, trigger) => void openBanks(plugin, trigger),
       },
       {
         id: 'meta',
-        label: t('ui.table.catalogBadge'),
+        get label() { return t('ui.table.catalogBadge'); },
         icon: 'tag',
         onSelect: (_plugin, trigger) => void openMeta(plugin, trigger),
       },
@@ -1540,7 +1213,7 @@ const catalogTableView: TableView<ScanPlugin> = {
       },
       {
         id: 'log',
-        label: 'Historial',
+        get label() { return t('ui.common.history'); },
         icon: 'list',
         onSelect: (_plugin, trigger) => void openLogDrawer(plugin, trigger),
       },
@@ -1580,23 +1253,25 @@ function render(data: LibraryScanResponse, options?: { resetPage?: boolean }): v
     }
   }
   updateBatchControls();
-  els.results.hidden = false;
+  syncLibraryView();
 
   const installed = data.plugins.filter((plugin) => plugin.hasLoader).length;
   const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
   els.summary.textContent =
     data.plugins.length === 0
       ? t('ui.table.emptyLibrary')
-      : `${installed} de ${data.plugins.length} con el cargador${
-          incompatible === 0 ? '' : t('ui.table.incompatibleSuffix', { 0: incompatible })
-        }`;
+      : t('msg.librarySummary', {
+          0: installed,
+          1: data.plugins.length,
+          2: incompatible === 0 ? '' : t('ui.table.incompatibleSuffix', { 0: incompatible }),
+        });
   els.plugsPath.textContent = data.plugsPath;
   renderLoader(data.loader);
 
   // El aviso vacío distingue «no hay plugins» de «no pasa el filtro».
   catalogTableView.emptyText =
     data.plugins.length === 0
-      ? 'La carpeta plugs\\ no contiene subdirectorios.'
+      ? t('ui.table.emptyPlugs')
       : t('ui.table.emptyFilter');
 
   if (catalogTable === null) {
@@ -1627,13 +1302,13 @@ async function scan(): Promise<boolean> {
   if (busy) return false;
   if (!libraryRoot) {
     setRootWarning(true);
-    setStatus(t('ui.settings.needRoot'), 'error', openSettingsForLibraryRootAction());
+    setStatus(() => t('ui.settings.needRoot'), 'error', openSettingsForLibraryRootAction);
     els.root.focus();
     return false;
   }
 
   setBusy(true);
-  setStatus('Escaneando…', 'busy');
+  setStatus(() => t('ui.app.scanning'), 'busy');
   closeBanks();
   closeMeta();
   clearBatchErrors();
@@ -1645,18 +1320,20 @@ async function scan(): Promise<boolean> {
     setRootWarning(false);
     const incompatible = data.plugins.filter((plugin) => plugin.compatible === false).length;
     setStatus(
-      data.plugins.length === 0
-        ? 'No se encontraron plugins en plugs\\.'
-        : `${data.plugins.length} plugin(s) encontrados${
-            incompatible === 0 ? '.' : `; ${incompatible} incompatible(s).`
-          }`,
+      () =>
+        data.plugins.length === 0
+          ? t('ui.table.noPluginsFound')
+          : t('msg.pluginsFound', {
+              0: data.plugins.length,
+              1: incompatible === 0 ? '.' : t('msg.pluginsFoundIncompatible', { 0: incompatible }),
+            }),
       'ok',
     );
     return true;
   } catch (error) {
     scanData = null;
     updateBatchControls();
-    els.results.hidden = true;
+    syncLibraryView();
     renderLoader(null);
     // Un 400 al escanear es siempre el `libraryRoot`: no es una ruta válida o
     // no contiene `plugs\`, que es justo lo que explica el aviso.
@@ -1731,7 +1408,7 @@ async function initCapabilities(): Promise<void> {
 
   if (!appCapabilities.canCaptureRegistry && els.captureNavBtn) {
     els.captureNavBtn.disabled = true;
-    els.captureNavBtn.title = 'Función de captura de registro solo disponible en Windows (.exe o local)';
+    els.captureNavBtn.title = t('ui.capture.windowsOnly');
   }
 }
 
@@ -1836,7 +1513,7 @@ async function chooseDll(): Promise<void> {
     writeStorage(STORAGE_DLL, chosen);
     rememberDll(chosen);
     if (libraryRoot === '') {
-      setStatus(t('ui.settings.dllChosenNeedRoot'), 'ok', openSettingsForLibraryRootAction());
+      setStatus(() => t('ui.settings.dllChosenNeedRoot'), 'ok', openSettingsForLibraryRootAction);
       return;
     }
     await scanFromSettings();
@@ -1905,7 +1582,7 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
 
   setBusy(true);
   setStatus(
-    `${isInstalled ? 'Quitando el cargador de' : 'Poniendo el cargador en'} ${plugin.name}…`,
+    t(isInstalled ? 'msg.actionBusyRemove' : 'msg.actionBusyAdd', { 0: plugin.name }),
     'busy',
   );
 
@@ -1919,15 +1596,15 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
       renderBatchErrors();
       setBatchStatus(
         batchFailures.length === 0
-          ? 'Sin errores pendientes.'
-          : `${batchFailures.length} error(es) pendientes.`,
+          ? t('ui.batch.noErrorsLeft')
+          : t('msg.batchErrorsPending', { 0: batchFailures.length }),
         batchFailures.length === 0 ? 'ok' : 'error',
       );
     }
 
     const data = await fetchPlugins();
     render(data);
-    setStatus(`${isInstalled ? 'Cargador quitado de' : 'Cargador puesto en'} ${plugin.name}.`, 'ok');
+    setStatus(t(isInstalled ? 'msg.actionDoneRemove' : 'msg.actionDoneAdd', { 0: plugin.name }), 'ok');
   } catch (error) {
     const errorMsg = describeError(error);
     const isDllIssue = /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(errorMsg);
@@ -1936,7 +1613,7 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
       'error',
       isDllIssue
         ? {
-            label: t('ui.app.focusField'),
+            get label() { return t('ui.app.focusField'); },
             icon: 'folder',
             title: t('ui.app.openSettingsTitle'),
             onClick: () => openSettingsAndFocus('dll-source'),
@@ -1948,13 +1625,40 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
   }
 }
 
+/**
+ * Lotes: instalar o quitar el loader en todos los plugins escaneados.
+ *
+ * Vive aparte porque es un flujo completo (progreso por plugin, fallos
+ * reintentables, reanudacion tras cancelar) y su estado no lo toca nadie mas
+ * que estas funciones.
+ */
+
+/* Estado del lote: solo lo usan las funciones de este archivo. */
+/** Refresco periódico del reloj para que los segundos corran sin eventos. */
+let batchTicker: ReturnType<typeof setInterval> | null = null;
+/** Último progreso pintado: el reloj lo necesita para estimar entre eventos. */
+let batchProgress: BatchProgress | null = null;
+/** Reloj del lote en curso, o `null` si no hay ninguno. */
+let batchClock: BatchClock | null = null;
+/** Corta el lote en curso; `null` cuando no hay ninguno. */
+let batchController: AbortController | null = null;
+/**
+ * Plugins del último lote que quedaron sin confirmar (cancelado o cortado),
+ * con la acción que había que aplicarles. Alimenta el botón «Reanudar».
+ */
+let batchPending: { action: BatchAction; plugins: string[] } | null = null;
+/** Tabla de los fallos del lote, montada sobre `mountTable`. */
+let batchErrorsTableController: TableController<BatchFailure> | null = null;
+/** Fallos del último lote, con su reintento individual. */
+let batchFailures: BatchFailure[] = [];
+
 /* ------------------------------------------------------------------ */
 /* Lotes: instalar/desinstalar todos los plugins escaneados            */
 /* ------------------------------------------------------------------ */
 
 /** Etiqueta legible de la acción que el lote intentaba aplicar. */
 function batchActionLabel(failure: BatchFailure): string {
-  return failure.action === 'add' ? 'poner el cargador' : 'quitar el cargador';
+  return t(failure.action === 'add' ? 'ui.batch.actionAdd' : 'ui.batch.actionRemove');
 }
 
 /**
@@ -1966,13 +1670,13 @@ const batchErrorsTableView: TableView<BatchFailure> = {
   columns: [
     {
       id: 'name',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       sortType: 'text',
       getValue: (failure) => failure.plugin.name,
     },
     {
       id: 'action',
-      label: t('ui.table.action'),
+      get label() { return t('ui.table.action'); },
       sortType: 'text',
       getValue: batchActionLabel,
       renderNode: (failure) => {
@@ -1984,7 +1688,7 @@ const batchErrorsTableView: TableView<BatchFailure> = {
     },
     {
       id: 'message',
-      label: 'Error',
+      get label() { return t('ui.common.error'); },
       sortType: 'text',
       getValue: (failure) => failure.message,
     },
@@ -1997,9 +1701,9 @@ const batchErrorsTableView: TableView<BatchFailure> = {
       renderNode: (failure) => {
         const retry = document.createElement('button');
         retry.type = 'button';
-        retry.textContent = 'Reintentar';
+        retry.textContent = t('ui.batch.retry');
         retry.prepend(createIcon('refresh'));
-        retry.title = `Reintentar ${batchActionLabel(failure)} en ${failure.plugin.name}`;
+        retry.title = t('msg.batchRetryTitle', { 0: batchActionLabel(failure), 1: failure.plugin.name });
         retry.addEventListener('click', () => {
           void retryFailure(failure);
         });
@@ -2010,7 +1714,7 @@ const batchErrorsTableView: TableView<BatchFailure> = {
   getRowId: (failure) => failure.plugin.name,
   initialSort: { columnId: 'name', direction: 'asc' },
   rowClass: () => 'batch-error',
-  emptyText: t('ui.batch.noneFailed'),
+  emptyText: () => t('ui.batch.noneFailed'),
 };
 
 function renderBatchErrors(): void {
@@ -2143,12 +1847,12 @@ async function runBatch(
   } else if (run.error !== null) {
     // Una petición se cortó: lo anterior ya está hecho en disco, así que se
     // resume lo confirmado, se marcan los pendientes y se deja el motivo.
-    const pending = run.unreported === 0 ? '' : ` ${run.unreported} plugin(s) sin confirmar.`;
+    const pending = run.unreported === 0 ? '' : t('msg.batchUnconfirmed', { 0: run.unreported });
     const message = t('ui.batch.aborted', { 0: describeError(run.error), 1: summarize(run), 2: pending });
     const isDllIssue = /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(describeError(run.error));
     const action = isDllIssue
       ? {
-          label: t('ui.app.focusField'),
+          get label() { return t('ui.app.focusField'); },
           icon: 'folder',
           title: t('ui.app.openSettingsTitle'),
           onClick: () => openSettingsAndFocus('dll-source'),
@@ -2164,7 +1868,7 @@ async function runBatch(
       run.results.some((r) => r.message !== null && /dllSourcePath|archivo DLL|fxbLoader\.dll/i.test(r.message));
     const action = isDllIssue
       ? {
-          label: t('ui.app.focusField'),
+          get label() { return t('ui.app.focusField'); },
           icon: 'folder',
           title: t('ui.app.openSettingsTitle'),
           onClick: () => openSettingsAndFocus('dll-source'),
@@ -2250,9 +1954,11 @@ async function retryAllFailures(): Promise<void> {
     setStatus(message, pending === 0 ? 'ok' : 'error');
   } catch (error) {
     // Lo que ya respondió está hecho en disco aunque falle el refresco final.
-    const message =
-      `Se reintentaron ${resolved} de ${total}, pero no se pudo refrescar la ` +
-      `lista: ${describeError(error)}`;
+    const message = t('msg.batchRetryRefreshError', {
+      0: resolved,
+      1: total,
+      2: describeError(error),
+    });
     setBatchStatus(message, 'error');
     setStatus(message, 'error');
   } finally {
@@ -2276,9 +1982,10 @@ async function retryFailure(failure: BatchFailure): Promise<void> {
     render(data);
     renderBatchErrors();
 
-    const message = `${failure.plugin.name} ${
-      failure.action === 'add' ? t('ui.table.withLoader') : t('ui.table.noLoader')
-    } tras reintentar.`;
+    const message = t('msg.batchRetryAfter', {
+      0: failure.plugin.name,
+      1: failure.action === 'add' ? t('ui.table.withLoader') : t('ui.table.noLoader'),
+    });
     setStatus(message, 'ok');
     setBatchStatus(
       batchFailures.length === 0
@@ -2298,14 +2005,18 @@ async function retryFailure(failure: BatchFailure): Promise<void> {
 /* ------------------------------------------------------------------ */
 /* Bancos por plugin                                                   */
 /* ------------------------------------------------------------------ */
-
+/** Tamaño legible: B, KB o MB con un decimal. */
 function formatBytes(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Oculta la barra de la importación y la deja lista para el próximo lote. */
+
+/**
+ * Barra de progreso de la importación de bancos: se oculta cuando no hay nada
+ * en curso y vuelve al estado inicial para la siguiente.
+ */
 function hideImportProgress(): void {
   els.importProgress.hidden = true;
   els.importProgress.value = 0;
@@ -2333,87 +2044,8 @@ function clearBanksView(pluginName: string): void {
   els.loadFxb.checked = false;
 }
 
-/** Cajón abierto (bancos o catálogo) y el control que lo abrió. */
-let openPanel: HTMLElement | null = null;
-let panelOpener: HTMLElement | null = null;
 
-/** Controles que reciben Tab dentro del cajón, en orden de documento. */
-const FOCUSABLE = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  'summary',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ');
-
-function isFocusableByTab(element: HTMLElement): boolean {
-  if (typeof element.checkVisibility === 'function') {
-    return element.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true });
-  }
-  // Sin `checkVisibility`, el contenido de un `<details>` cerrado conserva
-  // rectángulos aunque el navegador no lo tabule; solo su `summary` entra.
-  if (element.getClientRects().length === 0) return false;
-  const details = element.closest('details');
-  return details === null || details.open || element.matches('summary');
-}
-
-function panelFocusables(panel: HTMLElement): HTMLElement[] {
-  return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isFocusableByTab);
-}
-
-/**
- * Abre un cajón como diálogo modal: recuerda quién lo abrió, le da el foco al
- * panel para que el lector anuncie su nombre (`aria-labelledby`) y deja el Tab
- * encerrado dentro mientras siga abierto.
- */
-function showPanel(panel: HTMLElement, opener?: HTMLElement): void {
-  panel.scrollTop = 0;
-  if (openPanel === panel) return;
-  // El cajón de datos no se apila con los demás: al abrir otro panel se retira
-  // para que no queden dos cajones visibles a la vez.
-  if (openPanel === els.dataAuditDrawer) closeDataAuditDrawer();
-
-  const active = document.activeElement;
-  panelOpener = opener ?? (active instanceof HTMLElement && active !== panel ? active : null);
-  openPanel = panel;
-  panel.hidden = false;
-  els.drawerBackdrop.hidden = false;
-  document.body.classList.add('drawer-open');
-  panel.focus({ preventScroll: true });
-}
-
-function hidePanel(panel: HTMLElement): void {
-  panel.hidden = true;
-  if (openPanel !== panel) return;
-
-  openPanel = null;
-  if (
-    els.banks.hidden &&
-    els.meta.hidden &&
-    els.wizards.hidden &&
-    els.pluginWizard.hidden &&
-    els.logDrawer.hidden &&
-    els.importPackageDrawer.hidden &&
-    els.auditDrawer.hidden &&
-    els.customPluginDrawer.hidden &&
-    els.settingsDrawer.hidden
-  ) {
-    els.drawerBackdrop.hidden = true;
-    document.body.classList.remove('drawer-open');
-  }
-
-  const opener = panelOpener;
-  panelOpener = null;
-  // El menú de fila se cierra al abrir el cajón: si el control quedó oculto no
-  // se le puede devolver el foco, y no es un error.
-  if (opener !== null && opener.isConnected && opener.getClientRects().length > 0) {
-    opener.focus({ preventScroll: true });
-  }
-}
-
-function closeBanks(): void {
+export function closeBanks(): void {
   if (els.banks.hidden) return;
   hidePanel(els.banks);
   banks = null;
@@ -2429,7 +2061,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
   columns: [
     {
       id: 'fileName',
-      label: 'Banco',
+      get label() { return t('ui.common.bank'); },
       sortType: 'text',
       cellDataset: () => ({ field: 'bank-name' }),
       getValue: (entry) => entry.fileName,
@@ -2440,7 +2072,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
         if (entry.fileName === current) {
           const badge = document.createElement('span');
           badge.className = 'badge on';
-          badge.textContent = 'por defecto';
+          badge.textContent = t('ui.banks.defaultBadge');
           span.append(' ', badge);
         }
         return span;
@@ -2448,9 +2080,9 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
     },
     {
       id: 'kind',
-      label: 'Tipo',
+      get label() { return t('ui.common.type'); },
       sortType: 'text',
-      getValue: (entry) => (entry.bank.kind === 'FBCh' ? 'FBCh (opaco)' : 'FxBk'),
+      getValue: (entry) => (entry.bank.kind === 'FBCh' ? t('ui.banks.kindFbch') : 'FxBk'),
       cellTitle: (entry) =>
         entry.bank.kind === 'FBCh'
           ? [
@@ -2478,11 +2110,13 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
     },
     {
       id: 'programs',
-      label: 'Programas',
+      get label() { return t('ui.common.programs'); },
       sortType: 'number',
       getValue: (entry) => entry.bank.numPrograms,
       renderCell: (entry) =>
-        entry.bank.kind === 'FBCh' ? `${entry.bank.numPrograms} (informativo)` : String(entry.bank.numPrograms),
+        entry.bank.kind === 'FBCh'
+          ? t('msg.bankProgramsInfo', { 0: entry.bank.numPrograms })
+          : String(entry.bank.numPrograms),
     },
     {
       id: 'chunk',
@@ -2505,7 +2139,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
     },
     {
       id: 'size',
-      label: t('ui.banks.size'),
+      get label() { return t('ui.banks.size'); },
       sortType: 'number',
       getValue: (entry) => entry.size,
       renderCell: (entry) => formatBytes(entry.size),
@@ -2520,7 +2154,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
       renderNode: (entry) => {
         const use = document.createElement('button');
         use.type = 'button';
-        use.textContent = 'Usar';
+        use.textContent = t('ui.banks.use');
         use.prepend(createIcon('check'));
         const current = banks?.data.config.config.defaultFxbName;
         if (entry.fileName === current) use.dataset['default'] = 'true';
@@ -2541,7 +2175,7 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
     const current = banks?.data.config.config.defaultFxbName;
     return entry.fileName === current ? 'is-default' : undefined;
   },
-  emptyText: t('ui.banks.emptyFolder'),
+  emptyText: () => t('ui.banks.emptyFolder'),
 };
 
 function renderBankRows(data: LibraryBanksListResponse): void {
@@ -2667,12 +2301,10 @@ async function openBanks(plugin: ScanPlugin, opener?: HTMLElement): Promise<void
   if (banksBusy) return;
 
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.banks, opener);
   clearBanksView(plugin.name);
   setBanksBusy(true);
@@ -2723,8 +2355,7 @@ async function saveDefault(fileName: string): Promise<void> {
       data.config = current;
       renderBanks();
       setBanksStatus(
-        `${describeError(error)} Puede que la DLL la reescribiera; revisa los valores ` +
-          'actualizados y vuelve a guardar.',
+        t('msg.banksConflict', { 0: describeError(error) }),
         'error',
       );
     } else {
@@ -2773,7 +2404,7 @@ async function convertDefaultBank(): Promise<void> {
     const backup = result.backup === null ? '' : t('ui.banks.backupSuffix', { 0: result.backup.fileName });
     setBanksStatus(
       t('ui.banks.converted', { 0: result.fileName, 1: result.fields, 2: order, 3: backup }) +
-        t('ui.banks.backupNote', { 0: result.backupCreated ? '.' : ' (respaldo anterior).' }),
+        t('ui.banks.backupNote', { 0: result.backupCreated ? '.' : t('msg.bankBackupPrevious') }),
       'ok',
     );
   } catch (error) {
@@ -2897,18 +2528,18 @@ function readImportPaths(): string[] {
 /** Etiqueta legible del estado de un archivo importado. */
 function importStatusLabel(result: ImportResult): string {
   return result.status === 'imported'
-    ? 'importado'
+    ? t('ui.importPackage.statusImported')
     : result.status === 'overwritten'
-      ? 'sobrescrito'
-      : 'rechazado';
+      ? t('ui.importPackage.statusOverwritten')
+      : t('ui.importPackage.statusRejected');
 }
 
 /** Etiqueta legible de la compatibilidad técnica de un archivo. */
 function importCompatibilityLabel(result: ImportResult): string {
   return result.compatibility === 'compatible'
-    ? 'compatible'
+    ? t('ui.table.compatible')
     : result.compatibility === 'incompatible'
-      ? 'incompatible'
+      ? t('ui.table.incompatible')
       : t('ui.table.unverified');
 }
 
@@ -2928,13 +2559,13 @@ const importResultsTableView: TableView<ImportResult> = {
   columns: [
     {
       id: 'fileName',
-      label: 'Archivo',
+      get label() { return t('ui.common.file'); },
       sortType: 'text',
       getValue: (result) => result.fileName,
     },
     {
       id: 'status',
-      label: 'Estado',
+      get label() { return t('ui.common.state'); },
       sortType: 'text',
       getValue: importStatusLabel,
       renderNode: (result) => {
@@ -2946,7 +2577,7 @@ const importResultsTableView: TableView<ImportResult> = {
     },
     {
       id: 'compatibility',
-      label: 'Compatibilidad',
+      get label() { return t('ui.common.compatibility'); },
       sortType: 'text',
       getValue: importCompatibilityLabel,
       renderNode: (result) => {
@@ -2958,7 +2589,7 @@ const importResultsTableView: TableView<ImportResult> = {
     },
     {
       id: 'detail',
-      label: 'Detalle',
+      get label() { return t('ui.common.detail'); },
       sortable: false,
       cellClass: 'import-detail',
       getValue: importDetailText,
@@ -2969,7 +2600,7 @@ const importResultsTableView: TableView<ImportResult> = {
   // Concatenación y no plantilla: el escáner de clases del test de estilos
   // empareja literales y un apóstrofo anterior desplaza los backticks.
   rowClass: (result) => 'import-result ' + result.status,
-  emptyText: t('ui.banks.noImportResults'),
+  emptyText: () => t('ui.banks.noImportResults'),
 };
 
 function renderImportResults(results: ImportResults): void {
@@ -3212,7 +2843,7 @@ async function createBank(): Promise<void> {
   const kind = body.mode === 'chunk' ? 'FBCh' : 'FxBk';
   const order = body.endianness === 'big' ? 'big-endian' : 'little-endian';
   setBanksStatus(
-    `Creando ${body.bankName ?? '<plugin>.fxb'} (${kind}) en ${order}…`,
+    t('msg.bankCreating', { 0: body.bankName ?? '<plugin>.fxb', 1: kind, 2: order }),
     'busy',
   );
 
@@ -3301,7 +2932,7 @@ function renderMeta(snapshot: PluginMetaSnapshotResponse): void {
   syncMetaDisabled();
 }
 
-function closeMeta(): void {
+export function closeMeta(): void {
   if (els.meta.hidden) return;
   hidePanel(els.meta);
   metaState = null;
@@ -3452,7 +3083,7 @@ function declareDraftImportCancelled(): void {
 /** Abre el importador; con borrador activo pregunta antes de continuar. */
 function requestOpenImportPackageDrawer(opener?: HTMLElement): void {
   if (dllPreferenceHasDraft()) {
-    const pluginName = dllPrefPluginName ?? 'el plugin';
+    const pluginName = dllPrefPluginName ?? t('ui.meta.thePlugin');
     els.dialogDllDraftText.textContent =
       t('msg.dllDraftText', { 0: pluginName });
     pendingImportOpener = opener ?? null;
@@ -3474,21 +3105,21 @@ function logTimestamp(timestamp: string): string {
 
 const pluginHistoryTableView: TableView<PluginLogSnapshotResponse['entries'][number]> = {
   columns: [
-    { id: 'timestamp', label: 'Fecha', getValue: entry => entry.timestamp, sortType: 'date', cellClass: 'table-date', cellTitle: entry => entry.raw, renderCell: entry => logTimestamp(entry.timestamp) || '—' },
-    { id: 'action', label: t('ui.log.action'), getValue: entry => entry.action, sortType: 'text', cellClass: 'table-action', cellTitle: entry => entry.raw },
-    { id: 'summary', label: 'Resumen', getValue: entry => entry.summary, sortType: 'text', cellTitle: entry => entry.raw },
-    { id: 'detail', label: 'Detalle', getValue: entry => entry.detail ?? '', sortType: 'text', cellTitle: entry => entry.raw },
+    { id: 'timestamp', get label() { return t('ui.common.date'); }, getValue: entry => entry.timestamp, sortType: 'date', cellClass: 'table-date', cellTitle: entry => entry.raw, renderCell: entry => logTimestamp(entry.timestamp) || '—' },
+    { id: 'action', get label() { return t('ui.log.action'); }, getValue: entry => entry.action, sortType: 'text', cellClass: 'table-action', cellTitle: entry => entry.raw },
+    { id: 'summary', get label() { return t('ui.common.summary'); }, getValue: entry => entry.summary, sortType: 'text', cellTitle: entry => entry.raw },
+    { id: 'detail', get label() { return t('ui.common.detail'); }, getValue: entry => entry.detail ?? '', sortType: 'text', cellTitle: entry => entry.raw },
   ],
   getRowId: entry => `${entry.timestamp}-${entry.action}-${entry.raw}`,
   initialSort: { columnId: 'timestamp', direction: 'desc' },
   searchColumns: ['timestamp', 'action', 'summary', 'detail'],
   filters: [
-    { id: 'actions', label: t('ui.log.action'), columnId: 'action', type: 'multi-select' },
-    { id: 'period', label: 'Fecha', columnId: 'timestamp', type: 'date-range' },
+    { id: 'actions', get label() { return t('ui.log.action'); }, columnId: 'action', type: 'multi-select' },
+    { id: 'period', get label() { return t('ui.common.date'); }, columnId: 'timestamp', type: 'date-range' },
   ],
-  emptyText: t('ui.log.noMatches'),
+  emptyText: () => t('ui.log.noMatches'),
   rowActions: {
-    actions: [{ id: 'view-record', label: t('ui.log.viewRecord'), icon: 'file', onSelect: (entry, trigger) => openLogRecordDetail(entry, trigger) }],
+    actions: [{ id: 'view-record', get label() { return t('ui.log.viewRecord'); }, icon: 'file', onSelect: (entry, trigger) => openLogRecordDetail(entry, trigger) }],
   },
 };
 
@@ -3513,13 +3144,13 @@ function openLogRecordDetail(
   trigger: HTMLButtonElement,
 ): void {
   logDetailOpener = trigger;
-  els.logDetailTitle.textContent = t('ui.log.recordHead', { 0: entry.action || 'sin acción' });
+  els.logDetailTitle.textContent = t('ui.log.recordHead', { 0: entry.action || t('ui.log.noAction') });
   const timestamp = logTimestamp(entry.timestamp) || entry.timestamp || '—';
   els.logDetailFields.replaceChildren(
     renderLogDetailField(t('ui.log.timestamp'), timestamp),
     renderLogDetailField(t('ui.log.action'), entry.action),
-    renderLogDetailField('Resumen', entry.summary),
-    renderLogDetailField('Detalle', entry.detail ?? ''),
+    renderLogDetailField(t('ui.log.summary'), entry.summary),
+    renderLogDetailField(t('ui.log.detail'), entry.detail ?? ''),
     renderLogDetailField(t('ui.log.rawLine'), entry.raw, 'log-record-raw'),
   );
   els.logDetail.hidden = false;
@@ -3541,9 +3172,10 @@ function renderPluginLog(snapshot: PluginLogSnapshotResponse): void {
   if (els.logDetail.hidden === false && logDetailOpener?.isConnected !== true) closeLogRecordDetail();
   els.logPath.textContent = snapshot.logPath;
   els.logExists.textContent = snapshot.exists ? '' : t('ui.log.notYet');
-  els.logSummary.textContent = `${snapshot.totalEntries} entrada(s) · ${formatBytes(
-    snapshot.size,
-  )} en el archivo activo`;
+  els.logSummary.textContent = t('msg.logSummary', {
+    0: snapshot.totalEntries,
+    1: formatBytes(snapshot.size),
+  });
   els.logRotated.textContent =
     snapshot.rotatedFiles.length === 0
       ? t('ui.log.noRotated')
@@ -3586,11 +3218,9 @@ async function readPluginLog(pluginName: string, dir: string): Promise<void> {
 async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
   closeBanks();
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.logDrawer, opener);
 
   els.logPlugin.textContent = plugin.name;
@@ -3606,7 +3236,7 @@ async function openLogDrawer(plugin: ScanPlugin, opener?: HTMLElement): Promise<
   await readPluginLog(plugin.name, plugin.path);
 }
 
-function closeLogDrawer(): void {
+export function closeLogDrawer(): void {
   if (els.logDrawer.hidden) return;
   closeLogRecordDetail();
   hidePanel(els.logDrawer);
@@ -3639,12 +3269,10 @@ async function openMeta(plugin: ScanPlugin, opener?: HTMLElement): Promise<void>
   if (metaBusy) return;
 
   closeBanks();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.meta, opener);
   metaState = null;
   clearMetaView(plugin.name);
@@ -3734,7 +3362,7 @@ async function saveMeta(): Promise<void> {
       // empieza por el mensaje del API y solo añade qué hacer ahora.
       await readMeta(plugin);
       setMetaStatus(
-        `${describeError(error)} Se muestra el estado actual del disco; vuelve a guardar.`,
+        t('msg.metaConflict', { 0: describeError(error) }),
         'error',
       );
       return;
@@ -3802,41 +3430,17 @@ async function applyWizardToMeta(): Promise<void> {
   }
 }
 
-function closeWizards(): void {
-  if (els.wizards.hidden) return;
-  els.wizards.hidden = true;
-  // Igual que el resto de cajones: al cerrar se destruye la tabla para que la
-  // próxima apertura monte una nueva sin arrastrar estado (orden/página).
-  wizardsTableController?.destroy();
-  wizardsTableController = null;
-  els.wizardsTable.replaceChildren();
-  if (
-    els.banks.hidden &&
-    els.meta.hidden &&
-    els.pluginWizard.hidden &&
-    els.logDrawer.hidden
-  ) {
-    els.drawerBackdrop.hidden = true;
-    document.body.classList.remove('drawer-open');
-  }
-}
+let wizardsLoaded = false;
 
-async function openWizards(): Promise<void> {
-  closeBanks();
-  closeMeta();
-  closePluginWizard();
-  closeLogDrawer();
-  closeImportPackageDrawer();
-  closeCustomPluginDrawer();
-  closeAuditDrawer();
-  closeDataAuditDrawer();
-  els.wizards.hidden = false;
-  els.wizards.scrollTop = 0;
-  els.drawerBackdrop.hidden = false;
-  document.body.classList.add('drawer-open');
-  els.wizardsFilter.value = '';
-  wizardsQuery = '';
-  await loadWizards('');
+/**
+ * El catálogo de wizards es una vista: entrar no destruye la tabla ni reinicia
+ * la búsqueda, así que al volver está donde se dejó. Solo se pide al servidor
+ * la primera vez; el botón de refrescar y el filtro siguen mandando.
+ */
+export async function ensureWizardsLoaded(): Promise<void> {
+  if (wizardsLoaded) return;
+  wizardsLoaded = true;
+  await loadWizards(wizardsQuery);
 }
 
 let wizardsLoading = false;
@@ -3897,7 +3501,7 @@ async function promptAndInstallFromWizard(
     const msg = t('ui.wizard.needLibrary');
     const action = openSettingsForLibraryRootAction();
     setStatus(msg, 'error', action);
-    if (!els.wizards.hidden) {
+    if (activeView === 'wizards') {
       renderStatusWithAction(els.wizardsStatus, msg, 'error', action);
     }
     if (!els.pluginWizard.hidden) {
@@ -3907,7 +3511,7 @@ async function promptAndInstallFromWizard(
   }
 
   const setTargetStatus = (msg: string, cls: string) => {
-    if (!els.wizards.hidden) {
+    if (activeView === 'wizards') {
       els.wizardsStatus.textContent = msg;
       els.wizardsStatus.className = cls;
     }
@@ -3950,7 +3554,7 @@ async function promptAndInstallFromWizard(
       autoImportRegistry: false,
     });
 
-    const warnText = res.warnings.length > 0 ? ` [Aviso: ${res.warnings.join('; ')}]` : '';
+    const warnText = res.warnings.length > 0 ? t('msg.batchWarning', { 0: res.warnings.join('; ') }) : '';
     const regText = res.registryFileCreated ? t('ui.wizard.registrySaved') : '';
     const successMsg = t('ui.wizard.installed', { 0: res.pluginName, 1: warnText, 2: regText });
 
@@ -3983,19 +3587,19 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
   columns: [
     {
       id: 'name',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       getValue: (w) => w.name,
       searchable: false,
     },
     {
       id: 'vendor',
-      label: 'Fabricante',
+      get label() { return t('meta.vendor'); },
       getValue: (w) => w.vendor,
       searchable: false,
     },
     {
       id: 'genre',
-      label: t('ui.wizard.genre'),
+      get label() { return t('ui.wizard.genre'); },
       getValue: (w) => w.genre || 'VST',
       searchable: false,
     },
@@ -4024,15 +3628,15 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     },
     {
       id: 'config',
-      label: t('ui.wizard.configuration'),
+      get label() { return t('ui.wizard.configuration'); },
       sortable: false,
       searchable: false,
       getValue: (w) =>
         [
-          w.hasRegistryKeys ? 'Registro' : null,
-          w.hasFilesToCopy || w.hasDirsToCopy ? 'Archivos' : null,
+          w.hasRegistryKeys ? t('ui.common.registry') : null,
+          w.hasFilesToCopy || w.hasDirsToCopy ? t('ui.common.files') : null,
           w.hasReadme ? 'Readme' : null,
-          w.isSynth ? 'Sinte' : null,
+          w.isSynth ? t('ui.common.synth') : null,
         ]
           .filter((flag): flag is string => flag !== null)
           .join(', ') || t('ui.wizard.standard'),
@@ -4042,7 +3646,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
     actions: (w) => [
       {
         id: 'install',
-        label: 'Instalar…',
+        get label() { return t('ui.wizard.installNow'); },
         icon: 'download',
         tone: 'primary',
         onSelect: () => void promptAndInstallFromWizard(w.id, w.name),
@@ -4052,7 +3656,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
         // mismo destino, el cajón del historial. Aquí no hay entrada que
         // mostrar todavía, así que `openWizardLog` abre con la ruta candidata.
         id: 'log',
-        label: 'Historial',
+        get label() { return t('ui.common.history'); },
         icon: 'list',
         onSelect: (_w, trigger) => openWizardLog(w, trigger),
       },
@@ -4065,7 +3669,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
   },
   initialSort: { columnId: 'name', direction: 'asc' },
   searchColumns: [],
-  emptyText: t('ui.wizard.noneMatch'),
+  emptyText: () => t('ui.wizard.noneMatch'),
 };
 
 function renderWizardsList(items: WizardListResponse['items'], total: number): void {
@@ -4101,11 +3705,9 @@ let pluginWizardState: PluginWizardState | null = null;
 async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promise<void> {
   closeBanks();
   closeMeta();
-  closeWizards();
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.pluginWizard, opener);
 
   els.pluginWizardPlugin.textContent = plugin.name;
@@ -4143,7 +3745,11 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
     els.pluginWizardGenre.textContent = match.genre || '—';
     els.pluginWizardId.textContent = t('ui.wizard.vstIdLine', { 0: match.id, 1: fourCcFromId(match.id) });
     els.pluginWizardDll.textContent = match.dllName || '—';
-    els.pluginWizardDimensions.textContent = `${match.editorWidth} × ${match.editorHeight} px (${match.hasEditor ? 'Con GUI' : 'Sin GUI'})`;
+    els.pluginWizardDimensions.textContent = t('msg.wizardDimensions', {
+      0: match.editorWidth,
+      1: match.editorHeight,
+      2: match.hasEditor ? t('ui.wizard.withGui') : t('ui.wizard.withoutGui'),
+    });
     els.pluginWizardParams.textContent = t('ui.wizard.paramsLine', { 0: match.parameterCount, 1: match.programCount });
 
     const flagsKeys = Object.keys(match.flags ?? {});
@@ -4151,10 +3757,10 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
 
     const fileParts: string[] = [];
     if (match.filesToCopy && match.filesToCopy.length > 0) {
-      fileParts.push('Archivos:\n  ' + match.filesToCopy.join('\n  '));
+      fileParts.push(t('msg.wizardFilesList') + match.filesToCopy.join('\n  '));
     }
     if (match.dirsToCopy && match.dirsToCopy.length > 0) {
-      fileParts.push('Directorios:\n  ' + match.dirsToCopy.join('\n  '));
+      fileParts.push(t('msg.wizardDirsList') + match.dirsToCopy.join('\n  '));
     }
     if (match.symlinks && match.symlinks.length > 0) {
       fileParts.push(t('msg.wizardSymlinks') + '\n  ' + match.symlinks.join('\n  '));
@@ -4205,7 +3811,7 @@ async function openPluginWizard(plugin: ScanPlugin, opener?: HTMLElement): Promi
   }
 }
 
-function closePluginWizard(): void {
+export function closePluginWizard(): void {
   if (els.pluginWizard.hidden) return;
   hidePanel(els.pluginWizard);
   pluginWizardState = null;
@@ -4381,12 +3987,16 @@ els.metaWizardApply.addEventListener('click', () => {
   void applyWizardToMeta();
 });
 
-els.wizardsNavBtn.addEventListener('click', () => {
-  void openWizards();
+els.libraryNavBtn.addEventListener('click', () => {
+  navigateTo('libreria');
 });
 
-els.wizardsClose.addEventListener('click', () => {
-  closeWizards();
+els.wizardsNavBtn.addEventListener('click', () => {
+  navigateTo('wizards');
+});
+
+els.auditViewBtn.addEventListener('click', () => {
+  navigateTo('auditoria');
 });
 
 els.settingsNavBtn.addEventListener('click', () => {
@@ -4420,10 +4030,10 @@ els.pluginWizardVfxinfoBtn.addEventListener('click', async () => {
       force: true,
     });
     plugin.hasVfxinfo = true;
-    els.pluginWizardVfxinfoLabel.textContent = 'Recrear vfxinfo.txt desde Wizard';
+    els.pluginWizardVfxinfoLabel.textContent = t('ui.wizard.recreateVfxinfo');
     const data = await fetchPlugins();
     render(data);
-    els.pluginWizardStatus.textContent = t('ui.wizard.vfxinfoGenerated', { 0: res.backedUp ? ' (respaldo .tx_ creado)' : '' });
+    els.pluginWizardStatus.textContent = t('ui.wizard.vfxinfoGenerated', { 0: res.backedUp ? t('ui.wizard.backupCreated') : '' });
     els.pluginWizardStatus.className = 'status ok';
   } catch (error) {
     els.pluginWizardStatus.textContent = t('ui.wizard.vfxinfoError', { 0: describeError(error) });
@@ -4604,11 +4214,9 @@ function setImportPackageBusy(busy: boolean): void {
 function openImportPackageDrawer(opener?: HTMLElement): void {
   closeBanks();
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.importPackageDrawer, opener);
   if (!els.importPackagePath.value.trim() && libraryRoot) {
     const parent = parentDir(libraryRoot);
@@ -4627,7 +4235,7 @@ function openImportPackageDrawer(opener?: HTMLElement): void {
   els.importPackagePath.focus();
 }
 
-function closeImportPackageDrawer(): void {
+export function closeImportPackageDrawer(): void {
   if (els.importPackageDrawer.hidden) return;
   hidePanel(els.importPackageDrawer);
   importPackageInspection = null;
@@ -4717,11 +4325,9 @@ function setCustomPluginStatus(message: string, kind = 'info', action?: StatusAc
 function openCustomPluginDrawer(opener?: HTMLElement): void {
   closeBanks();
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
-  closeAuditDrawer();
   showPanel(els.customPluginDrawer, opener);
   if (!els.customPluginRoot.value.trim() && libraryRoot) {
     els.customPluginRoot.value = libraryRoot;
@@ -4732,7 +4338,7 @@ function openCustomPluginDrawer(opener?: HTMLElement): void {
   els.customPluginPath.focus();
 }
 
-function closeCustomPluginDrawer(): void {
+export function closeCustomPluginDrawer(): void {
   if (els.customPluginDrawer.hidden) return;
   hidePanel(els.customPluginDrawer);
   els.customPluginResult.hidden = true;
@@ -4745,12 +4351,10 @@ function closeCustomPluginDrawer(): void {
 function openCaptureDrawer(opener?: HTMLElement): void {
   closeBanks();
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
   showPanel(els.captureDrawer, opener);
 
   if (!captureSessionInitialized) {
@@ -4762,13 +4366,13 @@ function openCaptureDrawer(opener?: HTMLElement): void {
     els.captureFinishInfo.hidden = true;
     els.captureStagingInfo.hidden = true;
     els.captureVmachineInfo.hidden = true;
-    els.captureStep1Status.textContent = 'Pendiente';
+    els.captureStep1Status.textContent = t('ui.capture.stepPending');
     els.captureStep1Status.className = 'capture-step-badge';
-    els.captureStep2Status.textContent = 'Pendiente';
+    els.captureStep2Status.textContent = t('ui.capture.stepPending');
     els.captureStep2Status.className = 'capture-step-badge';
-    els.captureStep3Status.textContent = 'Pendiente';
+    els.captureStep3Status.textContent = t('ui.capture.stepPending');
     els.captureStep3Status.className = 'capture-step-badge';
-    els.captureStep4Status.textContent = 'Pendiente';
+    els.captureStep4Status.textContent = t('ui.capture.stepPending');
     els.captureStep4Status.className = 'capture-step-badge';
     captureSnapshotBeforeId = null;
     captureDiffId = null;
@@ -4850,7 +4454,11 @@ async function pollCaptureTask(): Promise<void> {
             1: task.registryRootsTotal,
             2: task.message,
           })
-        : `${Number(task.filesFound).toLocaleString()} archivos · ${scannedEntries.toLocaleString()} entradas · ${task.message}`;
+        : t('msg.captureProgress', {
+            0: Number(task.filesFound).toLocaleString(),
+            1: scannedEntries.toLocaleString(),
+            2: task.message,
+          });
       captureLog(location ? `${detail} · ${location}` : detail, task.status === 'running' || task.status === 'cancelling' ? 'busy' : 'info');
       captureLastProgressLogAt = now;
       captureLastProgressMessage = task.message;
@@ -4875,7 +4483,7 @@ async function pollCaptureTask(): Promise<void> {
       els.captureStartInfo.hidden = false;
       if (els.captureViewSnapshotBtn) els.captureViewSnapshotBtn.disabled = true;
       if (els.captureDownloadSnapshotBtn) els.captureDownloadSnapshotBtn.disabled = true;
-      els.captureStep1Status.textContent = 'Completado';
+      els.captureStep1Status.textContent = t('ui.capture.stepDone');
       els.captureStep1Status.className = 'capture-step-badge ok';
       els.captureFinishBtn.disabled = false;
       captureLog(t('ui.capture.snapshotSaved', { 0: captureSnapshotBeforeId, 1: task.filesFound.toLocaleString() }), 'ok');
@@ -4893,7 +4501,7 @@ async function pollCaptureTask(): Promise<void> {
       if (els.captureFilesDeleted) els.captureFilesDeleted.textContent = String(task.result?.filesRemoved ?? 0);
       if (els.captureRegistryCount) els.captureRegistryCount.textContent = String((task.result?.registryAdded ?? 0) + (task.result?.registryModified ?? 0));
       els.captureFinishInfo.hidden = false;
-      els.captureStep2Status.textContent = 'Completado';
+      els.captureStep2Status.textContent = t('ui.capture.stepDone');
       els.captureStep2Status.className = 'capture-step-badge ok';
       els.      capturePackageBtn.disabled = false;
       void refreshCapturePreExisting();
@@ -4902,7 +4510,7 @@ async function pollCaptureTask(): Promise<void> {
     } else if (task.status === 'cancelled') {
       if (kind === 'start') {
         els.captureStartBtn.disabled = false;
-        els.captureStep1Status.textContent = 'Detenido';
+        els.captureStep1Status.textContent = t('ui.capture.stepStopped');
         els.captureStep1Status.className = 'capture-step-badge';
       } else {
         els.captureFinishBtn.disabled = captureSnapshotBeforeId === null;
@@ -5007,7 +4615,7 @@ async function capturePackage(): Promise<void> {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    els.captureStep3Status.textContent = 'Completado';
+    els.captureStep3Status.textContent = t('ui.capture.stepDone');
     els.captureStep3Status.className = 'capture-step-badge ok';
     els.captureVmachineBtn.disabled = false;
     await captureRefreshStaging();
@@ -5086,7 +4694,7 @@ function renderCapturePreExistingList(include: boolean): void {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'capture-pre-existing-open';
-    open.textContent = 'Abrir';
+    open.textContent = t('ui.common.open');
     open.title = revealPreExistingLabel(file);
     open.setAttribute('aria-label', open.title);
     open.addEventListener('click', async () => {
@@ -5236,7 +4844,7 @@ async function captureRefreshStaging(): Promise<void> {
           const open = document.createElement('button');
           open.type = 'button';
           open.className = 'capture-staging-open';
-          open.textContent = 'Abrir';
+          open.textContent = t('ui.common.open');
           open.title = revealPreExistingLabel(entry.path);
           open.setAttribute('aria-label', open.title);
           open.addEventListener('click', async () => {
@@ -5301,7 +4909,7 @@ function renderRestorableStagingEntries(): void {
     item.append(name);
     const badge = document.createElement('span');
     badge.className = 'capture-staging-badge';
-    badge.textContent = 'quitado';
+    badge.textContent = t('ui.capture.removedBadge');
     badge.title = t('ui.capture.removedPackage');
     item.append(badge);
     const restore = document.createElement('button');
@@ -5468,7 +5076,7 @@ async function captureRestorePreExisting(): Promise<void> {
 
 async function captureVmachine(): Promise<void> {
   if (!captureDiffId) {
-    setCaptureStatus('No hay diff generado', 'error');
+    setCaptureStatus(t('ui.capture.noDiff'), 'error');
     return;
   }
   const pluginName = els.capturePluginName?.value.trim() || 'CapturedPlugin';
@@ -5491,7 +5099,7 @@ async function captureVmachine(): Promise<void> {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    els.captureStep4Status.textContent = 'Completado';
+    els.captureStep4Status.textContent = t('ui.capture.stepDone');
     els.captureStep4Status.className = 'capture-step-badge ok';
     if (els.captureVmachinePath) els.captureVmachinePath.textContent = data.bankDir || '';
     if (els.captureWizardPath) els.captureWizardPath.textContent = data.wizardPath || '';
@@ -5553,8 +5161,11 @@ function renderCustomPluginInspection(result: LibraryInspectDllResponse): void {
   // se puede seguir creando, pero el plugin no cargará en la V-Machine / VFX Host.
   if (!result.is32BitCompatible) {
     els.customPluginBitnessWarning.textContent =
-      `El binario no es apto para el host de 32 bits: ${result.validPe ? `es ${result.bitness} bits` : 'ni siquiera es un PE valido'}. ` +
-      t('ui.customPlugin.not32Bit');
+      t('msg.customPluginNot32Bit', {
+        0: result.validPe
+          ? t('msg.customPluginBitness', { 0: result.bitness ?? '—' })
+          : t('msg.customPluginNotValidPe'),
+      }) + t('ui.customPlugin.not32Bit');
     els.customPluginBitnessWarning.hidden = false;
   } else {
     els.customPluginBitnessWarning.hidden = true;
@@ -5567,7 +5178,7 @@ async function inspectCustomPlugin(): Promise<void> {
   const dllPath = els.customPluginPath.value.trim();
   if (dllPath === '') {
     setCustomPluginStatus(t('ui.customPlugin.needDllPath'), 'error', {
-      label: t('ui.app.focusField'),
+      get label() { return t('ui.app.focusField'); },
       icon: 'folder',
       title: t('ui.app.focusField'),
       onClick: () => els.customPluginPath.focus(),
@@ -5597,7 +5208,7 @@ async function createCustomPlugin(): Promise<void> {
   const libraryRootPath = els.customPluginRoot.value.trim();
   if (libraryRootPath === '') {
     setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'error', {
-      label: t('ui.app.focusField'),
+      get label() { return t('ui.app.focusField'); },
       icon: 'folder',
       title: t('ui.app.focusField'),
       onClick: () => els.customPluginRoot.focus(),
@@ -5622,7 +5233,7 @@ async function createCustomPlugin(): Promise<void> {
   const sourceDllPath = els.customPluginPath.value.trim();
   if (sourceDllPath === '') {
     setCustomPluginStatus(t('ui.customPlugin.needDll'), 'error', {
-      label: t('ui.app.focusField'),
+      get label() { return t('ui.app.focusField'); },
       icon: 'folder',
       title: t('ui.app.focusField'),
       onClick: () => els.customPluginPath.focus(),
@@ -5670,7 +5281,10 @@ async function createCustomPlugin(): Promise<void> {
     ]);
     setCustomPluginList(els.customPluginCreatedWarnings, customPluginCreatedWarningsView, result.warnings);
     els.customPluginCreatedWarnings.hidden = result.warnings.length === 0;
-    setCustomPluginStatus(result.created ? t('ui.customPlugin.created') : 'No se creó el plugin.', 'info');
+    setCustomPluginStatus(
+      result.created ? t('ui.customPlugin.created') : t('msg.customPluginNotCreated'),
+      'info',
+    );
   } catch (error) {
     setCustomPluginStatus(t('ui.customPlugin.createError', { 0: describeError(error) }), 'error');
   } finally {
@@ -5679,23 +5293,34 @@ async function createCustomPlugin(): Promise<void> {
 }
 
 /**
- * «Crear plugin» agrupa las dos altas en un desplegable: elegir una opción tiene
- * que cerrarlo, o el menú se queda abierto por encima del cajón que acaba de
- * abrir.
+ * Los desplegables de la barra agrupan acciones que abren su propio cajón:
+ * «Añadir» (importar, plugin nuevo y capturar) y «Auditoría» (datos y
+ * asociaciones). Elegir una opción tiene que cerrar el menú, o se queda abierto
+ * por encima del cajón que acaba de abrir.
  */
-function closeCreationMenu(): void {
-  const menu = els.customPluginNavBtn?.closest('details');
+function closeNavMenu(trigger: Element | null): void {
+  const menu = trigger?.closest('details');
   if (menu instanceof HTMLDetailsElement) menu.open = false;
 }
 
+/** Abrir uno de los desplegables de la barra cierra el otro: nunca se solapan. */
+for (const navMenu of document.querySelectorAll<HTMLDetailsElement>('.top-actions details')) {
+  navMenu.addEventListener('toggle', () => {
+    if (!navMenu.open) return;
+    for (const other of document.querySelectorAll<HTMLDetailsElement>('.top-actions details')) {
+      if (other !== navMenu) other.open = false;
+    }
+  });
+}
+
 els.customPluginNavBtn.addEventListener('click', () => {
-  closeCreationMenu();
+  closeNavMenu(els.customPluginNavBtn);
   openCustomPluginDrawer(els.customPluginNavBtn);
 });
 
 if (els.captureNavBtn) {
   els.captureNavBtn.addEventListener('click', () => {
-    closeCreationMenu();
+    closeNavMenu(els.captureNavBtn);
     openCaptureDrawer(els.captureNavBtn);
   });
 }
@@ -5725,26 +5350,30 @@ async function loadCaptureSnapshot(snapshotId: string): Promise<void> {
     const snapshot = await response.json();
     const files = Array.isArray(snapshot.files) ? snapshot.files : [];
     const registry = Array.isArray(snapshot.registry) ? snapshot.registry : [];
-    const summary = `${files.length.toLocaleString()} elementos de archivo · ${registry.length.toLocaleString()} valores de registro · ${snapshot.scanRoots?.length ?? 0} rutas examinadas`;
+    const summary = t('msg.snapshotSummary', {
+      0: files.length.toLocaleString(),
+      1: registry.length.toLocaleString(),
+      2: snapshot.scanRoots?.length ?? 0,
+    });
     const lines = [
-      'SNAPSHOT INICIAL DE CAPTURA',
-      `ID: ${snapshot.id}`,
-      `Fecha: ${snapshot.createdAt}`,
-      `Plataforma: ${snapshot.platform}`,
-      `Archivos y carpetas: ${files.length}`,
-      `Valores de registro: ${registry.length}`,
+      t('msg.snapshotReportTitle'),
+      t('msg.snapshotReportId', { 0: snapshot.id }),
+      t('msg.snapshotReportDate', { 0: snapshot.createdAt }),
+      t('msg.snapshotReportPlatform', { 0: snapshot.platform }),
+      t('msg.snapshotReportFiles', { 0: files.length }),
+      t('msg.snapshotReportRegistry', { 0: registry.length }),
       '',
-      'RUTAS EXAMINADAS',
+      t('msg.snapshotReportRoots'),
       ...(snapshot.scanRoots ?? []).map((root: string) => `- ${root}`),
       '',
-      'ARCHIVOS Y CARPETAS',
+      t('msg.snapshotReportFilesHead'),
       ...files.map((file: { path: string; isDir: boolean; size: number; mtimeMs: number; hash?: string }) =>
-        `${file.isDir ? '[DIR] ' : '[FILE]'} ${file.path}${file.isDir ? '' : ` | ${Number(file.size).toLocaleString()} bytes | modificado: ${new Date(file.mtimeMs).toISOString()}${file.hash ? ` | SHA-256: ${file.hash}` : ''}`}`),
+        `${file.isDir ? '[DIR] ' : '[FILE]'} ${file.path}${file.isDir ? '' : ` | ${Number(file.size).toLocaleString()} bytes | ${t('msg.snapshotReportModified', { 0: new Date(file.mtimeMs).toISOString() })}${file.hash ? ` | SHA-256: ${file.hash}` : ''}`}`),
       '',
-      'RAÍCES DE REGISTRO EXAMINADAS',
+      t('msg.snapshotReportRegistryRoots'),
       ...(snapshot.registryRoots ?? []).map((root: string) => `- ${root}`),
       '',
-      'VALORES DE REGISTRO',
+      t('msg.snapshotReportRegistryValues'),
       ...registry.map((entry: { key: string; valueName: string; valueType: string; valueData: string }) =>
         `[${entry.key}] ${entry.valueName} | ${entry.valueType} | ${entry.valueData}`),
       '',
@@ -5909,7 +5538,7 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
     },
     {
       id: 'name',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       sortType: 'text',
       getValue: (plug) => plug.name,
       renderNode: (plug) => {
@@ -5947,26 +5576,26 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
       id: 'vfxinfo',
       label: 'vfxinfo.txt',
       sortType: 'text',
-      getValue: (plug) => (plug.hasVfxinfo ? (plug.vfxinfoId ? t('ui.importPackage.idLabel', { 0: plug.vfxinfoId }) : t('ui.common.yes')) : 'No'),
+      getValue: (plug) => (plug.hasVfxinfo ? (plug.vfxinfoId ? t('ui.importPackage.idLabel', { 0: plug.vfxinfoId }) : t('ui.common.yes')) : t('ui.common.no')),
       renderNode: (plug) => {
         const badgeVfx = document.createElement('span');
         badgeVfx.className = plug.hasVfxinfo ? 'badge on' : 'badge off';
-        badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : t('ui.common.yes')) : 'No';
+        badgeVfx.textContent = plug.hasVfxinfo ? (plug.vfxinfoId ? `ID ${plug.vfxinfoId}` : t('ui.common.yes')) : t('ui.common.no');
         return badgeVfx;
       },
     },
     {
       id: 'size',
-      label: t('ui.table.size'),
+      get label() { return t('ui.table.size'); },
       sortType: 'number',
       getValue: (plug) => plug.totalSizeBytes,
       renderCell: (plug) => formatBytes(plug.totalSizeBytes),
     },
     {
       id: 'target',
-      label: t('ui.importPackage.inTarget'),
+      get label() { return t('ui.importPackage.inTarget'); },
       sortType: 'text',
-      getValue: (plug) => (plug.alreadyExistsInTarget ? t('ui.importPackage.exists') : 'Nuevo'),
+      getValue: (plug) => (plug.alreadyExistsInTarget ? t('ui.importPackage.exists') : t('ui.importPackage.bankNew')),
       renderNode: (plug) => {
         const badgeTarget = document.createElement('span');
         if (plug.alreadyExistsInTarget) {
@@ -5974,7 +5603,7 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
           badgeTarget.textContent = t('ui.importPackage.exists');
         } else {
           badgeTarget.className = 'badge on';
-          badgeTarget.textContent = 'Nuevo';
+          badgeTarget.textContent = t('ui.importPackage.bankNew');
         }
         return badgeTarget;
       },
@@ -5984,16 +5613,16 @@ const importPackagePluginsTableView: TableView<LibraryInspectPackageResponse['pl
   initialSort: { columnId: 'name', direction: 'asc' },
   searchColumns: ['name', 'dllName'],
   tbodyId: 'import-package-plugins-rows',
-  emptyText: t('ui.importPackage.noPlugins'),
+  emptyText: () => t('ui.importPackage.noPlugins'),
   filters: [
     {
       id: 'targetFilter',
-      label: 'Destino',
+      get label() { return t('ui.importPackage.target'); },
       columnId: 'target',
       options: [
-        { value: 'all', label: t('ui.importPackage.allPlugins'), tone: 'neutral' },
-        { value: 'new', label: t('ui.importPackage.newPlugins'), tone: 'positive', predicate: (p) => !p.alreadyExistsInTarget },
-        { value: 'exists', label: t('ui.importPackage.existingPlugins'), tone: 'negative', predicate: (p) => p.alreadyExistsInTarget },
+        { value: 'all', get label() { return t('ui.importPackage.allPlugins'); }, tone: 'neutral' },
+        { value: 'new', get label() { return t('ui.importPackage.newPlugins'); }, tone: 'positive', predicate: (p) => !p.alreadyExistsInTarget },
+        { value: 'exists', get label() { return t('ui.importPackage.existingPlugins'); }, tone: 'negative', predicate: (p) => p.alreadyExistsInTarget },
       ],
     },
   ],
@@ -6031,7 +5660,7 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
     },
     {
       id: 'name',
-      label: 'Banco',
+      get label() { return t('ui.common.bank'); },
       sortType: 'text',
       getValue: (bank) => bank.name,
       renderNode: (bank) => {
@@ -6058,13 +5687,13 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
     },
     {
       id: 'concordance',
-      label: 'Concordancia',
+      get label() { return t('ui.importPackage.concordance'); },
       sortType: 'text',
       getValue: (bank) => {
         const state = bankConcordance(bank);
-        if (state === 'concordant') return 'Concordante';
+        if (state === 'concordant') return t('ui.importPackage.concordant');
         if (state === 'repairable') return t('ui.importPackage.gaps');
-        if (state === 'deficient') return 'Carencias';
+        if (state === 'deficient') return t('ui.importPackage.deficient');
         return t('ui.importPackage.noData');
       },
       renderNode: (bank) => {
@@ -6082,7 +5711,10 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
         if (state === 'repairable' || state === 'deficient') {
           const badge = document.createElement('span');
           badge.className = 'badge off';
-          badge.textContent = state === 'repairable' ? 'Carencias (reparable)' : 'Carencias';
+          badge.textContent =
+            state === 'repairable'
+              ? t('ui.importPackage.deficientRepairable')
+              : t('ui.importPackage.deficient');
           badge.title = (bank.deficiencies ?? []).join('; ');
           return badge;
         }
@@ -6091,20 +5723,22 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
     },
     {
       id: 'size',
-      label: t('ui.table.size'),
+      get label() { return t('ui.table.size'); },
       sortType: 'number',
       getValue: (bank) => bank.totalSizeBytes,
       renderCell: (bank) => formatBytes(bank.totalSizeBytes),
     },
     {
       id: 'target',
-      label: t('ui.importPackage.inTarget'),
+      get label() { return t('ui.importPackage.inTarget'); },
       sortType: 'text',
-      getValue: (bank) => (bank.alreadyExistsInTarget ? t('ui.importPackage.exists') : 'Nuevo'),
+      getValue: (bank) => (bank.alreadyExistsInTarget ? t('ui.importPackage.exists') : t('ui.importPackage.bankNew')),
       renderNode: (bank) => {
         const badge = document.createElement('span');
         badge.className = bank.alreadyExistsInTarget ? 'badge' : 'badge on';
-        badge.textContent = bank.alreadyExistsInTarget ? 'Ya existe' : 'Nuevo';
+        badge.textContent = bank.alreadyExistsInTarget
+          ? t('ui.importPackage.exists')
+          : t('ui.importPackage.bankNew');
         return badge;
       },
     },
@@ -6113,18 +5747,28 @@ const importPackageBanksTableView: TableView<LibraryInspectPackageResponse['bank
   initialSort: { columnId: 'name', direction: 'asc' },
   searchColumns: ['name'],
   tbodyId: 'import-package-banks-rows',
-  emptyText: t('ui.importPackage.noBanks'),
+  emptyText: () => t('ui.importPackage.noBanks'),
   filters: [
     {
       id: 'concordanceFilter',
-      label: 'Concordancia',
+      get label() { return t('ui.importPackage.concordance'); },
       columnId: 'concordance',
       options: [
-        { value: 'all', label: t('ui.importPackage.fullMatch'), tone: 'neutral' },
-        { value: 'concordant', label: 'Concordante', tone: 'positive', predicate: (bank) => bankConcordance(bank) === 'concordant' },
-        { value: 'repairable', label: t('ui.importPackage.gaps'), tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'repairable' },
-        { value: 'deficient', label: 'Carencias', tone: 'negative', predicate: (bank) => bankConcordance(bank) === 'deficient' },
-        { value: 'unknown', label: t('ui.importPackage.noData'), tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'unknown' },
+        { value: 'all', get label() { return t('ui.importPackage.fullMatch'); }, tone: 'neutral' },
+        {
+          value: 'concordant',
+          get label() { return t('ui.importPackage.concordant'); },
+          tone: 'positive',
+          predicate: (bank) => bankConcordance(bank) === 'concordant',
+        },
+        { value: 'repairable', get label() { return t('ui.importPackage.gaps'); }, tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'repairable' },
+        {
+          value: 'deficient',
+          get label() { return t('ui.importPackage.deficient'); },
+          tone: 'negative',
+          predicate: (bank) => bankConcordance(bank) === 'deficient',
+        },
+        { value: 'unknown', get label() { return t('ui.importPackage.noData'); }, tone: 'neutral', predicate: (bank) => bankConcordance(bank) === 'unknown' },
       ],
     },
   ],
@@ -6193,7 +5837,7 @@ async function inspectPackage(): Promise<void> {
   const pkgPath = els.importPackagePath.value.trim();
   if (!pkgPath) {
     renderStatusWithAction(els.importPackageStatus, t('ui.importPackage.needPath'), 'error', {
-      label: t('ui.app.focusField'),
+      get label() { return t('ui.app.focusField'); },
       icon: 'folder',
       title: t('ui.app.focusField'),
       onClick: () => els.importPackagePath.focus(),
@@ -6288,7 +5932,7 @@ async function executeImportPackage(): Promise<void> {
     const repairedMsg =
       (result as { repairedBanks?: string[] }).repairedBanks &&
       (result as { repairedBanks?: string[] }).repairedBanks!.length > 0
-        ? ` Reparados: ${(result as { repairedBanks?: string[] }).repairedBanks!.length} banco(s).`
+        ? t('msg.importRepaired', { 0: (result as { repairedBanks?: string[] }).repairedBanks!.length })
         : '';
 
     const msg =
@@ -6357,17 +6001,17 @@ function openAuditRecordDetail(entry: AssociationAuditEntry, trigger: HTMLButton
   els.auditDetailTitle.textContent = t('ui.audit.eventHead', { 0: AUDIT_KIND_LABELS[entry.kind] ?? entry.kind });
   const fields: HTMLElement[] = [
     renderLogDetailField(t('ui.audit.timestamp'), logTimestamp(entry.ts) || entry.ts),
-    renderLogDetailField('Tipo', AUDIT_KIND_LABELS[entry.kind] ?? entry.kind),
-    renderLogDetailField('Plugin', entry.plugin ?? ''),
+    renderLogDetailField(t('ui.common.type'), AUDIT_KIND_LABELS[entry.kind] ?? entry.kind),
+    renderLogDetailField(t('ui.common.plugin'), entry.plugin ?? ''),
     renderLogDetailField(t('ui.audit.library'), entry.libraryRoot ?? ''),
-    renderLogDetailField('Campo', entry.field ?? ''),
+    renderLogDetailField(t('ui.common.field'), entry.field ?? ''),
     renderLogDetailField(t('ui.audit.previousValue'), entry.previousValue ?? ''),
     renderLogDetailField(t('ui.audit.newValue'), entry.newValue ?? ''),
-    renderLogDetailField('Origen', entry.packageSource ?? ''),
+    renderLogDetailField(t('ui.common.origin'), entry.packageSource ?? ''),
   ];
   if (entry.collisionPolicy) fields.push(renderLogDetailField(t('ui.audit.policy'), entry.collisionPolicy));
   if (entry.collisionNames && entry.collisionNames.length > 0) {
-    fields.push(renderLogDetailField('Omitidos', entry.collisionNames.join(', ')));
+    fields.push(renderLogDetailField(t('ui.common.skipped'), entry.collisionNames.join(', ')));
   }
   if (entry.repairedBanks && entry.repairedBanks.length > 0) {
     fields.push(renderLogDetailField(t('ui.audit.repairedBanks'), entry.repairedBanks.join(', ')));
@@ -6392,7 +6036,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
   columns: [
     {
       id: 'ts',
-      label: 'Fecha',
+      get label() { return t('ui.common.date'); },
       sortType: 'date',
       cellClass: 'table-date',
       getValue: (entry) => entry.ts,
@@ -6401,7 +6045,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     {
       id: 'kind',
-      label: 'Tipo',
+      get label() { return t('ui.common.type'); },
       sortType: 'text',
       getValue: (entry) => entry.kind,
       cellTitle: (entry) => AUDIT_KIND_LABELS[entry.kind] ?? entry.kind,
@@ -6419,7 +6063,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     {
       id: 'plugin',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       sortType: 'text',
       getValue: (entry) => entry.plugin ?? '',
       cellTitle: (entry) => entry.plugin,
@@ -6427,7 +6071,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     {
       id: 'change',
-      label: 'Cambio',
+      get label() { return t('ui.common.change'); },
       sortType: 'text',
       cellTitle: (entry) =>
         entry.field
@@ -6453,7 +6097,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     {
       id: 'source',
-      label: 'Origen',
+      get label() { return t('ui.common.origin'); },
       sortType: 'text',
       getValue: (entry) => entry.packageSource ?? '',
       cellTitle: (entry) => entry.packageSource,
@@ -6461,7 +6105,7 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
     },
     {
       id: 'detail',
-      label: 'Detalle',
+      get label() { return t('ui.common.detail'); },
       sortable: false,
       getValue: (entry) =>
         [
@@ -6493,11 +6137,11 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
   getRowId: (entry) =>
     `${entry.ts}|${entry.kind}|${entry.plugin ?? ''}|${entry.packageSource ?? ''}`,
   initialSort: { columnId: 'ts', direction: 'desc' },
-  emptyText: t('ui.audit.noEvents'),
+  emptyText: () => t('ui.audit.noEvents'),
   filters: [
     {
       id: 'kindFilter',
-      label: 'Tipo',
+      get label() { return t('ui.common.type'); },
       columnId: 'kind',
       type: 'multi-select',
       getOptions: () =>
@@ -6506,10 +6150,10 @@ const associationAuditTableView: TableView<AssociationAuditEntry> = {
           label: AUDIT_KIND_LABELS[value] ?? value,
         })),
     },
-    { id: 'tsFilter', label: 'Fecha', columnId: 'ts', type: 'date-range' },
+    { id: 'tsFilter', get label() { return t('ui.common.date'); }, columnId: 'ts', type: 'date-range' },
   ],
   rowActions: {
-    actions: [{ id: 'view-record', label: t('ui.log.viewRecord'), icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
+    actions: [{ id: 'view-record', get label() { return t('ui.log.viewRecord'); }, icon: 'file', onSelect: (entry, trigger) => openAuditRecordDetail(entry, trigger) }],
   },
   onSearchChange: (query) => onAuditSearchChange(query),
 };
@@ -6571,7 +6215,7 @@ function setAuditStatus(message: string, kind = '', action?: StatusAction): void
   renderStatusWithAction(els.auditStatus, message, kind, action);
 }
 
-async function loadAssociationAudit(options?: { silent?: boolean }): Promise<void> {
+export async function loadAssociationAudit(options?: { silent?: boolean }): Promise<void> {
   // La recarga silenciosa viene del sondeo con el cajón abierto: no pone el
   // estado «leyendo» ni vacía la tabla si el servidor falla un momento.
   const silent = options?.silent === true;
@@ -6629,7 +6273,7 @@ async function loadAssociationAudit(options?: { silent?: boolean }): Promise<voi
  * `setRows` conserva el orden, los filtros y la página elegidos por el usuario.
  */
 async function pollAssociationAudit(): Promise<void> {
-  if (auditBusy || els.auditDrawer.hidden || !libraryRoot) return;
+  if (auditBusy || activeView !== 'auditoria' || activeAuditTab !== 'associations' || !libraryRoot) return;
   let fingerprint: string;
   try {
     const snapshot = await client.associationAudit.list({
@@ -6647,54 +6291,19 @@ async function pollAssociationAudit(): Promise<void> {
   await loadAssociationAudit({ silent: true });
 }
 
-function startAuditPolling(): void {
+export function startAuditPolling(): void {
   if (auditPollTimer !== null) return;
   auditPollTimer = setInterval(() => void pollAssociationAudit(), 2000);
 }
 
-function stopAuditPolling(): void {
+export function stopAuditPolling(): void {
   if (auditPollTimer === null) return;
   clearInterval(auditPollTimer);
   auditPollTimer = null;
 }
 
-function openAuditDrawer(opener?: HTMLElement): void {
-  closeBanks();
-  closeMeta();
-  closeWizards();
-  closePluginWizard();
-  closeLogDrawer();
-  closeImportPackageDrawer();
-  closeCustomPluginDrawer();
-  showPanel(els.auditDrawer, opener);
-  els.auditPath.textContent = '';
-  els.auditSummary.textContent = '';
-  destroyAssociationAuditTable();
-  setAuditStatus('');
-  auditFingerprint = '';
-  resetAuditSearch();
-  startAuditPolling();
-  void loadAssociationAudit();
-}
-
-function closeAuditDrawer(): void {
-  if (els.auditDrawer.hidden) return;
-  stopAuditPolling();
-  hidePanel(els.auditDrawer);
-  destroyAssociationAuditTable();
-  els.auditPath.textContent = '';
-  els.auditSummary.textContent = '';
-  auditFingerprint = '';
-  resetAuditSearch();
-  setAuditStatus('');
-}
-
 els.auditNavBtn.addEventListener('click', () => {
-  openAuditDrawer(els.auditNavBtn);
-});
-
-els.auditClose.addEventListener('click', () => {
-  closeAuditDrawer();
+  showAuditTab('associations', false);
 });
 
 els.auditRefresh.addEventListener('click', () => {
@@ -6702,6 +6311,7 @@ els.auditRefresh.addEventListener('click', () => {
 });
 
 els.importPkgNavBtn.addEventListener('click', () => {
+  closeNavMenu(els.importPkgNavBtn);
   requestOpenImportPackageDrawer(els.importPkgNavBtn);
 });
 
@@ -6770,9 +6380,9 @@ const DATA_AUDIT_SOURCE_LABELS: Record<string, string> = {
 
 /** Gravedad de un hueco en una palabra, para el badge del detalle. */
 const DATA_AUDIT_SEVERITY_LABELS: Record<string, string> = {
-  missing: 'falta',
+  missing: t('ui.dataAudit.severityMissing'),
   invalid: t('ui.dataAudit.notValid'),
-  note: 'nota',
+  note: t('ui.dataAudit.severityNote'),
 };
 
 /** Un plugin está completo cuando ninguno de sus huecos es `missing`/`invalid`. */
@@ -6819,26 +6429,28 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
   columns: [
     {
       id: 'name',
-      label: 'Plugin',
+      get label() { return t('ui.common.plugin'); },
       sortType: 'text',
       getValue: (plugin) => plugin.name,
       cellTitle: (plugin) => plugin.path,
     },
     {
       id: 'state',
-      label: 'Estado',
+      get label() { return t('ui.common.state'); },
       sortType: 'text',
-      getValue: (plugin) => (dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : 'completo'),
+      getValue: (plugin) => (dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : t('ui.dataAudit.complete')),
       renderNode: (plugin) => {
         const badge = document.createElement('span');
         badge.className = dataAuditHasGaps(plugin) ? 'badge off' : 'badge on';
-        badge.textContent = dataAuditHasGaps(plugin) ? t('ui.dataAudit.withGaps') : 'Completo';
+        badge.textContent = dataAuditHasGaps(plugin)
+          ? t('ui.dataAudit.withGaps')
+          : t('ui.dataAudit.completeBadge');
         return badge;
       },
     },
     {
       id: 'gaps',
-      label: 'Huecos',
+      get label() { return t('ui.dataAudit.gaps'); },
       sortType: 'number',
       getValue: (plugin) => plugin.issues.length,
       cellTitle: (plugin) =>
@@ -6846,7 +6458,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
     },
     {
       id: 'fillable',
-      label: 'Rellenables',
+      get label() { return t('ui.dataAudit.fillableColumn'); },
       sortType: 'number',
       getValue: (plugin) => plugin.proposals.length,
       cellTitle: (plugin) =>
@@ -6869,19 +6481,19 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
   ],
   getRowId: (plugin) => plugin.path,
   initialSort: { columnId: 'gaps', direction: 'desc' },
-  emptyText: 'Sin plugins que auditar en plugs\\.',
+  emptyText: () => t('ui.dataAudit.empty'),
   filters: [
     {
       id: 'stateFilter',
-      label: 'Estado',
+      get label() { return t('ui.common.state'); },
       columnId: 'state',
       type: 'single',
       options: [
-        { value: '', label: 'Todos', tone: 'neutral' },
-        { value: 'incomplete', label: t('ui.dataAudit.withGaps'), tone: 'negative', predicate: dataAuditHasGaps },
+        { value: '', get label() { return t('ui.common.all'); }, tone: 'neutral' },
+        { value: 'incomplete', get label() { return t('ui.dataAudit.withGaps'); }, tone: 'negative', predicate: dataAuditHasGaps },
         {
           value: 'complete',
-          label: 'Completos',
+          get label() { return t('ui.dataAudit.completePlural'); },
           tone: 'positive',
           predicate: (plugin) => !dataAuditHasGaps(plugin),
         },
@@ -6892,7 +6504,7 @@ const dataAuditTableView: TableView<DataAuditPlugin> = {
     actions: [
       {
         id: 'view-data-detail',
-        label: t('ui.dataAudit.viewDetail'),
+        get label() { return t('ui.dataAudit.viewDetail'); },
         icon: 'file',
         onSelect: (plugin, trigger) => openDataAuditDetail(plugin, trigger),
       },
@@ -6924,16 +6536,16 @@ function openDataAuditDetail(plugin: DataAuditPlugin, trigger: HTMLButtonElement
       : t('ui.dataAudit.applyTitle', { 0: plugin.proposals.length });
   els.dataAuditDetailTitle.textContent = t('ui.dataAudit.pluginHead', { 0: plugin.name });
   els.dataAuditDetailFields.replaceChildren(
-    renderLogDetailField('Carpeta', plugin.path),
-    renderLogDetailField('vfxinfo.txt', plugin.hasVfxinfo ? 'presente' : 'ausente'),
-    renderLogDetailField('fxbLoader.meta.json', plugin.hasMeta ? 'presente' : 'ausente'),
+    renderLogDetailField(t('ui.common.folder'), plugin.path),
+    renderLogDetailField('vfxinfo.txt', plugin.hasVfxinfo ? t('ui.common.present') : t('ui.common.absent')),
+    renderLogDetailField('fxbLoader.meta.json', plugin.hasMeta ? t('ui.common.present') : t('ui.common.absent')),
     renderLogDetailField(t('ui.dataAudit.declaredDll'), plugin.dll.declared ?? t('ui.dataAudit.noDllName')),
     renderLogDetailField(
       t('ui.dataAudit.foundDll'),
-      plugin.dll.resolved === null ? '(ninguno)' : `plugs/${plugin.dll.resolved}`,
+      plugin.dll.resolved === null ? t('ui.common.none') : `plugs/${plugin.dll.resolved}`,
     ),
     renderLogDetailField(
-      'Arquitectura',
+      t('ui.common.architecture'),
       plugin.dll.bitness === null ? '—' : t('ui.dataAudit.bits', { 0: plugin.dll.bitness }),
     ),
     renderLogDetailField(t('ui.dataAudit.vstEntry'), plugin.dll.vstEntrypoint ?? '—'),
@@ -7045,7 +6657,13 @@ async function applyDataAuditProposals(): Promise<void> {
     ].filter((file): file is string => file !== null);
     const backups = result.backups.map((file) => file.split(/[\\/]/).pop() ?? file);
     const summary = [
-      `Aplicado ${result.applied.length} valor(es)${written.length === 0 ? '' : ` en ${written.join(' y ')}`}.`,
+      t('msg.dataAuditApplied', {
+        0: result.applied.length,
+        1:
+          written.length === 0
+            ? ''
+            : t('msg.dataAuditAppliedIn', { 0: written.join(t('msg.listAnd')) }),
+      }),
       backups.length === 0 ? t('ui.dataAudit.noFilesToBackup') : t('ui.dataAudit.backup', { 0: backups.join(', ') }),
       result.skipped.length === 0 ? '' : t('ui.dataAudit.skippedProposals', { 0: result.skipped.length }),
       ...result.warnings,
@@ -7083,7 +6701,7 @@ function setDataAuditStatus(message: string, kind = '', action?: StatusAction): 
  * cambian cuando el usuario instala, importa o edita—, así que se relee con
  * «Actualizar» o al volver a abrir el cajón.
  */
-async function loadDataAudit(): Promise<void> {
+export async function loadDataAudit(): Promise<void> {
   if (dataAuditBusy) return;
   if (!libraryRoot) {
     destroyDataAuditTable();
@@ -7130,39 +6748,8 @@ async function loadDataAudit(): Promise<void> {
   }
 }
 
-function openDataAuditDrawer(opener?: HTMLElement): void {
-  closeBanks();
-  closeMeta();
-  closeWizards();
-  closePluginWizard();
-  closeLogDrawer();
-  closeImportPackageDrawer();
-  closeCustomPluginDrawer();
-  closeAuditDrawer();
-  closeCaptureDrawer();
-  showPanel(els.dataAuditDrawer, opener);
-  els.dataAuditPath.textContent = '';
-  els.dataAuditSummary.textContent = '';
-  destroyDataAuditTable();
-  setDataAuditStatus('');
-  void loadDataAudit();
-}
-
-function closeDataAuditDrawer(): void {
-  if (els.dataAuditDrawer.hidden) return;
-  hidePanel(els.dataAuditDrawer);
-  destroyDataAuditTable();
-  els.dataAuditPath.textContent = '';
-  els.dataAuditSummary.textContent = '';
-  setDataAuditStatus('');
-}
-
 els.dataAuditNavBtn.addEventListener('click', () => {
-  openDataAuditDrawer(els.dataAuditNavBtn);
-});
-
-els.dataAuditClose.addEventListener('click', () => {
-  closeDataAuditDrawer();
+  showAuditTab('data', false);
 });
 
 els.dataAuditRefresh.addEventListener('click', () => {
@@ -7189,13 +6776,10 @@ els.dataAuditApplyConfirmBtn.addEventListener('click', () => {
 els.drawerBackdrop.addEventListener('click', () => {
   closeBanks();
   closeMeta();
-  closeWizards();
   closePluginWizard();
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
-  closeAuditDrawer();
-  closeDataAuditDrawer();
   closeCaptureDrawer();
 });
 
@@ -7203,13 +6787,10 @@ window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeBanks();
     closeMeta();
-    closeWizards();
     closePluginWizard();
     closeLogDrawer();
     closeImportPackageDrawer();
     closeCustomPluginDrawer();
-    closeAuditDrawer();
-    closeDataAuditDrawer();
     closeCaptureDrawer();
     closeAllRowMenus();
   }
@@ -7261,7 +6842,10 @@ function applyLocale(locale: Locale): void {
   syncDocumentLang(locale);
   syncLocaleInputs(locale);
   applyI18n();
+  applyTheme(readTheme());
   if (scanData !== null) render(scanData);
+  refreshTables();
+  repaintStatus();
 }
 
 for (const input of localeInputs) {
@@ -7274,21 +6858,28 @@ onLocaleChange((locale) => {
   syncDocumentLang(locale);
   syncLocaleInputs(locale);
   applyI18n();
+  applyTheme(readTheme());
   if (scanData !== null) render(scanData);
-  else if (!libraryRoot) {
-    setStatus(t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction());
+  refreshTables();
+  repaintStatus();
+  if (scanData === null && !libraryRoot) {
+    setStatus(() => t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction);
   }
 });
 
 initAppI18n();
+// El título del botón de tema lo escribe `applyTheme`, no `data-i18n-title`.
+applyTheme(readTheme());
 applyI18n();
 syncLocaleInputs(getLocale());
 
 void initCapabilities();
 void pruneRecents();
 
+applyView(viewFromHash());
+
 if (libraryRoot) {
   void scan();
 } else {
-  setStatus(t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction());
+  setStatus(() => t('ui.app.needRoot'), 'info', openSettingsForLibraryRootAction);
 }

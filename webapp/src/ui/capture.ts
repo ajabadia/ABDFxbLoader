@@ -1,3 +1,5 @@
+import { t } from './i18n/index.js';
+
 /**
  * Texto del resumen del paso 4 de la captura: cuántos archivos previos a la
  * captura entran en el paquete antes de generar. El recuento sale de
@@ -17,7 +19,7 @@ export interface PreExistingSummaryInput {
 
 /** «1 archivo previo» / «N archivos previos», sin el clásico «1 archivos». */
 function filesLabel(count: number): string {
-  return count === 1 ? '1 archivo previo' : `${count} archivos previos`;
+  return count === 1 ? t('msg.captureFilesOne') : t('msg.captureFilesMany', { 0: count });
 }
 
 /** Línea del paso 4; vacía cuando todavía no hay recuento que enseñar. */
@@ -29,12 +31,12 @@ export function formatPreExistingSummary(input: PreExistingSummaryInput): string
 
   if (!input.include) {
     return count === 0
-      ? 'No hay archivos previos que dejar fuera: el paquete solo llevará lo que cambió la captura.'
-      : `Se dejará fuera ${filesLabel(count)}: el paquete solo llevará lo que cambió la captura.`;
+      ? t('msg.captureNoPrevExcluded')
+      : t('msg.capturePrevExcluded', { 0: filesLabel(count) });
   }
   return count === 0
-    ? 'El paquete se queda solo con lo que cambió la captura: no hay archivos previos que incluir.'
-    : `Se incluirán ${filesLabel(count)} del snapshot inicial.`;
+    ? t('msg.captureNoPrevIncluded')
+    : t('msg.capturePrevIncluded', { 0: filesLabel(count) });
 }
 
 /**
@@ -43,12 +45,12 @@ export function formatPreExistingSummary(input: PreExistingSummaryInput): string
  * cuáles.
  */
 export function preExistingListLabel(count: number): string {
-  return count === 1 ? 'Ver el archivo previo que se incluye' : `Ver los ${count} archivos previos que se incluyen`;
+  return count === 1 ? t('msg.captureListOne') : t('msg.captureListMany', { 0: count });
 }
 
 /** Nombre accesible del botón que enseña un previo en el Explorador. */
 export function revealPreExistingLabel(file: string): string {
-  return `Abrir ${file} en el Explorador de Windows`;
+  return t('msg.captureRevealLabel', { 0: file });
 }
 
 /**
@@ -57,7 +59,7 @@ export function revealPreExistingLabel(file: string): string {
  */
 export function formatRevealPreExistingResult(file: string, opened: string): string {
   const target = opened.trim() === '' ? file : opened;
-  return `Abierto en el Explorador: ${target}`;
+  return t('msg.captureRevealed', { 0: target });
 }
 
 export interface StagingEntry {
@@ -96,19 +98,19 @@ export function classifyStagingFiles(
 
 /** Rótulo del botón que quita de golpe todos los previos del staging. */
 export function removePreExistingLabel(preExistingStaged: number): string {
-  return preExistingStaged === 1 ? 'Quitar 1 previo' : `Quitar ${preExistingStaged} previos`;
+  return preExistingStaged === 1 ? t('msg.captureRemoveOne') : t('msg.captureRemoveMany', { 0: preExistingStaged });
 }
 
 /** Resumen de la acción, con el recuento en singular cuando solo se quitó uno. */
 export function formatRemovePreExistingResult(removed: number, total: number): string {
   return removed === 1 && total === 1
-    ? 'Quitado 1 archivo previo del staging'
-    : `Quitados ${removed} de ${total} archivos previos del staging`;
+    ? t('msg.captureRemovedOne')
+    : t('msg.captureRemovedMany', { 0: removed, 1: total });
 }
 
 /** Rótulo del botón que devuelve al staging los previos recién quitados. */
 export function restorePreExistingLabel(restorable: number): string {
-  return restorable === 1 ? 'Recuperar 1 previo' : `Recuperar ${restorable} previos`;
+  return restorable === 1 ? t('msg.captureRestoreOne') : t('msg.captureRestoreMany', { 0: restorable });
 }
 
 /**
@@ -117,13 +119,13 @@ export function restorePreExistingLabel(restorable: number): string {
  */
 export function removedStagingNote(count: number): string {
   return count === 1
-    ? 'Quitado del staging: se puede devolver cuando quieras.'
-    : `Quitados del staging (${count}): se pueden devolver de uno en uno.`;
+    ? t('msg.captureRemovedNoteOne')
+    : t('msg.captureRemovedNoteMany', { 0: count });
 }
 
 /** Nombre accesible del botón que devuelve un único previo quitado. */
 export function restoreStagedFileLabel(file: string): string {
-  return `Devolver ${file} al staging`;
+  return t('msg.captureRestoreFileLabel', { 0: file });
 }
 
 /** Qué pasó al pedir de vuelta un único archivo quitado con la ×. */
@@ -137,9 +139,9 @@ export function formatRestoreStagedFileResult(
   file: string,
   outcome: RestoreStagedFileOutcome,
 ): string {
-  if (outcome === 'restored') return `Devuelto al staging: ${file}`;
-  if (outcome === 'missing') return `No se pudo devolver ${file}: ya no está en el origen`;
-  return `Ya estaba en el staging: ${file}`;
+  if (outcome === 'restored') return t('msg.captureRestoredFile', { 0: file });
+  if (outcome === 'missing') return t('msg.captureRestoreGone', { 0: file });
+  return t('msg.captureAlreadyStaged', { 0: file });
 }
 
 /**
@@ -149,10 +151,10 @@ export function formatRestoreStagedFileResult(
 export function formatRestorePreExistingResult(restored: number, missing: number): string {
   const base =
     restored === 0
-      ? 'No se ha recuperado ningún archivo previo'
+      ? t('msg.captureNoneRestored')
       : restored === 1
-        ? 'Recuperado 1 archivo previo en el staging'
-        : `Recuperados ${restored} archivos previos en el staging`;
+        ? t('msg.captureRestoredOne')
+        : t('msg.captureRestoredMany', { 0: restored });
   if (missing === 0) return base;
-  return `${base}; ${missing === 1 ? '1 ya no está en el origen' : `${missing} ya no están en el origen`}`;
+  return base + (missing === 1 ? t('msg.captureMissingOne') : t('msg.captureMissingMany', { 0: missing }));
 }

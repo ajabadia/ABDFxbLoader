@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mountTable, type TableView } from '../src/ui/table';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 class FakeElement {
   children: FakeElement[] = [];

@@ -49,7 +49,7 @@ const LIBRARY_SOURCE = process.env['FXB_VFX_LIBRARY']?.trim() || FIXTURE_LIBRARY
  * idioma por defecto (lo comprueba `test/ui.test.ts`).
  */
 async function openTestPage(browser: Browser): Promise<Page> {
-  const page = await openTestPage(browser);
+  const page = await browser.newPage();
   await page.addInitScript(() => {
     localStorage.setItem('abdsynths.locale', 'es');
   });
@@ -128,15 +128,31 @@ function pluginRow(page: Page): Locator {
 
 
 /**
- * «Crear plugin» es un desplegable: sus dos opciones (plugin nuevo sin wizard y
- * capturar instalación) solo existen cuando el `<details>` está abierto.
+ * «Añadir» es un desplegable: sus tres opciones (importar paquetes, plugin nuevo
+ * sin wizard y capturar instalación) solo existen cuando el `<details>` está
+ * abierto.
  */
 async function openCreationMenu(page: Page): Promise<void> {
-  const menu = page.locator('.creation-menu');
+  const menu = page.locator('details.creation-menu:has(#import-pkg-nav-btn)');
   if ((await menu.getAttribute('open')) === null) {
-    await page.click('.creation-menu > summary');
+    await menu.locator('> summary').click();
   }
-  await page.locator('.creation-menu .creation-menu-items').waitFor({ state: 'visible' });
+  await menu.locator('.creation-menu-items').waitFor({ state: 'visible' });
+}
+
+/**
+ * La auditoría es una vista con dos pestañas: datos y asociaciones. Entrar
+ * no abre ningún cajón, así que no hay nada que cerrar al terminar.
+ */
+async function openAuditView(
+  page: Page,
+  tab: 'data' | 'associations' = 'associations',
+): Promise<void> {
+  await page.click('#audit-view-btn');
+  await page.click(tab === 'data' ? '#data-audit-nav-btn' : '#audit-nav-btn');
+  await page
+    .locator(tab === 'data' ? '#audit-data' : '#audit-associations')
+    .waitFor({ state: 'visible' });
 }
 
 /**
@@ -240,7 +256,6 @@ test(
     try {
       /* 1. Escaneo ------------------------------------------------------ */
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
 
@@ -272,7 +287,6 @@ test(
       // Se borra el binario que declara el vfxinfo de GrandPiano: el escaneo
       // debe marcarlo incompatible y deshabilitar Instalar.
       await rm(path.join(library, 'plugs', 'GrandPiano', 'GrandPiano', 'GrandPiano.dll'));
-      await openSettings(page);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 incompatible/);
 
@@ -478,7 +492,6 @@ test(
       await page.locator('#banks').waitFor({ state: 'hidden' });
       // El escaneo también cuenta los bancos: tras releer la librería la fila
       // sigue diciendo «1 banco», sin abrir el panel.
-      await openSettings(page);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
       assert.equal(await pluginRow(page).locator('[data-field="banks"]').textContent(), '1 banco');
@@ -755,7 +768,6 @@ test(
       /* Un 400 del API se ve con su mensaje ---------------------------- */
       // Al final, para no ensuciar el historial de rutas recientes que ya se
       // comprobó: la vista enseña el mensaje del servidor, no un texto fijo.
-      await openSettings(page);
       await page.fill('#library-root', 'plugs');
       await page.click('#scan-button');
       await waitForText(page, '#status', 'libraryRoot debe ser una ruta absoluta: "plugs"');
@@ -904,7 +916,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', 'C:\\Fake\\Library');
       await page.click('#scan-button');
       await waitForText(page, '#summary-text', `0 de ${total} con el cargador`);
@@ -1108,7 +1119,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', 'C:\\Fake\\Library');
       await page.click('#scan-button');
       await waitForText(page, '#summary-text', `0 de ${names.length} con el cargador`);
@@ -1230,7 +1240,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1375,7 +1384,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1590,7 +1598,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1777,7 +1784,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -1903,7 +1909,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
 
       /* 1. Carpeta de la librería: elige y escanea ---------------------- */
       await page.click('#root-browse');
@@ -2360,7 +2365,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
 
@@ -2427,7 +2431,7 @@ test(
  * página 1), sin arrastrar el tamaño de página ni la página de la apertura
  * anterior.
  */
-test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, async (t) => {
+test('vista de wizards: la tabla conserva su estado al cambiar de vista', { skip }, async (t) => {
   assert.ok(existsSync(SERVER_ENTRY), `falta ${SERVER_ENTRY}; ejecuta npm run build`);
 
   const port = await freePort();
@@ -2477,31 +2481,22 @@ test('cajón de wizards: la tabla se remonta al reabrir tras cerrar', { skip }, 
     );
     assert.match(await pageInfo(), /^1–10 de \d+$/, 'y en la primera página');
 
-    // Estado que NO debe sobrevivir al cierre: 25 por página y página 2.
+    // Estado que ahora sí sobrevive: 25 por página y página 2.
     await page.selectOption('#wizards-table .pagination-select', '25');
     await waitForRowCount(page, '#wizards-table', 25);
     await page.click('#wizards-table .pagination-btn:has-text("Siguiente")');
-    assert.match(await pageInfo(), /^26–50 de \d+$/, 'antes de cerrar la tabla está en la página 2');
+    assert.match(await pageInfo(), /^26–50 de \d+$/, 'antes de salir la tabla está en la página 2');
 
-    /* Cierre: la tabla se destruye y el contenedor queda vacío ----- */
-    await page.click('#wizards-close');
+    /* Salir a la librería: la vista no se destruye ---------------- */
+    await page.click('#library-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'hidden' });
-    assert.equal(
-      await page.$eval('#wizards-table', (el) => el.childElementCount),
-      0,
-      'al cerrar, closeWizards vacía el contenedor de la tabla',
-    );
+    await page.locator('#library-view').waitFor({ state: 'visible' });
 
-    /* Reapertura: tabla nueva con el estado inicial --------------- */
+    /* Volver: tamaño de página y página donde se dejaron ---------- */
     await page.click('#wizards-nav-btn');
     await page.locator('#wizards').waitFor({ state: 'visible' });
-    await waitForRowCount(page, '#wizards-table', 10);
-    assert.equal(
-      await page.inputValue('#wizards-table .pagination-select'),
-      '10',
-      'la tabla remontada vuelve al tamaño por defecto, no al 25 de la apertura anterior',
-    );
-    assert.match(await pageInfo(), /^1–10 de \d+$/, 'y a la primera página');
+    await waitForRowCount(page, '#wizards-table', 25);
+    assert.match(await pageInfo(), /^26–50 de \d+$/, 'al volver sigue en la página 2');
     assert.match(
       (await page.locator('#wizards-count').textContent()) ?? '',
       /^\d+ de \d+$/,
@@ -2593,7 +2588,7 @@ test('menú «···» de wizards: «Historial» abre el cajón de log como en e
     /* El clic abre el cajón del log, como en el catálogo ----------- */
     await row.locator('[data-action="log"]').click();
     await page.locator('#log-drawer').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#wizards').isHidden(), true, 'abrir el historial cierra el cajón de wizards');
+    // El catálogo es una vista: abrir el historial no lo oculta.
     assert.equal(
       (await page.locator('#log-plugin').textContent())?.trim(),
       wizardName,
@@ -2684,7 +2679,6 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
 
   try {
     await page.goto(url);
-    await openSettings(page);
     await page.fill('#library-root', library);
     await page.click('#scan-button');
     await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -2728,7 +2722,7 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
     assert.equal(await row.locator('[data-action="log"]').textContent(), 'Historial');
     await row.locator('[data-action="log"]').click();
     await page.locator('#log-drawer').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#wizards').isHidden(), true, 'abrir el historial cierra el cajón de wizards');
+    // El catálogo es una vista: abrir el historial no lo oculta.
     assert.equal(
       (await page.locator('#log-plugin').textContent())?.trim(),
       wizardName,
@@ -2857,7 +2851,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', LIBRARY_SOURCE);
       await page.click('#scan-button');
       await page.waitForSelector('#results:not([hidden])');
@@ -3147,7 +3140,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await page.waitForSelector('#results:not([hidden])');
@@ -3305,17 +3297,15 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
   try {
     /* Escaneo y visor sin almacén ---------------------------------- */
     await page.goto(url);
-    await openSettings(page);
     await page.fill('#library-root', library);
     await page.click('#scan-button');
     await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
 
-    await page.click('#audit-nav-btn');
-    await page.locator('#audit-drawer').waitFor({ state: 'visible' });
+    await openAuditView(page);
     await waitForText(page, '#audit-summary', /Todavía no existe el almacén/);
-    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
-    await page.click('#audit-close');
-    await page.locator('#audit-drawer').waitFor({ state: 'hidden' });
+    await waitForText(page, '#audit-table .table-empty', /Sin eventos de auditoría que cumplan los filtros/);
+    await page.click('#library-nav-btn');
+    await page.locator('#audit-view').waitFor({ state: 'hidden' });
 
     /* Un evento real: la preferencia de DLL ------------------------ */
     await writeFile(path.join(pluginDir, auditDll), pe32Dll());
@@ -3329,8 +3319,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
     await page.locator('#meta').waitFor({ state: 'hidden' });
 
     /* El visor monta el snapshot sobre mountTable ------------------ */
-    await page.click('#audit-nav-btn');
-    await page.locator('#audit-drawer').waitFor({ state: 'visible' });
+    await openAuditView(page);
     await waitForText(page, '#audit-path', /fxbLoader\.audit\.jsonl/);
     await waitForText(page, '#audit-table', /Cambio de asociación/);
     assert.equal(
@@ -3345,7 +3334,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
     /* Multiselección por tipo -------------------------------------- */
     await page.click('#audit-table .table-multi-trigger');
     await page.click('#audit-table .table-multi-menu-list input[value="association-change"]');
-    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await waitForText(page, '#audit-table .table-empty', /Sin eventos de auditoría que cumplan los filtros/);
     await page.click('#audit-table .table-multi-menu-list input[value="association-change"]');
     await waitForText(page, '#audit-table', /Cambio de asociación/);
     await page.click('#audit-table .table-multi-trigger');
@@ -3353,7 +3342,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
 
     /* Rango de fechas por ts --------------------------------------- */
     await page.fill('#audit-table input[aria-label="Fecha desde"]', '2099-01-01');
-    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await waitForText(page, '#audit-table .table-empty', /Sin eventos de auditoría que cumplan los filtros/);
     await page.fill('#audit-table input[aria-label="Fecha desde"]', '');
     await waitForText(page, '#audit-table', /Cambio de asociación/);
 
@@ -3363,7 +3352,7 @@ test('visor de auditoría: snapshot vacío, evento real, filtros y recarga sola'
     // —por eso también baja el total del resumen—. El mensaje de «sin
     // eventos» vive dentro de #audit-table.
     await page.fill('#audit-table .table-search', 'NoExiste');
-    await waitForText(page, '#audit-table', /Sin eventos de auditoría que cumplan los filtros/);
+    await waitForText(page, '#audit-table .table-empty', /Sin eventos de auditoría que cumplan los filtros/);
     // El total del resumen solo baja a 0 si la recarga con `q` llegó al
     // servidor: con filtro local seguiría en 1.
     await waitForText(page, '#audit-summary', /0 evento\(s\)/);
@@ -3553,7 +3542,6 @@ test(
     try {
       /* Escaneo e instalación ----------------------------------------- */
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /3 plugin\(s\) encontrados/);
@@ -3632,6 +3620,8 @@ test(
       // cajón del catálogo tapa la barra: se cierra y el borrador sobrevive.
       await page.fill('#meta-dll', original);      await page.click('#meta-close');      await page.locator('#meta').waitFor({ state: 'hidden' });
 
+      await openCreationMenu(page);
+
       await page.click('#import-pkg-nav-btn');
       await page.locator('#dialog-dll-draft').waitFor({ state: 'visible' });
       assert.equal(
@@ -3648,6 +3638,7 @@ test(
 
       // «Continuar sin cambios» descarta el borrador y abre el importador:
       // el campo vuelve a la preferencia guardada.
+      await openCreationMenu(page);
       await page.click('#import-pkg-nav-btn');
       await page.locator('#dialog-dll-draft').waitFor({ state: 'visible' });
       await page.click('#dialog-dll-draft-continue');
@@ -3736,9 +3727,9 @@ test(
       await page.locator('#custom-plugin-drawer').waitFor({ state: 'visible' });
       // Elegir una opción cierra el desplegable: no debe quedar sobre el cajón.
       assert.equal(
-        await page.locator('.creation-menu').getAttribute('open'),
+        await page.locator('details.creation-menu:has(#custom-plugin-nav-btn)').getAttribute('open'),
         null,
-        'el menú «Crear plugin» se cierra al elegir una opción',
+        'el menú «Añadir» se cierra al elegir una opción',
       );
 
       // El cajón es un diálogo modal con nombre accesible.
@@ -3860,6 +3851,7 @@ test(
       // importador, el cajón del asistente queda oculto y sin estado pintado.
       await page.click('#custom-plugin-close');
       await page.locator('#custom-plugin-drawer').waitFor({ state: 'hidden' });
+      await openCreationMenu(page);
       await page.click('#import-pkg-nav-btn');
       await page.locator('#import-package-drawer').waitFor({ state: 'visible' });
       assert.equal(
@@ -3872,7 +3864,6 @@ test(
 
       // El plugin recién creado entra en la tabla al escanear la librería:
       // el asistente y el listado hablan del mismo catálogo.
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
@@ -3956,7 +3947,6 @@ test(
     try {
       /* 1. Escanear y poner el cargador --------------------------------- */
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /plugin\(s\) encontrados/);
@@ -4153,7 +4143,6 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /plugin\(s\) encontrados/);
@@ -4323,14 +4312,12 @@ test(
 
     try {
       await page.goto(url);
-      await openSettings(page);
       await page.fill('#library-root', library);
       await page.click('#scan-button');
       await waitForText(page, '#status', /1 plugin\(s\) encontrados/);
 
       /* 1. El detalle del plugin tiene propuestas que aplicar ----------- */
-      await page.click('#data-audit-nav-btn');
-      await page.locator('#data-audit-drawer').waitFor({ state: 'visible' });
+      await openAuditView(page, 'data');
       await waitForText(page, '#data-audit-table', AUDIT_PLUGIN);
 
       const row = page.locator('#data-audit-table tbody tr[data-row-id]');

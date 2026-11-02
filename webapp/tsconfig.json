@@ -4,6 +4,12 @@
     "target": "ES2022",
     "lib": ["ES2022"],
     "moduleResolution": "node",
+    "baseUrl": ".",
+    // El motor de i18n de la suite es un paquete ESM con tipos en
+    // `Components/i18n.d.ts`: con `moduleResolution: node` no se resuelve, así
+    // que se apunta al archivo de tipos. Sin esto, el build del servidor no
+    // compila la UI que sí lo importa (`src/ui/batch.ts`).
+    "paths": { "@abdsynths/shared/i18n": ["./node_modules/@abdsynths/shared/Components/i18n.d.ts"] },
     "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,

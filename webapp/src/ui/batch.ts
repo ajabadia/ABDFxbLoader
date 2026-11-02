@@ -16,6 +16,7 @@
  * No toca el DOM ni conoce `fetch` (la petición la inyecta la vista), así que
  * se prueba con datos simples y un emisor de mentira.
  */
+import { t } from './i18n/index.js';
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream.js';
 import type {
   BatchStreamEvent,
@@ -71,7 +72,7 @@ export function failuresOf(response: BatchResponse): BatchFailure[] {
     .map((result) => ({
       plugin: { name: result.name },
       action: response.action,
-      message: result.message ?? 'Error desconocido',
+      message: result.message ?? t('ui.batch.unknownError'),
     }));
 }
 
@@ -219,13 +220,13 @@ export function applyBatchEvent(
 
 /** Nombre en gerundio de cada paso interno, para la línea de detalle. */
 const STEP_LABELS: Record<BatchStreamStepKind, string> = {
-  backup: 'respaldando vfxinfo.txt',
-  copy: 'copiando fxbLoader.dll',
-  patch: 'parcheando dll_name',
-  'write-config': 'escribiendo fxbLoader.config',
-  'create-dir': 'creando la carpeta de presets',
-  restore: 'restaurando vfxinfo.txt',
-  delete: 'borrando fxbLoader.config',
+  backup: 'ui.batch.stepBackup',
+  copy: 'ui.batch.stepCopy',
+  patch: 'ui.batch.stepPatch',
+  'write-config': 'ui.batch.stepWriteConfig',
+  'create-dir': 'ui.batch.stepCreateDir',
+  restore: 'ui.batch.stepRestore',
+  delete: 'ui.batch.stepDelete',
 };
 
 /**
@@ -235,7 +236,11 @@ const STEP_LABELS: Record<BatchStreamStepKind, string> = {
 export function stepLabel(progress: BatchProgress): string | null {
   if (progress.stepText) return progress.stepText;
   if (progress.step === null) return null;
-  return `paso ${progress.stepIndex + 1} de ${progress.steps} · ${STEP_LABELS[progress.step]}`;
+  return t('msg.batchStep', {
+    0: progress.stepIndex + 1,
+    1: progress.steps,
+    2: t(STEP_LABELS[progress.step]),
+  });
 }
 
 /**
@@ -265,16 +270,18 @@ export function retryProgress(
     step: null,
     stepIndex: index,
     steps: total,
-    stepText: `paso ${index + 1} de ${total} · reintentando ${failure.plugin.name}`,
+    stepText: t('msg.batchRetryStep', { 0: index + 1, 1: total, 2: failure.plugin.name }),
   };
 }
 
 /** Texto del progreso: qué plugin va y cuántos quedan, con los fallos a la vista. */
 export function progressLabel(state: BatchProgress): string {
-  const doing = state.action === 'add' ? 'Poniendo el cargador' : 'Quitando el cargador';
-  const done = state.action === 'add' ? 'con cargador' : 'sin cargador';
-  const errors = state.failed === 0 ? '' : ` · ${state.failed} con error`;
-  if (state.finished) return `${state.done} de ${state.total} ${done}${errors}.`;
+  const doing = state.action === 'add' ? t('ui.batch.installing') : t('ui.batch.removing');
+  const done = state.action === 'add' ? t('ui.batch.withLoader') : t('ui.batch.withoutLoader');
+  const errors = state.failed === 0 ? '' : t('msg.batchProgressErrors', { 0: state.failed });
+  if (state.finished) {
+    return t('msg.batchProgressDone', { 0: state.done, 1: state.total, 2: done, 3: errors });
+  }
 
   // Entre plugins, `done` es el que viene; mientras corre uno, manda su índice.
   // Al cerrar el último del trozo ambos llegan al total, y sumar uno daría
@@ -283,10 +290,10 @@ export function progressLabel(state: BatchProgress): string {
     state.current === null ? state.done : state.index,
     Math.max(state.total - 1, 0),
   );
-  const count = `${position + 1} de ${state.total}`;
+  const count = t('msg.progressCount', { 0: position + 1, 1: state.total });
   return state.current === null
-    ? `${doing} ${count}…${errors}`
-    : `${doing} ${count}: ${state.current}…${errors}`;
+    ? t('msg.batchProgress', { 0: doing, 1: count, 2: errors })
+    : t('msg.batchProgressNamed', { 0: doing, 1: count, 2: state.current, 3: errors });
 }
 
 /** Lo que la vista pinta del reloj del lote. */
@@ -431,16 +438,17 @@ export function formatDuration(ms: number): string {
  * dejó el lote anterior si el reintento arranca con `resumeClock`.
  */
 export function timingLabel(timing: BatchTiming, progress: BatchProgress): string {
-  const elapsed = `${formatDuration(timing.elapsedMs)} transcurridos`;
+  const elapsed = t('msg.elapsed', { 0: formatDuration(timing.elapsedMs) });
   const rest =
     timing.remainingMs === null
-      ? 'calculando el tiempo restante…'
-      : `~${formatDuration(timing.remainingMs)} restantes`;
-  const behind = progress.failed > 0 ? ` · ${progress.failed} fallo(s) detrás del actual` : '';
+      ? t('msg.calculatingRemaining')
+      : t('msg.remaining', { 0: formatDuration(timing.remainingMs) });
+  const behind =
+    progress.failed > 0 ? t('msg.failuresBehind', { 0: progress.failed }) : '';
   const step =
     timing.stepElapsedMs === null || stepLabel(progress) === null
       ? ''
-      : ` · ${formatDuration(timing.stepElapsedMs)} en el paso actual`;
+      : t('msg.stepElapsed', { 0: formatDuration(timing.stepElapsedMs) });
   return `${elapsed} · ${rest}${behind}${step}`;
 }
 
@@ -451,9 +459,14 @@ export function summarize(result: {
   succeeded: number;
   failed: number;
 }): string {
-  const verb = result.action === 'add' ? 'con cargador' : 'sin cargador';
-  if (result.failed === 0) return `${result.succeeded} plugin(s) ${verb}.`;
-  return `${result.succeeded} de ${result.total} ${verb}; ${result.failed} con error.`;
+  const verb = result.action === 'add' ? t('ui.batch.withLoader') : t('ui.batch.withoutLoader');
+  if (result.failed === 0) return t('msg.batchSummary', { 0: result.succeeded, 1: verb });
+  return t('msg.batchSummaryErrors', {
+    0: result.succeeded,
+    1: result.total,
+    2: verb,
+    3: result.failed,
+  });
 }
 
 /** Envía una petición de lote; la vista le pasa el cliente HTTP. */
@@ -621,7 +634,7 @@ export function resumablePlugins(
 
 /** Texto del botón que reanuda solo lo que quedó sin confirmar. */
 export function resumeLabel(count: number): string {
-  return `Reanudar ${count} sin confirmar`;
+  return t('msg.batchResumeLabel', { 0: count });
 }
 
 /**
@@ -632,8 +645,14 @@ export function resumeLabel(count: number): string {
 export function cancelledSummary(
   run: Pick<BatchRun, 'action' | 'total' | 'succeeded' | 'failed' | 'unreported'>,
 ): string {
-  const verb = run.action === 'add' ? 'con cargador' : 'sin cargador';
-  const errors = run.failed === 0 ? '' : ` y ${run.failed} con error`;
-  const pending = run.unreported === 0 ? '' : `; ${run.unreported} sin confirmar`;
-  return `Lote cancelado: ${run.succeeded} de ${run.total} ${verb}${errors}${pending}.`;
+  const verb = run.action === 'add' ? t('ui.batch.withLoader') : t('ui.batch.withoutLoader');
+  const errors = run.failed === 0 ? '' : t('msg.batchCancelledErrors', { 0: run.failed });
+  const pending = run.unreported === 0 ? '' : t('msg.batchCancelledPending', { 0: run.unreported });
+  return t('msg.batchCancelled', {
+    0: run.succeeded,
+    1: run.total,
+    2: verb,
+    3: errors,
+    4: pending,
+  });
 }

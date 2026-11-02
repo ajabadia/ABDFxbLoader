@@ -18,16 +18,18 @@ const i18n = createSynthI18n<Locale>({
   storageKey: 'abdsynths.locale',
 });
 
-export const { getLocale, setLocale, onLocaleChange, t, applyI18n, getSupportedLocales } = i18n;
+// El idioma guardado se resuelve al crear el módulo, no en el arranque de la
+// app: lo que se evalúa a nivel de módulo (etiquetas de tablas, mapas de tipos
+// de evento) sale así en el idioma del usuario y no en el de reserva.
+i18n.initI18n();
+
+export const {
+  getLocale,
+  setLocale,
+  onLocaleChange,
+  t,
+  applyI18n,
+  initI18n,
+  getSupportedLocales,
+} = i18n;
 export { appEn, appEs };
-
-/** `lang` del documento = idioma activo (lectores de pantalla y heurísticas del navegador). */
-export function syncDocumentLang(locale: Locale = getLocale()): void {
-  document.documentElement.lang = locale;
-}
-
-export function initAppI18n(): Locale {
-  const locale = i18n.initI18n();
-  syncDocumentLang(locale);
-  return locale;
-}

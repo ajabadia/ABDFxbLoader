@@ -14,6 +14,9 @@ import {
   restoreStagedFileLabel,
   revealPreExistingLabel,
 } from '../src/ui/capture';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 /**
  * El paso 4 enseña, antes de generar, cuántos archivos previos a la captura

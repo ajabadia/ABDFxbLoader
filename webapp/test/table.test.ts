@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createTableState, processTableRows, type TableState, type TableView } from '../src/ui/table';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 interface Row { name: string; amount: number | null; date: string; active: boolean; group: string }
 const rows: Row[] = [

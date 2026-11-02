@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import { MAX_BANKS_PER_REQUEST } from '../src/client/bank-limits';
 import { FxbApiError } from '../src/client/fxb-client';
 import { importProgressLabel, rejectedResults, runImportInChunks } from '../src/ui/bank-import';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 /**
  * La vista importa bancos con un emisor que puede avisar de cada archivo por

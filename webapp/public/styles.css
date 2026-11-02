@@ -1070,6 +1070,107 @@ tbody tr:last-child td {
   text-align: center;
 }
 
+/*
+ * Vistas: la librería, el catálogo de wizards y la auditoría son colecciones
+ * que se navegan. Antes eran cajones: ocupaban media pantalla encima de la
+ * librería y no conservaban su estado al cerrarlos.
+ */
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.view[hidden],
+.view-panel[hidden] {
+  display: none;
+}
+
+.view-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* La carpeta de la librería, siempre a mano dentro de su vista. */
+.library-root-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.library-root-bar > label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.library-root-bar .row {
+  flex: 1 1 420px;
+  margin: 0;
+}
+
+.library-root-bar #root-warning {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* Portada: lo que se ve antes del primer escaneo. */
+.empty-state {
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.empty-state .note {
+  max-width: 62ch;
+  margin: 0 auto 6px;
+}
+
+/*
+ * Las dos auditorías comparten vista: son dos lecturas del mismo contenido, así
+ * que van como control segmentado y no como dos botones sueltos.
+ */
+.view-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  align-self: flex-start;
+}
+
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.view-tab[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Destino activo de la barra: se distingue sin ocupar más espacio. */
+.top-actions .nav-btn[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Pestaña colapsable deslizante desde la derecha */
 .drawer {
   position: fixed;

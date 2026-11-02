@@ -1,3 +1,4 @@
+import { t } from './i18n/index.js';
 import { isFxbApiError } from '../client/fxb-client.js';
 import type { LibraryBanksImportResponse } from '../client/fxb-client.js';
 import { splitBatch } from './batch.js';
@@ -55,7 +56,7 @@ export interface BankImportOptions<R> {
 
 /** Texto del progreso: cuántos archivos tienen ya resultado y cuántos hay. */
 export function importProgressLabel(progress: BankImportProgress): string {
-  return `Importando ${progress.done} de ${progress.total} archivo(s)…`;
+  return t('msg.bankImporting', { 0: progress.done, 1: progress.total });
 }
 
 /**

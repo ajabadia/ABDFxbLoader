@@ -30,6 +30,9 @@ import {
   type BatchStreamPluginResult,
   type BatchStreamResult,
 } from '../src/client/batch-stream';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 /**
  * La vista ya no orquesta el lote: lo ejecuta el servidor. Aquí se comprueba

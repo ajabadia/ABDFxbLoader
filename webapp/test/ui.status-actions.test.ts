@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { appEn } from '../src/ui/i18n/locales/en';
 import { appEs } from '../src/ui/i18n/locales/es';
+import { setLocale } from '../src/ui/i18n/index.js';
+
+setLocale('es');
 
 class MockElement {
   children: MockElement[] = [];
