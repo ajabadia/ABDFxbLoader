@@ -193,7 +193,7 @@ export const appEn = {
   },
   wizards: {
     title: 'Wizard repository',
-    note: '268 official certified SM Pro Audio / VFX wizards with VST metadata, configurations and Wine.',
+    note: 'Official certified SM Pro Audio / VFX wizards with VST metadata, configurations and Wine.',
     search: 'Search by name, vendor, DLL or ID…',
     filterLabel: 'Filter wizards',
   },

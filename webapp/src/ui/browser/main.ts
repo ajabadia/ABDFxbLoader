@@ -4200,29 +4200,31 @@ function applyLanguage(): void {
   const locale = getLocale();
   els.langToggle.title = locale === 'es' ? t('title.langToEn') : t('title.langToEs');
   els.langToggle.setAttribute('aria-label', t('header.langLabel'));
+  // El motor i18n no aplica `data-i18n-label`, así que los dos radiogrupos de
+  // Ajustes se quedaban con su `aria-label` en inglés.
+  document
+    .querySelector('input[name="theme-mode"]')
+    ?.closest('[role="radiogroup"]')
+    ?.setAttribute('aria-label', t('settings.themeGroup'));
+  document
+    .querySelector('input[name="ui-locale"]')
+    ?.closest('[role="radiogroup"]')
+    ?.setAttribute('aria-label', t('settings.languageGroup'));
   for (const icon of langIcons) {
     icon.toggleAttribute('hidden', icon.dataset['icon'] !== locale);
   }
 }
 
-/** Repinta lo que el idioma cambia fuera de `data-i18n`: `lang`, tema e iconos. */
-function syncLanguageUi(): void {
-  applyI18n();
-  syncDocumentLang();
-  applyTheme(readTheme());
-  applyLanguage();
-}
-
+// El cambio completo (textos, tablas, estado y `lang`) vive en `applyLocale`,
+// más abajo; aquí sólo se elige el otro idioma.
 function switchLanguage(): void {
-  setLocale(getLocale() === 'es' ? 'en' : 'es');
-  syncLanguageUi();
+  applyLocale(getLocale() === 'es' ? 'en' : 'es');
 }
 
 els.langToggle.addEventListener('click', switchLanguage);
 
-// El motor ya reescribe los `data-i18n`; aquí se cubre el resto y el caso de un
-// cambio de idioma que llegue por otra vía.
-onLocaleChange(syncLanguageUi);
+// Venga el cambio del botón o de Ajustes, la bandera sigue al idioma activo.
+onLocaleChange(applyLanguage);
 
 applyLanguage();
 
