@@ -6,7 +6,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { MAX_BANKS_PER_REQUEST } from '../../src/client/bank-limits';
 import { MAX_PLUGINS_PER_BATCH } from '../../src/client/batch-stream';
@@ -64,17 +64,31 @@ function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+/**
+ * Puertos ya repartidos: las pruebas corren en paralelo y, entre liberar el
+ * sondeo y arrancar el servidor, el sistema puede volver a ofrecer el mismo
+ * número a otra prueba. Repetirlo aquí cuesta un sondeo y evita un EADDRINUSE
+ * intermitente.
+ */
+const handedOutPorts = new Set<number>();
+
 /** Puerto libre en loopback, reservado y liberado antes de arrancar el server. */
 async function freePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address();
-      const port = typeof address === 'object' && address !== null ? address.port : 0;
-      probe.close(() => resolve(port));
+  for (;;) {
+    const port = await new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.once('error', reject);
+      probe.listen(0, '127.0.0.1', () => {
+        const address = probe.address();
+        const chosen = typeof address === 'object' && address !== null ? address.port : 0;
+        probe.close(() => resolve(chosen));
+      });
     });
-  });
+    if (!handedOutPorts.has(port)) {
+      handedOutPorts.add(port);
+      return port;
+    }
+  }
 }
 
 async function waitForServer(
@@ -212,6 +226,14 @@ async function resetTexts(page: Page, key: string): Promise<void> {
   await page.evaluate(`window['${key}'].length = 0`);
 }
 
+/**
+ * Las 26 pruebas son independientes entre sí: cada una se hace su copia de la
+ * librería, su puerto y su navegador, y limpia al terminar. En serie tardaban
+ * ~189 s porque casi todo es espera de entrada/salida (arrancar el servidor,
+ * Chromium, respuestas de la API); tres a la vez caben de sobra en la máquina y
+ * no comparten ni un dato mutable.
+ */
+describe('e2e contra el servidor real', { concurrency: 3 }, () => {
 test(
   'recorre escaneo, instalación y bancos en el navegador contra el servidor real',
   { skip },
@@ -5237,3 +5259,4 @@ test(
     }
   },
 );
+});
