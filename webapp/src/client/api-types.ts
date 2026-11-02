@@ -1057,6 +1057,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vmachine/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plugins que ya viven en las bibliotecas del medio
+         * @description Recorre en modo lectura las bibliotecas `*.vfxlibrary` de la raíz de la unidad y, por cada carpeta de `plugs\`, lee su `vfxinfo.txt` —en latin1, como lo escribe la máquina— y lo compara con el catálogo de wizards por id, DLL o nombre exacto. `status` dice si el medio tiene la misma versión que el catálogo (`match`), otra (`differs`) o si el catálogo no lo conoce (`unknown`).
+         */
+        get: operations["VMachineController_inventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vmachine/install": {
         parameters: {
             query?: never;
@@ -4541,6 +4561,113 @@ export interface components {
             drives: components["schemas"]["VMachineDriveDto"][];
             /**
              * @description Unidades que se listaron pero no se pudieron leer, y por qué.
+             * @example []
+             */
+            warnings: string[];
+        };
+        VMachineCatalogDto: {
+            /**
+             * @description ID VST del wizard que reconoce el plugin.
+             * @example 1316377392
+             */
+            id: string;
+            /**
+             * @description Nombre del plugin en el catálogo.
+             * @example SuperWave P8
+             */
+            name: string;
+            /**
+             * @description Versión certificada en el catálogo; vacía si el wizard no la declara.
+             * @example 1.2
+             */
+            version: string;
+        };
+        VMachineInventoryPluginDto: {
+            /**
+             * @description Biblioteca a la que pertenece.
+             * @example V-MACHINE.vfxlibrary
+             */
+            library: string;
+            /**
+             * @description Carpeta dentro de `plugs\`.
+             * @example SuperWave P8
+             */
+            folder: string;
+            /**
+             * @description Ruta absoluta de la carpeta del plugin en el medio.
+             * @example E:\V-MACHINE.vfxlibrary\plugs\SuperWave P8
+             */
+            path: string;
+            /** @description Existe `vfxinfo.txt`: sin él la máquina no reconoce el plugin. */
+            hasVfxinfo: boolean;
+            /**
+             * @description `name` del vfxinfo, o `null` si no lo declara.
+             * @example SuperWave P8
+             */
+            name?: string | null;
+            /**
+             * @description `id` VST del vfxinfo, la clave con la que el catálogo reconoce el plugin.
+             * @example 1316377392
+             */
+            id?: string | null;
+            /**
+             * @description `version` del vfxinfo; puede faltar aunque el plugin funcione.
+             * @example 1.2
+             */
+            version?: string | null;
+            /**
+             * @description `dll_name` del vfxinfo, relativo a la carpeta del plugin.
+             * @example SuperWave P8/P8.dll
+             */
+            dll?: string | null;
+            /**
+             * @description Archivos que ocupa el plugin en el medio.
+             * @example 12
+             */
+            files: number;
+            /**
+             * @description Bytes que ocupa el plugin en el medio.
+             * @example 48210432
+             */
+            bytes: number;
+            /** @description Wizard del catálogo que reconoce al plugin, o `null` si ninguno coincide. */
+            catalog?: components["schemas"]["VMachineCatalogDto"] | null;
+            /**
+             * @description `match` si la versión del medio coincide con el catálogo, `differs` si el catálogo tiene otra, y `unknown` si el catálogo no conoce el plugin.
+             * @example match
+             * @enum {string}
+             */
+            status: "match" | "differs" | "unknown";
+        };
+        VMachineInventoryLibraryDto: {
+            /**
+             * @description Nombre de la carpeta de la biblioteca.
+             * @example V-MACHINE.vfxlibrary
+             */
+            name: string;
+            /**
+             * @description Ruta absoluta de la biblioteca en el medio.
+             * @example E:\V-MACHINE.vfxlibrary
+             */
+            path: string;
+            /** @description Plugins de `plugs\`, por nombre de carpeta. */
+            plugins: components["schemas"]["VMachineInventoryPluginDto"][];
+        };
+        VMachineInventoryResponseDto: {
+            /**
+             * @description Raíz del medio que se leyó.
+             * @example E:\
+             */
+            drive: string;
+            /** @description Bibliotecas `*.vfxlibrary` de la raíz, en orden alfabético. */
+            libraries: components["schemas"]["VMachineInventoryLibraryDto"][];
+            /**
+             * @description Total de plugins entre todas las bibliotecas.
+             * @example 3
+             */
+            plugins: number;
+            /**
+             * @description Lo que no se pudo leer del medio, y por qué; vacío si todo salió bien.
              * @example []
              */
             warnings: string[];
@@ -8423,6 +8550,126 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["VMachineDrivesResponseDto"];
+                };
+            };
+        };
+    };
+    VMachineController_inventory: {
+        parameters: {
+            query: {
+                /** @description Raíz del medio, tal como la devuelve `GET /vmachine/drives` («E:», «E:\»). */
+                drive: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bibliotecas del medio con sus plugins, ya comparados con el catálogo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "drive": "E:\\",
+                     *       "libraries": [
+                     *         {
+                     *           "name": "V-MACHINE.vfxlibrary",
+                     *           "path": "E:\\V-MACHINE.vfxlibrary",
+                     *           "plugins": [
+                     *             {
+                     *               "library": "V-MACHINE.vfxlibrary",
+                     *               "folder": "SuperWave P8",
+                     *               "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8",
+                     *               "hasVfxinfo": true,
+                     *               "name": "SuperWave P8",
+                     *               "id": "1316377392",
+                     *               "version": "1.2",
+                     *               "dll": "SuperWave P8/P8.dll",
+                     *               "files": 12,
+                     *               "bytes": 48210432,
+                     *               "catalog": {
+                     *                 "id": "1316377392",
+                     *                 "name": "SuperWave P8",
+                     *                 "version": "1.2"
+                     *               },
+                     *               "status": "match"
+                     *             },
+                     *             {
+                     *               "library": "V-MACHINE.vfxlibrary",
+                     *               "folder": "Old Delay",
+                     *               "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\Old Delay",
+                     *               "hasVfxinfo": true,
+                     *               "name": "Old Delay",
+                     *               "id": "987654321",
+                     *               "version": "1.0",
+                     *               "dll": "Old Delay/OldDelay.dll",
+                     *               "files": 4,
+                     *               "bytes": 1048576,
+                     *               "catalog": {
+                     *                 "id": "987654321",
+                     *                 "name": "Old Delay",
+                     *                 "version": "1.1"
+                     *               },
+                     *               "status": "differs"
+                     *             },
+                     *             {
+                     *               "library": "V-MACHINE.vfxlibrary",
+                     *               "folder": "Sin Vfxinfo",
+                     *               "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\Sin Vfxinfo",
+                     *               "hasVfxinfo": false,
+                     *               "name": null,
+                     *               "id": null,
+                     *               "version": null,
+                     *               "dll": null,
+                     *               "files": 1,
+                     *               "bytes": 2048,
+                     *               "catalog": null,
+                     *               "status": "unknown"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "plugins": 3,
+                     *       "warnings": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineInventoryResponseDto"];
+                };
+            };
+            /** @description Falta `drive` o llega vacío. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "drive requerido"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
+                };
+            };
+            /** @description La unidad no existe o no es una carpeta. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                     *       "code": "driveNotFound",
+                     *       "params": {
+                     *         "0": "Z:"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VMachineErrorDto"];
                 };
             };
         };

@@ -6110,6 +6110,133 @@
         ]
       }
     },
+    "/vmachine/inventory": {
+      "get": {
+        "description": "Recorre en modo lectura las bibliotecas `*.vfxlibrary` de la raíz de la unidad y, por cada carpeta de `plugs\\`, lee su `vfxinfo.txt` —en latin1, como lo escribe la máquina— y lo compara con el catálogo de wizards por id, DLL o nombre exacto. `status` dice si el medio tiene la misma versión que el catálogo (`match`), otra (`differs`) o si el catálogo no lo conoce (`unknown`).",
+        "operationId": "VMachineController_inventory",
+        "parameters": [
+          {
+            "name": "drive",
+            "required": true,
+            "in": "query",
+            "description": "Raíz del medio, tal como la devuelve `GET /vmachine/drives` («E:», «E:\\»).",
+            "schema": {
+              "example": "E:",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bibliotecas del medio con sus plugins, ya comparados con el catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineInventoryResponseDto"
+                },
+                "example": {
+                  "drive": "E:\\",
+                  "libraries": [
+                    {
+                      "name": "V-MACHINE.vfxlibrary",
+                      "path": "E:\\V-MACHINE.vfxlibrary",
+                      "plugins": [
+                        {
+                          "library": "V-MACHINE.vfxlibrary",
+                          "folder": "SuperWave P8",
+                          "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8",
+                          "hasVfxinfo": true,
+                          "name": "SuperWave P8",
+                          "id": "1316377392",
+                          "version": "1.2",
+                          "dll": "SuperWave P8/P8.dll",
+                          "files": 12,
+                          "bytes": 48210432,
+                          "catalog": {
+                            "id": "1316377392",
+                            "name": "SuperWave P8",
+                            "version": "1.2"
+                          },
+                          "status": "match"
+                        },
+                        {
+                          "library": "V-MACHINE.vfxlibrary",
+                          "folder": "Old Delay",
+                          "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\Old Delay",
+                          "hasVfxinfo": true,
+                          "name": "Old Delay",
+                          "id": "987654321",
+                          "version": "1.0",
+                          "dll": "Old Delay/OldDelay.dll",
+                          "files": 4,
+                          "bytes": 1048576,
+                          "catalog": {
+                            "id": "987654321",
+                            "name": "Old Delay",
+                            "version": "1.1"
+                          },
+                          "status": "differs"
+                        },
+                        {
+                          "library": "V-MACHINE.vfxlibrary",
+                          "folder": "Sin Vfxinfo",
+                          "path": "E:\\V-MACHINE.vfxlibrary\\plugs\\Sin Vfxinfo",
+                          "hasVfxinfo": false,
+                          "name": null,
+                          "id": null,
+                          "version": null,
+                          "dll": null,
+                          "files": 1,
+                          "bytes": 2048,
+                          "catalog": null,
+                          "status": "unknown"
+                        }
+                      ]
+                    }
+                  ],
+                  "plugins": 3,
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta `drive` o llega vacío.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "drive requerido"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La unidad no existe o no es una carpeta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMachineErrorDto"
+                },
+                "example": {
+                  "message": "La unidad \"Z:\" no existe o no es una carpeta.",
+                  "code": "driveNotFound",
+                  "params": {
+                    "0": "Z:"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Plugins que ya viven en las bibliotecas del medio",
+        "tags": [
+          "vmachine"
+        ]
+      }
+    },
     "/vmachine/install": {
       "post": {
         "description": "Envuelve el paquete generado por `/capture/vmachine/:diffId` en `<Nombre>.vfxlibrary\\plugs\\<Plugin>\\` —la forma que la v-machine lee desde la raíz del medio— y comprueba archivo por archivo que lo copiado es idéntico a lo generado: tamaño siempre, y SHA-256 hasta 32 MiB. Si la unidad ya tiene una única biblioteca se escribe en ella; pisar una versión anterior del mismo plugin se informa en `replaced`. No borra nada que no sea del propio plugin.",
@@ -11997,6 +12124,185 @@
         "required": [
           "supported",
           "drives",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineCatalogDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID VST del wizard que reconoce el plugin.",
+            "example": "1316377392"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del plugin en el catálogo.",
+            "example": "SuperWave P8"
+          },
+          "version": {
+            "type": "string",
+            "description": "Versión certificada en el catálogo; vacía si el wizard no la declara.",
+            "example": "1.2"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineInventoryPluginDto": {
+        "type": "object",
+        "properties": {
+          "library": {
+            "type": "string",
+            "description": "Biblioteca a la que pertenece.",
+            "example": "V-MACHINE.vfxlibrary"
+          },
+          "folder": {
+            "type": "string",
+            "description": "Carpeta dentro de `plugs\\`.",
+            "example": "SuperWave P8"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta de la carpeta del plugin en el medio.",
+            "example": "E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8"
+          },
+          "hasVfxinfo": {
+            "type": "boolean",
+            "description": "Existe `vfxinfo.txt`: sin él la máquina no reconoce el plugin."
+          },
+          "name": {
+            "type": "string",
+            "description": "`name` del vfxinfo, o `null` si no lo declara.",
+            "example": "SuperWave P8",
+            "nullable": true
+          },
+          "id": {
+            "type": "string",
+            "description": "`id` VST del vfxinfo, la clave con la que el catálogo reconoce el plugin.",
+            "example": "1316377392",
+            "nullable": true
+          },
+          "version": {
+            "type": "string",
+            "description": "`version` del vfxinfo; puede faltar aunque el plugin funcione.",
+            "example": "1.2",
+            "nullable": true
+          },
+          "dll": {
+            "type": "string",
+            "description": "`dll_name` del vfxinfo, relativo a la carpeta del plugin.",
+            "example": "SuperWave P8/P8.dll",
+            "nullable": true
+          },
+          "files": {
+            "type": "number",
+            "description": "Archivos que ocupa el plugin en el medio.",
+            "example": 12
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes que ocupa el plugin en el medio.",
+            "example": 48210432
+          },
+          "catalog": {
+            "description": "Wizard del catálogo que reconoce al plugin, o `null` si ninguno coincide.",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VMachineCatalogDto"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "`match` si la versión del medio coincide con el catálogo, `differs` si el catálogo tiene otra, y `unknown` si el catálogo no conoce el plugin.",
+            "enum": [
+              "match",
+              "differs",
+              "unknown"
+            ],
+            "example": "match"
+          }
+        },
+        "required": [
+          "library",
+          "folder",
+          "path",
+          "hasVfxinfo",
+          "files",
+          "bytes",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineInventoryLibraryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nombre de la carpeta de la biblioteca.",
+            "example": "V-MACHINE.vfxlibrary"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta absoluta de la biblioteca en el medio.",
+            "example": "E:\\V-MACHINE.vfxlibrary"
+          },
+          "plugins": {
+            "description": "Plugins de `plugs\\`, por nombre de carpeta.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineInventoryPluginDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "plugins"
+        ],
+        "additionalProperties": false
+      },
+      "VMachineInventoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "drive": {
+            "type": "string",
+            "description": "Raíz del medio que se leyó.",
+            "example": "E:\\"
+          },
+          "libraries": {
+            "description": "Bibliotecas `*.vfxlibrary` de la raíz, en orden alfabético.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMachineInventoryLibraryDto"
+            }
+          },
+          "plugins": {
+            "type": "number",
+            "description": "Total de plugins entre todas las bibliotecas.",
+            "example": 3
+          },
+          "warnings": {
+            "description": "Lo que no se pudo leer del medio, y por qué; vacío si todo salió bien.",
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "drive",
+          "libraries",
+          "plugins",
           "warnings"
         ],
         "additionalProperties": false

@@ -73,6 +73,61 @@ export interface VMachineInstallResult {
   warnings: string[];
 }
 
+/** Entrada del catálogo de wizards con la que se compara lo que hay en el medio. */
+export interface VMachineCatalogEntry {
+  id: string;
+  name: string;
+  version: string;
+}
+
+/** Consulta al catálogo. Inyectable: las pruebas no cargan el repositorio real. */
+export type WizardLookup = (query: {
+  id?: string;
+  name?: string;
+  dllName?: string;
+}) => VMachineCatalogEntry | null;
+
+/** Plugin que ya vive en una biblioteca del medio. */
+export interface VMachineInventoryPlugin {
+  /** Biblioteca a la que pertenece (`<Nombre>.vfxlibrary`). */
+  library: string;
+  /** Carpeta dentro de `plugs\`. */
+  folder: string;
+  path: string;
+  hasVfxinfo: boolean;
+  /** `name` del vfxinfo, o `null` si no lo declara. */
+  name: string | null;
+  /** `id` VST del vfxinfo, la clave con la que el catálogo reconoce el plugin. */
+  id: string | null;
+  /** `version` del vfxinfo; puede faltar aunque el plugin esté bien. */
+  version: string | null;
+  dll: string | null;
+  files: number;
+  bytes: number;
+  /** Wizard con el que se corresponde, o `null` si el catálogo no lo conoce. */
+  catalog: VMachineCatalogEntry | null;
+  /**
+   * `match` si coincide con el catálogo, `differs` si el catálogo tiene otra
+   * versión —el medio va por detrás o por delante— y `unknown` si no hay
+   * ninguna entrada que lo reconozca.
+   */
+  status: 'match' | 'differs' | 'unknown';
+}
+
+export interface VMachineInventoryLibrary {
+  name: string;
+  path: string;
+  plugins: VMachineInventoryPlugin[];
+}
+
+export interface VMachineInventory {
+  drive: string;
+  libraries: VMachineInventoryLibrary[];
+  /** Total de plugins entre todas las bibliotecas. */
+  plugins: number;
+  warnings: string[];
+}
+
 /**
  * Fallo de la gestión de la unidad extraíble. Lleva `apiCode` para que la vista
  * lo traduzca y el mensaje quede para los logs, igual que los errores de

@@ -1504,6 +1504,31 @@
                 <p class="note"><strong data-i18n="capture.generatedAt">Generated at:</strong> <code id="capture-vmachine-path"></code></p>
                 <p class="note"><strong data-i18n="capture.wizardLabel">Wizard:</strong> <code id="capture-wizard-path"></code></p>
                 <p class="note" style="font-size: 11px;" data-i18n="capture.copyNote">Copy the plugs/&lt;Name&gt;/ folder to your V-Machine library, or import the wizard into the original software.</p>
+              <div id="capture-stick" class="capture-info" hidden>
+                <p><strong data-i18n="capture.stickTitle">Install on the V-Machine drive</strong></p>
+                <p class="note" data-i18n="capture.stickNote">The machine reads the *.vfxlibrary folders in the root of the drive. Copying wraps the generated package in that structure and verifies every file it writes.</p>
+                <div class="row">
+                  <div class="field" style="flex: 1; min-width: 220px;">
+                    <label for="capture-stick-drive" data-i18n="capture.stickDrive">Drive</label>
+                    <select id="capture-stick-drive"></select>
+                  </div>
+                  <div class="field" style="flex: 0 0 auto;">
+                    <label>&nbsp;</label>
+                    <button id="capture-stick-refresh" type="button">
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Refresh</span>
+                    </button>
+                  </div>
+                </div>
+                <p id="capture-stick-summary" class="note" role="status" aria-live="polite"></p>
+                <div id="capture-stick-inventory"></div>
+                <div class="row">
+                  <button id="capture-stick-install" type="button" disabled>
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span data-i18n="capture.stickInstall">Copy to the drive</span>
+                  </button>
+                </div>
+                <p id="capture-stick-status" class="status" role="status" aria-live="polite"></p>
+                <p class="note" style="font-size: 11px;" data-i18n="capture.stickEject">When it finishes, eject the drive safely from Windows before unplugging it: a pending write leaves the library half-written and the machine loads a broken plugin.</p>
+              </div>
               </div>
             </div>
           </div>

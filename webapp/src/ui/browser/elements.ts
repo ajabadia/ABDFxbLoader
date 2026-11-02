@@ -308,6 +308,13 @@ export const els = {
   captureVmachineInfo: byId<HTMLElement>('capture-vmachine-info'),
   captureVmachinePath: byId<HTMLElement>('capture-vmachine-path'),
   captureWizardPath: byId<HTMLElement>('capture-wizard-path'),
+  captureStick: byId<HTMLElement>('capture-stick'),
+  captureStickDrive: byId<HTMLSelectElement>('capture-stick-drive'),
+  captureStickRefresh: byId<HTMLButtonElement>('capture-stick-refresh'),
+  captureStickSummary: byId<HTMLParagraphElement>('capture-stick-summary'),
+  captureStickInventory: byId<HTMLElement>('capture-stick-inventory'),
+  captureStickInstall: byId<HTMLButtonElement>('capture-stick-install'),
+  captureStickStatus: byId<HTMLParagraphElement>('capture-stick-status'),
   captureLog: byId<HTMLElement>('capture-log'),
   captureStatus: byId<HTMLParagraphElement>('capture-status'),
 };

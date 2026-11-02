@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpStatus,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -16,18 +17,22 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
 import { CodedError, type ApiErrorCode } from '../common/api-errors';
 import {
+  VMACHINE_DRIVE_MISSING_EXAMPLE,
   VMACHINE_DRIVES_EXAMPLE,
   VMACHINE_ERROR_EXAMPLE,
+  VMACHINE_INVENTORY_EXAMPLE,
   VMACHINE_INSTALL_REQUEST_EXAMPLE,
   VMACHINE_INSTALL_RESULT_EXAMPLE,
   VMachineDrivesResponseDto,
   VMachineErrorDto,
   VMachineInstallRequestDto,
+  VMachineInventoryResponseDto,
   VMachineInstallResultDto,
 } from './vmachine.dto';
 import { VMachineService } from './vmachine.service';
@@ -106,6 +111,47 @@ export class VMachineController {
   async listDrives(): Promise<VMachineDrivesResponseDto> {
     try {
       return await this.service.listDrives();
+    } catch (error) {
+      throw asHttpException(error);
+    }
+  }
+
+  @Get('inventory')
+  @ApiOperation({
+    summary: 'Plugins que ya viven en las bibliotecas del medio',
+    description:
+      'Recorre en modo lectura las bibliotecas `*.vfxlibrary` de la raíz de la unidad y, por cada ' +
+      'carpeta de `plugs\\`, lee su `vfxinfo.txt` —en latin1, como lo escribe la máquina— y lo ' +
+      'compara con el catálogo de wizards por id, DLL o nombre exacto. `status` dice si el medio ' +
+      'tiene la misma versión que el catálogo (`match`), otra (`differs`) o si el catálogo no lo ' +
+      'conoce (`unknown`).',
+  })
+  @ApiQuery({
+    name: 'drive',
+    required: true,
+    description: 'Raíz del medio, tal como la devuelve `GET /vmachine/drives` («E:», «E:\\»).',
+    example: 'E:',
+  })
+  @ApiOkResponse({
+    description: 'Bibliotecas del medio con sus plugins, ya comparados con el catálogo.',
+    type: VMachineInventoryResponseDto,
+    example: VMACHINE_INVENTORY_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta `drive` o llega vacío.',
+    type: VMachineErrorDto,
+    example: { message: 'drive requerido' },
+  })
+  @ApiNotFoundResponse({
+    description: 'La unidad no existe o no es una carpeta.',
+    type: VMachineErrorDto,
+    example: VMACHINE_DRIVE_MISSING_EXAMPLE,
+  })
+  async inventory(@Query('drive') drive?: string): Promise<VMachineInventoryResponseDto> {
+    try {
+      const value = (drive ?? '').trim();
+      if (value === '') throw new BadRequestException('drive requerido');
+      return await this.service.inventory(value);
     } catch (error) {
       throw asHttpException(error);
     }

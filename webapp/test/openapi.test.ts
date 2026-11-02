@@ -143,6 +143,7 @@ test('el documento expone los endpoints de fxb-config', () => {
     '/system/pick',
     '/vmachine/drives',
     '/vmachine/install',
+    '/vmachine/inventory',
     '/wizards',
     '/wizards/apply-meta',
     '/wizards/create-from-plugin',

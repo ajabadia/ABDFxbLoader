@@ -9,12 +9,17 @@ import {
   type DriveRunner,
   type RawDrive,
 } from './drives';
+import { readStickPlugin } from './inventory';
 import {
   VMachineError,
   type VMachineDrive,
   type VMachineDrives,
   type VMachineInstallOptions,
   type VMachineInstallResult,
+  type VMachineInventory,
+  type VMachineInventoryLibrary,
+  type VMachineInventoryPlugin,
+  type WizardLookup,
 } from './vmachine.types';
 
 /**
@@ -149,6 +154,11 @@ export class VMachineService {
   constructor(
     private readonly platform: NodeJS.Platform,
     private readonly readDriveTable: DriveRunner,
+    /**
+     * Catálogo de wizards. Se inyecta como función para que el servicio no
+     * dependa del módulo de wizards y las pruebas lo resuelvan sin disco.
+     */
+    private readonly matchWizard: WizardLookup = () => null,
   ) {}
 
   async listDrives(): Promise<VMachineDrives> {
@@ -322,5 +332,82 @@ export class VMachineService {
       sizeOnly,
       warnings,
     };
+  }
+
+  /**
+   * Inventario del medio, en modo lectura: qué plugins hay en cada biblioteca y
+   * cómo se comparan con el catálogo. No escribe nada, así que la vista puede
+   * pedirlo cada vez que se elige una unidad.
+   */
+  async inventory(driveInput: string): Promise<VMachineInventory> {
+    const drive = path.resolve(driveInput);
+    let stats;
+    try {
+      stats = await fs.stat(drive);
+    } catch {
+      throw this.driveMissing(driveInput);
+    }
+    if (!stats.isDirectory()) throw this.driveMissing(driveInput);
+
+    let names: string[];
+    try {
+      names = await librariesIn(drive);
+    } catch (error) {
+      throw new VMachineError(
+        `No se pudo leer la raíz de "${driveInput}": ${(error as Error).message}`,
+      );
+    }
+
+    const warnings: string[] = [];
+    if (names.length === 0) {
+      warnings.push(
+        'La unidad no tiene ninguna biblioteca en la raíz: la máquina no verá ningún plugin hasta que se copie uno.',
+      );
+    }
+
+    const libraries: VMachineInventoryLibrary[] = [];
+    let plugins = 0;
+    for (const name of names) {
+      const libraryDir = path.join(drive, name);
+      const list: VMachineInventoryPlugin[] = [];
+      let folders: string[] = [];
+      try {
+        const entries = await fs.readdir(path.join(libraryDir, 'plugs'), {
+          withFileTypes: true,
+        });
+        folders = entries
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name)
+          .sort((left, right) => left.localeCompare(right));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          warnings.push(`No se pudo leer ${name}\\plugs: ${(error as Error).message}`);
+        }
+      }
+
+      for (const folder of folders) {
+        const read = await readStickPlugin(
+          name,
+          path.join(libraryDir, 'plugs', folder),
+          this.matchWizard,
+        );
+        list.push(read.plugin);
+        warnings.push(...read.warnings);
+      }
+
+      plugins += list.length;
+      libraries.push({ name, path: libraryDir, plugins: list });
+    }
+
+    return { drive, libraries, plugins, warnings };
+  }
+
+  /** La unidad que se pidió no está montada o no es una carpeta. */
+  private driveMissing(drive: string): VMachineError {
+    return new VMachineError(
+      `La unidad "${drive}" no existe o no es una carpeta.`,
+      'driveNotFound',
+      { 0: drive },
+    );
   }
 }

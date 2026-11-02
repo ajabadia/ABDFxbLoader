@@ -225,6 +225,12 @@ let captureTaskKind: 'start' | 'finish' | null = null;
 let captureSessionInitialized = false;
 let captureSnapshotText = '';
 let captureStagingLoaded = false;
+/** Paquete generado por el último `/capture/vmachine/:diffId`, para copiarlo sin regenerar. */
+let captureBankDir: string | null = null;
+/** Unidades de la v-machine y lo que ya tienen dentro. */
+let captureStickDrives: StickDrive[] = [];
+let captureStickInventory: StickInventory | null = null;
+let captureStickBusy = false;
 /** Archivos previos del snapshot inicial que entrarían en el paquete; `null` hasta consultarlo. */
 let capturePreExistingCount: number | null = null;
 /** Aviso del servidor al contar los previos (snapshot inicial perdido, por ejemplo). */
@@ -4430,6 +4436,13 @@ function openCaptureDrawer(opener?: HTMLElement): void {
     els.captureFinishInfo.hidden = true;
     els.captureStagingInfo.hidden = true;
     els.captureVmachineInfo.hidden = true;
+    els.captureStick.hidden = true;
+    els.captureStickSummary.textContent = '';
+    els.captureStickInventory.replaceChildren();
+    captureStickInventory = null;
+    captureStickDrives = [];
+    captureBankDir = null;
+    setStickStatus('');
     els.captureStep1Status.textContent = t('ui.capture.stepPending');
     els.captureStep1Status.className = 'capture-step-badge';
     els.captureStep2Status.textContent = t('ui.capture.stepPending');
@@ -5168,6 +5181,10 @@ async function captureVmachine(): Promise<void> {
     if (els.captureVmachinePath) els.captureVmachinePath.textContent = data.bankDir || '';
     if (els.captureWizardPath) els.captureWizardPath.textContent = data.wizardPath || '';
     els.captureVmachineInfo.hidden = false;
+    captureBankDir = data.bankDir || null;
+    els.captureStick.hidden = false;
+    els.captureStickInstall.disabled = true;
+    await captureStickLoad();
     captureLog(t('ui.capture.generatedOk'), 'ok');
     setCaptureStatus(t('ui.capture.bankWizardReady'), 'ok');
   } catch (error) {
@@ -5175,6 +5192,304 @@ async function captureVmachine(): Promise<void> {
     const msg = describeError(error);
     captureLog(t('ui.capture.generateError', { 0: msg }), 'error');
     setCaptureStatus(t('ui.capture.errorShort', { 0: msg }), 'error');
+  }
+}
+
+
+type StickDrive = {
+  id: string;
+  label: string;
+  fileSystem: string;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  removable: boolean;
+  libraries: string[];
+};
+
+type StickPlugin = {
+  library: string;
+  folder: string;
+  path: string;
+  hasVfxinfo: boolean;
+  name: string | null;
+  id: string | null;
+  version: string | null;
+  dll: string | null;
+  files: number;
+  bytes: number;
+  catalog: { id: string; name: string; version: string } | null;
+  status: 'match' | 'differs' | 'unknown';
+};
+
+type StickInventory = {
+  drive: string;
+  libraries: { name: string; path: string; plugins: StickPlugin[] }[];
+  plugins: number;
+  warnings: string[];
+};
+
+type StickInstallResult = {
+  drive: string;
+  libraryDir: string;
+  pluginDir: string;
+  copied: number;
+  replaced: number;
+  bytes: number;
+  verified: number;
+  sizeOnly: string[];
+  warnings: string[];
+};
+
+function setStickStatus(message: string, kind: 'info' | 'ok' | 'error' | 'busy' = 'info'): void {
+  els.captureStickStatus.textContent = message;
+  els.captureStickStatus.className = `status ${kind}`;
+}
+
+/**
+ * Texto del error del API con el código traducible, como hace `describeError`
+ * con el cliente tipado: si el código no tiene traducción, manda el mensaje.
+ */
+async function stickErrorText(res: Response): Promise<string> {
+  const fallback = `${res.status} ${res.statusText}`.trim();
+  try {
+    const body = (await res.json()) as {
+      message?: string;
+      code?: string;
+      params?: Record<string, string | number>;
+    };
+    if (typeof body.code === 'string') {
+      const key = `msg.apiError.${body.code}`;
+      const translated = t(key, body.params ?? {});
+      if (translated !== key) return translated;
+    }
+    return body.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** «E: V-MACHINE · 4,8 GB»: la letra, la etiqueta y lo que queda libre. */
+function stickDriveOption(drive: StickDrive): string {
+  const name = drive.label === '' ? drive.id : `${drive.id} ${drive.label}`;
+  const free = drive.freeBytes === null ? '—' : formatBytes(drive.freeBytes);
+  return `${name} · ${free}`;
+}
+
+function stickSummaryText(drive: StickDrive | null, inventory: StickInventory | null): string {
+  const parts: string[] = [];
+  if (drive !== null) {
+    parts.push(
+      drive.libraries.length === 0
+        ? t('ui.capture.stickNoLibrary', { 0: 'V-MACHINE.vfxlibrary' })
+        : t('ui.capture.stickLibraries', { 0: drive.libraries.join(', ') }),
+    );
+  }
+  if (inventory !== null) {
+    parts.push(
+      inventory.plugins === 0
+        ? t('ui.capture.stickInventoryEmpty')
+        : t('ui.capture.stickInventoryCount', {
+            0: inventory.plugins,
+            1: inventory.libraries.length,
+          }),
+    );
+  }
+  return parts.join(' · ');
+}
+
+function stickCatalogLabel(plugin: StickPlugin): string {
+  if (plugin.catalog === null) return '';
+  return `${plugin.catalog.name} ${plugin.catalog.version}`.trim();
+}
+
+function stickStatusText(plugin: StickPlugin): string {
+  if (plugin.status === 'unknown') return t('ui.capture.stickCatalogUnknown');
+  return plugin.status === 'match'
+    ? t('ui.capture.stickCatalogMatch', { 0: stickCatalogLabel(plugin) })
+    : t('ui.capture.stickCatalogDiffers', { 0: stickCatalogLabel(plugin) });
+}
+
+function renderStickInventory(): void {
+  els.captureStickInventory.replaceChildren();
+  const inventory = captureStickInventory;
+  if (inventory === null) return;
+
+  const list = document.createElement('ul');
+  list.style.listStyle = 'none';
+  list.style.margin = '8px 0 0';
+  list.style.padding = '0';
+  list.style.display = 'grid';
+  list.style.gap = '4px';
+
+  for (const library of inventory.libraries) {
+    for (const plugin of library.plugins) {
+      const item = document.createElement('li');
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '8px';
+      item.style.flexWrap = 'wrap';
+
+      const name = document.createElement('span');
+      name.style.fontWeight = '600';
+      name.textContent = plugin.name ?? plugin.folder;
+      // El nombre del vfxinfo puede diferir de la carpeta, y la carpeta es la
+      // que se ve en la máquina: se deja a mano en el tooltip.
+      if (plugin.name !== null && plugin.name !== plugin.folder) name.title = plugin.folder;
+
+      const badge = document.createElement('span');
+      badge.className = `badge ${plugin.status === 'match' ? 'on' : plugin.status === 'differs' ? 'bad' : 'off'}`;
+      badge.textContent = stickStatusText(plugin);
+
+      const files = document.createElement('span');
+      files.className = 'note';
+      files.textContent = t('ui.capture.stickPluginFiles', {
+        0: plugin.files,
+        1: formatBytes(plugin.bytes),
+      });
+
+      item.append(name, badge, files);
+      list.append(item);
+    }
+  }
+
+  if (list.childElementCount > 0) els.captureStickInventory.append(list);
+}
+
+async function captureStickLoad(): Promise<void> {
+  if (captureStickBusy) return;
+  captureStickBusy = true;
+  els.captureStickRefresh.disabled = true;
+  els.captureStickInstall.disabled = true;
+  els.captureStickSummary.textContent = '';
+  els.captureStickInventory.replaceChildren();
+  captureStickInventory = null;
+  setStickStatus(t('ui.capture.stickSearching'), 'busy');
+  try {
+    const res = await fetch('/vmachine/drives');
+    if (!res.ok) throw new Error(await stickErrorText(res));
+    const data = (await res.json()) as {
+      supported: boolean;
+      drives: StickDrive[];
+      warnings: string[];
+    };
+    captureStickDrives = data.drives;
+    for (const warning of data.warnings) captureLog(warning, 'error');
+
+    if (!data.supported) {
+      els.captureStickDrive.replaceChildren();
+      setStickStatus(t('ui.capture.stickUnsupported'), 'error');
+      return;
+    }
+    if (data.drives.length === 0) {
+      els.captureStickDrive.replaceChildren();
+      setStickStatus(t('ui.capture.stickNoDrives'), 'error');
+      return;
+    }
+
+    const previous = els.captureStickDrive.value;
+    els.captureStickDrive.replaceChildren(
+      ...data.drives.map((drive) => {
+        const option = document.createElement('option');
+        option.value = drive.id;
+        option.textContent = stickDriveOption(drive);
+        return option;
+      }),
+    );
+    // Se conserva la unidad elegida si sigue conectada; si no, la extraíble: es
+    // el stick de la máquina y el disco del sistema nunca es el destino.
+    const keep =
+      data.drives.find((drive) => drive.id === previous) ??
+      data.drives.find((drive) => drive.removable) ??
+      data.drives[0]!;
+    els.captureStickDrive.value = keep.id;
+    await captureStickSelect(keep.id);
+  } catch (error) {
+    setStickStatus(t('ui.capture.stickLoadError', { 0: describeError(error) }), 'error');
+  } finally {
+    captureStickBusy = false;
+    els.captureStickRefresh.disabled = false;
+  }
+}
+
+async function captureStickSelect(
+  driveId: string,
+  options: { keepStatus?: boolean } = {},
+): Promise<void> {
+  captureStickInventory = null;
+  els.captureStickInventory.replaceChildren();
+  els.captureStickInstall.disabled = true;
+  const drive = captureStickDrives.find((entry) => entry.id === driveId) ?? null;
+  els.captureStickSummary.textContent = stickSummaryText(drive, null);
+  if (driveId === '') return;
+
+  setStickStatus(t('ui.capture.stickReading', { 0: driveId }), 'busy');
+  try {
+    const res = await fetch(`/vmachine/inventory?drive=${encodeURIComponent(driveId)}`);
+    if (!res.ok) throw new Error(await stickErrorText(res));
+    const inventory = (await res.json()) as StickInventory;
+    // Otra unidad se eligió mientras se leía esta: su respuesta ya no vale.
+    if (els.captureStickDrive.value !== driveId) return;
+    captureStickInventory = inventory;
+    els.captureStickSummary.textContent = stickSummaryText(drive, inventory);
+    renderStickInventory();
+    for (const warning of inventory.warnings) captureLog(warning, 'error');
+    if (!options.keepStatus) setStickStatus('', 'info');
+    els.captureStickInstall.disabled = captureBankDir === null;
+  } catch (error) {
+    if (els.captureStickDrive.value !== driveId) return;
+    setStickStatus(t('ui.capture.stickInventoryError', { 0: describeError(error) }), 'error');
+  }
+}
+
+async function captureStickCopy(): Promise<void> {
+  const driveId = els.captureStickDrive.value;
+  if (captureBankDir === null) {
+    setStickStatus(t('ui.capture.stickNeedPackage'), 'error');
+    return;
+  }
+  if (driveId === '') {
+    setStickStatus(t('ui.capture.stickNoDrives'), 'error');
+    return;
+  }
+
+  els.captureStickInstall.disabled = true;
+  const copying = t('ui.capture.stickCopying', { 0: driveId });
+  setStickStatus(copying, 'busy');
+  captureLog(copying, 'busy');
+  try {
+    const res = await fetch('/vmachine/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive: driveId, pluginDir: captureBankDir }),
+    });
+    if (!res.ok) throw new Error(await stickErrorText(res));
+    const result = (await res.json()) as StickInstallResult;
+
+    const parts = [t('ui.capture.stickCopied', { 0: result.copied, 1: formatBytes(result.bytes) })];
+    if (result.verified > 0 && result.sizeOnly.length === 0) {
+      parts.push(t('ui.capture.stickCopiedHashes', { 0: result.verified }));
+    }
+    if (result.replaced > 0) {
+      parts.push(t('ui.capture.stickCopiedReplaced', { 0: result.replaced }));
+    }
+    if (result.sizeOnly.length > 0) {
+      parts.push(t('ui.capture.stickSizeOnly', { 0: result.sizeOnly.join(', ') }));
+    }
+    parts.push(...result.warnings);
+
+    const text = parts.join(' ');
+    setStickStatus(text, 'ok');
+    setCaptureStatus(t('ui.capture.stickCopiedShort', { 0: result.drive }), 'ok');
+    captureLog(text, 'ok');
+    // El inventario se relee: el plugin recién copiado tiene que aparecer con su
+    // versión, no como si la unidad siguiera igual.
+    await captureStickSelect(driveId, { keepStatus: true });
+  } catch (error) {
+    const text = t('ui.capture.stickCopyError', { 0: describeError(error) });
+    setStickStatus(text, 'error');
+    captureLog(text, 'error');
+  } finally {
+    els.captureStickInstall.disabled = captureBankDir === null;
   }
 }
 
@@ -5527,6 +5842,24 @@ if (els.captureIncludeExisting) {
 if (els.captureVmachineBtn) {
   els.captureVmachineBtn.addEventListener('click', () => {
     void captureVmachine();
+  });
+}
+
+if (els.captureStickRefresh) {
+  els.captureStickRefresh.addEventListener('click', () => {
+    void captureStickLoad();
+  });
+}
+
+if (els.captureStickDrive) {
+  els.captureStickDrive.addEventListener('change', () => {
+    void captureStickSelect(els.captureStickDrive.value);
+  });
+}
+
+if (els.captureStickInstall) {
+  els.captureStickInstall.addEventListener('click', () => {
+    void captureStickCopy();
   });
 }
 

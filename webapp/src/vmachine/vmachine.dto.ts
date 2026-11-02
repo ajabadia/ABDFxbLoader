@@ -196,3 +196,188 @@ export class VMachineErrorDto {
   })
   params?: Record<string, string | number>;
 }
+
+export const VMACHINE_DRIVE_MISSING_EXAMPLE = {
+  message: 'La unidad "Z:" no existe o no es una carpeta.',
+  code: 'driveNotFound',
+  params: { 0: 'Z:' },
+};
+
+export const VMACHINE_INVENTORY_EXAMPLE = {
+  drive: 'E:\\',
+  libraries: [
+    {
+      name: 'V-MACHINE.vfxlibrary',
+      path: 'E:\\V-MACHINE.vfxlibrary',
+      plugins: [
+        {
+          library: 'V-MACHINE.vfxlibrary',
+          folder: 'SuperWave P8',
+          path: 'E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8',
+          hasVfxinfo: true,
+          name: 'SuperWave P8',
+          id: '1316377392',
+          version: '1.2',
+          dll: 'SuperWave P8/P8.dll',
+          files: 12,
+          bytes: 48210432,
+          catalog: { id: '1316377392', name: 'SuperWave P8', version: '1.2' },
+          status: 'match',
+        },
+        {
+          library: 'V-MACHINE.vfxlibrary',
+          folder: 'Old Delay',
+          path: 'E:\\V-MACHINE.vfxlibrary\\plugs\\Old Delay',
+          hasVfxinfo: true,
+          name: 'Old Delay',
+          id: '987654321',
+          version: '1.0',
+          dll: 'Old Delay/OldDelay.dll',
+          files: 4,
+          bytes: 1048576,
+          catalog: { id: '987654321', name: 'Old Delay', version: '1.1' },
+          status: 'differs',
+        },
+        {
+          library: 'V-MACHINE.vfxlibrary',
+          folder: 'Sin Vfxinfo',
+          path: 'E:\\V-MACHINE.vfxlibrary\\plugs\\Sin Vfxinfo',
+          hasVfxinfo: false,
+          name: null,
+          id: null,
+          version: null,
+          dll: null,
+          files: 1,
+          bytes: 2048,
+          catalog: null,
+          status: 'unknown',
+        },
+      ],
+    },
+  ],
+  plugins: 3,
+  warnings: [],
+};
+
+export class VMachineCatalogDto {
+  @ApiProperty({ description: 'ID VST del wizard que reconoce el plugin.', example: '1316377392' })
+  id!: string;
+
+  @ApiProperty({ description: 'Nombre del plugin en el catálogo.', example: 'SuperWave P8' })
+  name!: string;
+
+  @ApiProperty({
+    description: 'Versión certificada en el catálogo; vacía si el wizard no la declara.',
+    example: '1.2',
+  })
+  version!: string;
+}
+
+export class VMachineInventoryPluginDto {
+  @ApiProperty({ description: 'Biblioteca a la que pertenece.', example: 'V-MACHINE.vfxlibrary' })
+  library!: string;
+
+  @ApiProperty({ description: 'Carpeta dentro de `plugs\\`.', example: 'SuperWave P8' })
+  folder!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta de la carpeta del plugin en el medio.',
+    example: 'E:\\V-MACHINE.vfxlibrary\\plugs\\SuperWave P8',
+  })
+  path!: string;
+
+  @ApiProperty({ description: 'Existe `vfxinfo.txt`: sin él la máquina no reconoce el plugin.' })
+  hasVfxinfo!: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`name` del vfxinfo, o `null` si no lo declara.',
+    example: 'SuperWave P8',
+    nullable: true,
+  })
+  name!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`id` VST del vfxinfo, la clave con la que el catálogo reconoce el plugin.',
+    example: '1316377392',
+    nullable: true,
+  })
+  id!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`version` del vfxinfo; puede faltar aunque el plugin funcione.',
+    example: '1.2',
+    nullable: true,
+  })
+  version!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: '`dll_name` del vfxinfo, relativo a la carpeta del plugin.',
+    example: 'SuperWave P8/P8.dll',
+    nullable: true,
+  })
+  dll!: string | null;
+
+  @ApiProperty({ description: 'Archivos que ocupa el plugin en el medio.', example: 12 })
+  files!: number;
+
+  @ApiProperty({ description: 'Bytes que ocupa el plugin en el medio.', example: 48210432 })
+  bytes!: number;
+
+  @ApiPropertyOptional({
+    description: 'Wizard del catálogo que reconoce al plugin, o `null` si ninguno coincide.',
+    type: () => VMachineCatalogDto,
+    nullable: true,
+  })
+  catalog!: VMachineCatalogDto | null;
+
+  @ApiProperty({
+    description:
+      '`match` si la versión del medio coincide con el catálogo, `differs` si el catálogo ' +
+      'tiene otra, y `unknown` si el catálogo no conoce el plugin.',
+    enum: ['match', 'differs', 'unknown'],
+    example: 'match',
+  })
+  status!: 'match' | 'differs' | 'unknown';
+}
+
+export class VMachineInventoryLibraryDto {
+  @ApiProperty({ description: 'Nombre de la carpeta de la biblioteca.', example: 'V-MACHINE.vfxlibrary' })
+  name!: string;
+
+  @ApiProperty({
+    description: 'Ruta absoluta de la biblioteca en el medio.',
+    example: 'E:\\V-MACHINE.vfxlibrary',
+  })
+  path!: string;
+
+  @ApiProperty({
+    description: 'Plugins de `plugs\\`, por nombre de carpeta.',
+    type: [VMachineInventoryPluginDto],
+  })
+  plugins!: VMachineInventoryPluginDto[];
+}
+
+export class VMachineInventoryResponseDto {
+  @ApiProperty({ description: 'Raíz del medio que se leyó.', example: 'E:\\' })
+  drive!: string;
+
+  @ApiProperty({
+    description: 'Bibliotecas `*.vfxlibrary` de la raíz, en orden alfabético.',
+    type: [VMachineInventoryLibraryDto],
+  })
+  libraries!: VMachineInventoryLibraryDto[];
+
+  @ApiProperty({ description: 'Total de plugins entre todas las bibliotecas.', example: 3 })
+  plugins!: number;
+
+  @ApiProperty({
+    description: 'Lo que no se pudo leer del medio, y por qué; vacío si todo salió bien.',
+    type: [String],
+    example: [],
+  })
+  warnings!: string[];
+}
