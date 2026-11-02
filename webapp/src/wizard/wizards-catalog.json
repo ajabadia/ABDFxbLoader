@@ -402,6 +402,37 @@
     "readme": null
   },
   {
+    "id": "1634560049",
+    "name": "acidrack",
+    "nameAbbreviation": "AcdRk",
+    "version": "1",
+    "dllName": "acidrack/acidrack.dll",
+    "dllVersion": "1.0.0.1",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 54,
+    "programCount": 16,
+    "editorWidth": 1010,
+    "editorHeight": 422,
+    "vendor": "Acid Milch & Honig",
+    "vendorUrl": "http://acidspace.acid-milch-und-honig.de/",
+    "vendorType": "Free",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz, however monophonic sounds work well.\n\n*Misc*",
+    "vendorNotes": "A few days ago andi maschine alias acid.milch&honig was a little \ndejected about to find no usefully software synthesizer for his electronic ravepunk music.\nSo he decided to make his own VST Plugins. On this small page you now can click first results.\nAll the synth(s) are made with synthedit. If you download a plugin, please take note,\nthat it is like it is. Before you order a donated version, please test the free version on your PC\nbecause if it should not working on your system, I am not able to fix most problems :)\nI will actualize the zip archives whenever i've fixed something or made new presets!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\acidrack_1634560049\\acidrack_1634560049_Ver 1.4.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1095915077",
     "name": "ADM",
     "nameAbbreviation": "ADM",
@@ -508,6 +539,37 @@
     "readme": null
   },
   {
+    "id": "1634034028",
+    "name": "aethereal",
+    "nameAbbreviation": "Areal",
+    "version": "1",
+    "dllName": "aethereal/Aethereal.dll",
+    "dllVersion": "1.0.0.1",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 242,
+    "programCount": 64,
+    "editorWidth": 617,
+    "editorHeight": 540,
+    "vendor": "Psychic Modulation",
+    "vendorUrl": "http://www.psychicmodulation.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues on PC or V-machine.\nMac application gives random wine errors and crashes when changing presets.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Aethereal is an ambient vector synth for creating evolving atmospheres and textures. Aethereal comes equipt with over 100 built in sampled sounds such as synth tones, atmospheres, vocal pads and sound FX. The sounds can be loaded into four wave oscillators which can be mixed between using a sophisticated 4-Way TransMixer, either manually, with auto-modulation or in a set transition from one sound to the next.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\aethereal_1634034028\\aethereal_1634034028_Ver 1.2.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1634035314",
     "name": "aethereal free",
     "nameAbbreviation": "athfre",
@@ -556,7 +618,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nIf the plugin works in the plugin parade but not in a bank/preset then you may need to 'license plugin for V-Machine' even if you're using the demo.\nPlugin may not work if authorised or used in a vfxlibrary which is not on the C Drive.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "�Pads, leads, basses, weird noises, bell tones, FM-style purity or analogue grit - Albino can do the lot. In this respect, it could conceivably be the only soft synth you need�\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Pads, leads, basses, weird noises, bell tones, FM-style purity or analogue grit - Albino can do the lot. In this respect, it could conceivably be the only soft synth you need\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -616,6 +678,44 @@
       "mac": "2"
     },
     "sourcePath": "wizard_database_20101112\\Alchemy_1130447212\\Alchemy_1130447212_Ver 1.09.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1130447212",
+    "name": "Alchemy",
+    "nameAbbreviation": "CaAl",
+    "version": "1",
+    "dllName": "Alchemy/Alchemy.dll",
+    "dllVersion": "1.12.0.22",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 289,
+    "programCount": 1,
+    "editorWidth": 960,
+    "editorHeight": 620,
+    "vendor": "Camel-Audio",
+    "vendorUrl": "http://www.camelaudio.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Alchemy is the ultimate sample manipulation synthesizer which can turn your musical dreams into reality. It's a synth powerhouse and yet is easy to use thanks to its performance controls and remix pads. The library of contemporary sounds explores new sonic territory ranging from cutting-edge pads and sublime soundscapes to ultra-fat basses and synths. Just tweak the library of presets from many of the world's top sound designers or dive in and analyse your own samples - it's up to you!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "AlchemyKey.aky"
+    ],
+    "dirsToCopy": [
+      "Alchemy;exclude:*.exe"
+    ],
+    "filesToCreate": {
+      "vmachine_files_to_create": "AlchemyConfig.txt",
+      "AlchemyConfig.txt": "LibraryPath= P:\\Alchemy\\Alchemy\\\nMaxChunkSize= 1048576\nKnobCircular= 0\nShowAuthor= 1\nImportPath= P:\\Alchemy\\Alchemy\\Samples\nGuiMode= 1\nFixedRandSeed= 0"
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Alchemy_1130447212\\Alchemy_1130447212_Ver 1.12.22.vfxwizard",
     "readme": null
   },
   {
@@ -820,7 +920,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "A legendary bass sound from the leaders in bass amplification and modeling technology. Ampeg has made history with its bass amp sound, and now sets the future standard with this premier software plug-in. Made in conjunction with IK Multimedia, the leader in software modeling technology, this utility sports Ampeg�s legendary signature tones.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "A legendary bass sound from the leaders in bass amplification and modeling technology. Ampeg has made history with its bass amp sound, and now sets the future standard with this premier software plug-in. Made in conjunction with IK Multimedia, the leader in software modeling technology, this utility sports Ampegs legendary signature tones.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpegSVX/AmpegSVX.vpa",
@@ -898,7 +998,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "There�s a new king in tone, and its name is AmpliTube 2. A massive upgrade of the leading guitar and bass tone gear modeling software.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Theres a new king in tone, and its name is AmpliTube 2. A massive upgrade of the leading guitar and bass tone gear modeling software.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpliTube2/AmpliTube2.pak",
@@ -937,7 +1037,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "AmpliTube Jimi Hendrix� offers the same 2 series/parallel rig structure of AmpliTube 2 and ensures a complete and flexible rig structure that can be used not only to recreate the authentic tones of popular Hendrix tunes but since the modeled gear in this product is in such high demand by guitarists, AmpliTube Jimi Hendrix is a fantastic tool for many styles of modern rock music from hard rock to punk, alternative, progressive and pop.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "AmpliTube Jimi Hendrix offers the same 2 series/parallel rig structure of AmpliTube 2 and ensures a complete and flexible rig structure that can be used not only to recreate the authentic tones of popular Hendrix tunes but since the modeled gear in this product is in such high demand by guitarists, AmpliTube Jimi Hendrix is a fantastic tool for many styles of modern rock music from hard rock to punk, alternative, progressive and pop.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpliTube Jimi Hendrix/AmpliTubeJimiHendrix.vpa",
@@ -976,7 +1076,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "AmpliTube Fender� is the first and only official guitar/bass Amp and FX software suite made by IK Multimedia in cooperation with legendary music icon Fender� Musical Instruments Corporation.\n\nWith a collection of 49 pieces of gear collected from the most sought after classic and modern Fender� amps (including the '65 Twin Reverb�, '57 Deluxe�, �59 Bassman� LTD, '64 Vibroverb� Custom, Super-Sonic�, Metalhead� and many more), cabinets, stomp boxes and rack effects, AmpliTube Fender� sets a new standard for software amplifiers.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "AmpliTube Fender is the first and only official guitar/bass Amp and FX software suite made by IK Multimedia in cooperation with legendary music icon Fender® Musical Instruments Corporation.\n\nWith a collection of 49 pieces of gear collected from the most sought after classic and modern Fender® amps (including the '65 Twin Reverb®, '57 Deluxe, 59 Bassman® LTD, '64 Vibroverb® Custom, Super-Sonic, Metalhead and many more), cabinets, stomp boxes and rack effects, AmpliTube Fender sets a new standard for software amplifiers.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpliTube Fender/AmpliTubeFender.vpa",
@@ -1015,7 +1115,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "Based on IK�s award-winning AmpliTube 2 software, AmpliTube Metal is the first guitar amp and fx modeling software entirely dedicated to heavy metal gear, with an arsenal of 48 highly acclaimed models of modern and vintage amps, cabinets, stompboxes and rack effects.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Based on IKs award-winning AmpliTube 2 software, AmpliTube Metal is the first guitar amp and fx modeling software entirely dedicated to heavy metal gear, with an arsenal of 48 highly acclaimed models of modern and vintage amps, cabinets, stompboxes and rack effects.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpliTube Metal/AmpliTubeMetal.vpa",
@@ -1054,7 +1154,7 @@
     "vendorType": "Commercial",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nAll IK products need to be 100% correctly authorised for the V-Machine otherwise this plugin will never finish loading, this means no demos can run inside of XGEAR.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "AmpliTube X-GEAR is a software shell-host that allows you to open, in stand-alone and plug-in mode, any current �Powered by AmpliTube� product(AmpliTube 2, AmpliTube Fender�, AmpliTube Jimi Hendrix�, Ampeg� SVX, AmpliTube Metal) in a single interface with full mixing and matching between a massive number of accurately modeled gear, plus the ability to control them live and in the studio with the StompIO, StealthPedal or any traditional MIDI controller.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "AmpliTube X-GEAR is a software shell-host that allows you to open, in stand-alone and plug-in mode, any current Powered by AmpliTube product(AmpliTube 2, AmpliTube Fender, AmpliTube Jimi Hendrix, Ampeg® SVX, AmpliTube Metal) in a single interface with full mixing and matching between a massive number of accurately modeled gear, plus the ability to control them live and in the studio with the StompIO, StealthPedal or any traditional MIDI controller.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/IK Multimedia/AmpliTube X-GEAR/AmpliTubeXGEAR.pak",
@@ -1101,7 +1201,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "The ARP 2600 is one of the finest analog synthesizers ever made. Celebrated by the most respected musicians over the last thirty years, it is capable of creating amazing sounds, heard in numerous popular tunes from Herbie Hancock to Stevie Wonder. With its sound palette varying from heavy drum n� bass stabs to angular arpeggiated electro bass lines, whatever your chosen genre, the 2600 is a truly versatile sound creation tool, which still finds a good place in today�s music.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The ARP 2600 is one of the finest analog synthesizers ever made. Celebrated by the most respected musicians over the last thirty years, it is capable of creating amazing sounds, heard in numerous popular tunes from Herbie Hancock to Stevie Wonder. With its sound palette varying from heavy drum n bass stabs to angular arpeggiated electro bass lines, whatever your chosen genre, the 2600 is a truly versatile sound creation tool, which still finds a good place in todays music.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/ArtFfct.dll:system32"
@@ -1543,7 +1643,7 @@
     "vendorType": "Free",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "The blooo is a VST�2.4 polyphonic software synthesizer plug-in for Microsoft Windows� based on the classic subtractive synthesis architecture. It is written in native C++ code for high performance even on \"lighter\" systems. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The blooo is a VST2.4 polyphonic software synthesizer plug-in for Microsoft Windows® based on the classic subtractive synthesis architecture. It is written in native C++ code for high performance even on \"lighter\" systems. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -1574,7 +1674,7 @@
     "vendorType": "Free",
     "genre": "Guitar FX",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "British Valve Custom, Studio Devil's FREE tube amp modeler!  British Valve Custom is based on the gain structure of popular British Valve (Tube) Rock amplifiers (like the infamous Marshall tube heads) with some subtle modifications to give it slightly more gain. This amplifier model has considerable bite and attack making it perfect for classic rock and hard rock sounds. It also works great with neck pickups for blues, rock, and even metal guitar solos. This is a very versatile amp that satisfies most playing styles, which is why we chose it to demonstrate Studio Devil�s tube modeling technology. We wanted to make sure you got something you could actually USE!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "British Valve Custom, Studio Devil's FREE tube amp modeler!  British Valve Custom is based on the gain structure of popular British Valve (Tube) Rock amplifiers (like the infamous Marshall tube heads) with some subtle modifications to give it slightly more gain. This amplifier model has considerable bite and attack making it perfect for classic rock and hard rock sounds. It also works great with neck pickups for blues, rock, and even metal guitar solos. This is a very versatile amp that satisfies most playing styles, which is why we chose it to demonstrate Studio Devils tube modeling technology. We wanted to make sure you got something you could actually USE!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -1618,6 +1718,39 @@
       "mac": "1"
     },
     "sourcePath": "wizard_database_20101112\\Broomstick Bass_1935814705\\Broomstick Bass_1935814705_Ver 1.00 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1935814705",
+    "name": "Broomstick Bass",
+    "nameAbbreviation": "bBass",
+    "version": "1",
+    "dllName": "Broomstick Bass/Broomstick Bass.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 38,
+    "programCount": 16,
+    "editorWidth": 566,
+    "editorHeight": 528,
+    "vendor": "Bornemark",
+    "vendorUrl": "http://www.bornemark.se/bb/index.htm",
+    "vendorType": "Commercial",
+    "genre": "Bass",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "Broomstick Bass is a \"self-playing musical instrument\" (or can also be used in \"manual mode\"), to be used as a session partner, composition assistant or a deluxe bass sound archive.\n\nBroomstick Bass is fully loaded with easy-to-use bass riffs and grooves. The user just has to play some chords and listen to Broomstick Bass following the harmonies and intentions. There are loads of patterns for inspiration and composition and a manual mode for playing your own bass lines. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "$VFX_BUILTIN(program_files)/Bornemark/BroomstickBass/BroomstickBassLibrary.bin:BroomstickBass"
+    ],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\Bornemark\\BroomstickBass]\n\"InstallDir\"=\"P:\\\\Broomstick Bass\\\\BroomstickBass\"\n\"VstDir\"=\"P:\\\\Broomstick Bass\"",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Broomstick Bass_1935814705\\Broomstick Bass_1935814705_Ver 1.00 Full.vfxwizard",
     "readme": null
   },
   {
@@ -1755,6 +1888,39 @@
     "readme": null
   },
   {
+    "id": "1664314484",
+    "name": "Cerebrum-3",
+    "nameAbbreviation": "Cere",
+    "version": "1",
+    "dllName": "Cerebrum-3/Cerebrum-3.dll",
+    "dllVersion": "1.0.0.1",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 758,
+    "programCount": 32,
+    "editorWidth": 651,
+    "editorHeight": 495,
+    "vendor": "Psychic Modulation",
+    "vendorUrl": "http://www.psychicmodulation.com/",
+    "vendorType": "Commercial",
+    "genre": "Drum/Percussion",
+    "notes": "*Known Issues*\nNo known issues on PC or V-machine.\nMac application gives wine errors and crashes.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Cerebrum is a sophisticated groovebox-style drum machine with onboard sequencers that follow your host, allowing for serious beat creation. With 8 drums, 2 samplers, a bassline synth and algorithmic functions such as sequence and velocity randomization, Cerebrum is a rhythmic arsenal in a single plugin.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Cerebrum-3.5"
+    ],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Cerebrum-3_1664314484\\Cerebrum-3_1664314484_Ver 3.5 Full.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1347176271",
     "name": "chipsounds",
     "nameAbbreviation": "ChpSnd",
@@ -1772,7 +1938,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*\nDemo mode has a saved state recall restriction and hence will not load any sounds until purchased and registered.",
-    "vendorNotes": "Plogue�s new soft-synthesizer turns your VST, AU or RTAS host into a classic video game console, vintage 8bit home computer and even an 80?s arcade. Plogue chipsounds authentically emulates 15 vintage 8bit-era sound chips (on top of their variants), down to their smallest idiosyncrasies. \n\nBut more interestingly, it also faithfully allows you to dynamically reproduce the accidentally discovered sounds effect tricks and abusive musical techniques that were made famous by innovative chip music composers and classic video game sound designers, which for the good part of the last 3 decades, have pushed beyond the boundaries of the original chip designs.\n\nIn short, whether you are already versed into chiptune/chip music or just interested in those sounds, this is one unique instrument for you! \n \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Plogues new soft-synthesizer turns your VST, AU or RTAS host into a classic video game console, vintage 8bit home computer and even an 80?s arcade. Plogue chipsounds authentically emulates 15 vintage 8bit-era sound chips (on top of their variants), down to their smallest idiosyncrasies. \n\nBut more interestingly, it also faithfully allows you to dynamically reproduce the accidentally discovered sounds effect tricks and abusive musical techniques that were made famous by innovative chip music composers and classic video game sound designers, which for the good part of the last 3 decades, have pushed beyond the boundaries of the original chip designs.\n\nIn short, whether you are already versed into chiptune/chip music or just interested in those sounds, this is one unique instrument for you! \n \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -2224,7 +2390,7 @@
     "vendorType": "Free",
     "genre": "Drum/Percussion",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*\n\nThis plugin saves the location to any samples in the 'vst chunk' in a non text format so it can not be read and edited. For any samples you wish to use in this plugin do the following so the plugin can still find them on the V-Machine..\n\n1. Copy the sample/s you wish to use into a folder called c:\\tatapoumsamples\\ create this folder if it does not exsist. Notice that it is all lowercase with no spaces, the folder name as this must be exact.\n2. Always load the sample/s into tatapoum from this folder and then press SAVE in the vfx software.\n3. When ever you add more samples into the c:\\tatapoumsamples\\ folder, reimport the plugin so the extra samples get copied with the plugin.\n4. Sync or export the updated plugin and banks onto a usb drive or direct to the v-machine.",
-    "vendorNotes": "Tatapoum 4 is a combined drum sampler and pattern sequencer. It can be used in three ways: \n\n�the Tatapoum Drum Sampler, \n�the Tatapoum Pattern Sequencer, \n�the Tatapoum Sampler and Sequencer together. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Tatapoum 4 is a combined drum sampler and pattern sequencer. It can be used in three ways: \n\nthe Tatapoum Drum Sampler, \nthe Tatapoum Pattern Sequencer, \nthe Tatapoum Sampler and Sequencer together. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -2322,7 +2488,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "The CS-80V is the reproduction of the legendary Yamaha� CS-80, which was considered by many as the \"ultimate polyphonic synthesizer\", back in the late 70�s.\nIt has been popularized by artists and groups like Toto, Jean-Michel Jarre, Keith Emerson, Stevie Wonder, Vangelis, Ultravox, Peter Gabriel� to name a few, and they all helped to turn this synthesizer into a real myth.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The CS-80V is the reproduction of the legendary Yamaha® CS-80, which was considered by many as the \"ultimate polyphonic synthesizer\", back in the late 70s.\nIt has been popularized by artists and groups like Toto, Jean-Michel Jarre, Keith Emerson, Stevie Wonder, Vangelis, Ultravox, Peter Gabriel to name a few, and they all helped to turn this synthesizer into a real myth.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/ArtFfct.dll:system32"
@@ -3270,6 +3436,37 @@
     "readme": null
   },
   {
+    "id": "1412580947",
+    "name": "FilterBank3",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Tone2 Filterbank3/FilterBank3 synth.dll",
+    "dllVersion": "3.2.0.0",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 48,
+    "programCount": 159,
+    "editorWidth": 632,
+    "editorHeight": 373,
+    "vendor": "Tone2",
+    "vendorUrl": "http://www.tone2.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "Tone2 FilterBank3 is more than a filter plugin - it is a complete VST synthesizer and a flexible multi-effect unit. The modular design and flexible modulation routing give you nearly unlimited possibilities. With self-oscillating filters, oscillators and feedback it can create complete sequences and textures. FilterBank sounds are impressive and absolutely unique. The built-in step sequencer can create rhythmic sequences with some mouse clicks.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "filterbank.t2k"
+    ],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {},
+    "sourcePath": "wizard_database_20101112\\FilterBank3_1412580947\\FilterBank3_1412580947_Ver 3.2 Full.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1315525446",
     "name": "FM7 Xpress",
     "nameAbbreviation": "FM7x",
@@ -3346,6 +3543,44 @@
       "mac": "2"
     },
     "sourcePath": "wizard_database_20101112\\FM8_1315530296\\FM8_1315530296_Ver 1.0.1 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1315530296",
+    "name": "FM8 Demo",
+    "nameAbbreviation": "FM8",
+    "version": "1",
+    "dllName": "NI FM8 Demo/FM8.dll",
+    "dllVersion": "1.0.4.879",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 1094,
+    "programCount": 128,
+    "editorWidth": 948,
+    "editorHeight": 562,
+    "vendor": "Native Instruments",
+    "vendorUrl": "http://www.native-instruments.com/",
+    "vendorType": "Commercial",
+    "genre": "Sample Player",
+    "notes": "*Known Issues*\nThe very first time the plugin is run on the V-Machine the plugin has to re-create all of its database / cache so you may get some glitches whilst the plugins sorts this out, this only happens the very first time the plugin is run and any future times it should not glitch. \n\nDemos will not allow states to be saved / recalled, so you can only try out a single sound with the demo.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "The FM8 offers an unprecedented range of features and effects. The classic crystalline bells and keys are perfect for creating melodic and percussive sounds of the highest quality. A unique arpeggiator, a revolutionary sound morphing feature and a large selection of new, charismatic effects add countless sound-shaping possibilities. The sonic potential of FM8 goes well beyond the confines of conventional FM synthesis. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(user_local_application_data)/Native Instruments/FM8:User",
+      "$VFX_BUILTIN(program_files)/Native Instruments/FM8;exclude:*.exe;exclude:*.log;exclude:Documentation",
+      "$VFX_BUILTIN(common_program_files)/Native Instruments/Shared Content/Sounds/FM8:Sounds"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "$VFX_BUILTIN(user_local_application_data)/Native Instruments/FM8:NI FM8 Demo/User/FM8",
+      "$VFX_BUILTIN(common_program_files)/Native Instruments/Shared Content/Sounds/FM8:NI FM8 Demo/Sounds/FM8"
+    ],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\Software\\Native Instruments\\FM8]\n\"Browser Path 2\"=\"FM8\\\\Instruments\\\\\"\n\"Browser View\"=dword:00000000\n\"InstallDir\"=\"p:\\\\NI FM8 Demo\\\\FM8\"\n\"InstallVSTDIR\"=\"p:\\\\NI FM8 Demo\"\n\n[HKEY_CURRENT_USER\\Software\\Native Instruments\\FM8]\n\"UserContentPathsCreated\"=dword:00000001\n\"Controller1\"=dword:00000004\n\"Controller2\"=dword:0000000b\n\"SND_PerformanceWorkDir\"=\"\"\n\"SND_SoundWorkDir\"=\"\"\n\"SND_MidiWorkDir\"=\"\"\n\"SND_PageWorkDir\"=\"\"\n\"SND_SongWorkDir\"=\"\"\n\"SNDNumSoundPaths\"=dword:00000000\n\"DisplayQueryNumKind\"=dword:00000000\n\"Browser Resizer\"=dword:000000de\n\"Browser View\"=dword:00000001\n\"Browser PrgList\"=dword:00000000\n\"Browser Path 1\"=\"\"\n\"Browser Path 2\"=\"\"\n\"Browser Path 3\"=\"\"\n\"Browser ColumSet Name 1\"=\"\"\n\"Browser ColumSet SortOrder 1\"=dword:00000000\n\"Browser ColumSet CheckSum 1\"=dword:00000000\n\"Browser ColumSet Name 2\"=\"14 0 230 1 -135 2 -100 3 -128 4 -100 5 -96 6 -100 7 -72 8 -100 9 -96 10 -100 11 -128 12 -100 13 -54 \"\n\"Browser ColumSet SortOrder 2\"=dword:00000002\n\"Browser ColumSet CheckSum 2\"=dword:00003a45\n\"Browser ColumSet Name 3\"=\"\"\n\"Browser ColumSet SortOrder 3\"=dword:00000000\n\"Browser ColumSet CheckSum 3\"=dword:00000000\n\"Browser ColumSet Name 4\"=\"\"\n\"Browser ColumSet SortOrder 4\"=dword:00000000\n\"Browser ColumSet CheckSum 4\"=dword:00000000\n\"Browser ColumSet Name 5\"=\"\"\n\"Browser ColumSet SortOrder 5\"=dword:00000000\n\"Browser ColumSet CheckSum 5\"=dword:00000000\n\"Browser ColumSet Name 6\"=\"\"\n\"Browser ColumSet SortOrder 6\"=dword:00000000\n\"Browser ColumSet CheckSum 6\"=dword:00000000\n\"BrowserLastFavorite\"=dword:00000000",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\FM8_1315530296\\FM8_1315530296_Ver 1.0.4 Demo.vfxwizard",
     "readme": null
   },
   {
@@ -3545,6 +3780,42 @@
     "readme": null
   },
   {
+    "id": "1412581196",
+    "name": "Gladiator",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Tone2 Gladiator/Gladiator.dll",
+    "dllVersion": "2.2.0.0",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 263,
+    "programCount": 2048,
+    "editorWidth": 986,
+    "editorHeight": 520,
+    "vendor": "Tone2",
+    "vendorUrl": "http://www.tone2.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nSome patches have limited polyphony on 1ghz V-Machine.\n\n*Misc*",
+    "vendorNotes": "A revolution in synthesis! The award winning Gladiator is one of the most powerful synthesizers ever created. The innovative HCM synthesis covers new aural territory, a huge sonic range, and brings unmatched sound quality.\nGladiator 2 supports an exhaustive list of synthesis methods which can be combined freely:\nHCM ,FM, AM, Phase Distortion, PWM, oscillator sync, wave shaping, supersaw, re-synthesis, vocoding, additive, samples, ...\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "gladiator2.t2k",
+      "Fingerprint.t2k"
+    ],
+    "dirsToCopy": [
+      "Gladiator2_data"
+    ],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Gladiator_1412581196\\Gladiator_1412581196_Ver 2.2 Full.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "859386680",
     "name": "Glitch One MB",
     "nameAbbreviation": "Glit1",
@@ -3719,7 +3990,7 @@
     "vendorType": "Free",
     "genre": "Reverb",
     "notes": "*Known Issues*\nNo known issues on PC or V-Machine.\nMac application has some GUI control issues, you click mouse and the GUI moves.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "HybridReverb2 is a convolution-based reverberation effect which combines the superior sound quality of a convolution reverb with the tuning capability of a feedback delay network. The sound quality of a convolution reverb depends on the quality of the used room impulse responses. HybridReverb2 comes with a set of room impulse responses which were synthesized with tinyAVE, an auralization software which was developed at the Institute of Communication Acoustics, Ruhr-Universit�t Bochum (Bor� and Martin, 2009; Bor�, 2009a). These room impulse responses are designed for a speaker setup with two front and two rear speakers (Bor�, 2009b). For a full surround sound effect, you will need two plugins, one plugin which uses a \"front\" preset for the front channels and a second plugin which uses the corresponding \"rear\" preset for the rear channels. \n\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "HybridReverb2 is a convolution-based reverberation effect which combines the superior sound quality of a convolution reverb with the tuning capability of a feedback delay network. The sound quality of a convolution reverb depends on the quality of the used room impulse responses. HybridReverb2 comes with a set of room impulse responses which were synthesized with tinyAVE, an auralization software which was developed at the Institute of Communication Acoustics, Ruhr-Universität Bochum (Borß and Martin, 2009; Borß, 2009a). These room impulse responses are designed for a speaker setup with two front and two rear speakers (Borß, 2009b). For a full surround sound effect, you will need two plugins, one plugin which uses a \"front\" preset for the front channels and a second plugin which uses the corresponding \"rear\" preset for the rear channels. \n\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -3755,7 +4026,7 @@
     "vendorType": "Free",
     "genre": "Reverb",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems. Does use up 99% of cpu power on some patches.\n\n*Misc*",
-    "vendorNotes": "HybridReverb2 is a convolution-based reverberation effect which combines the superior sound quality of a convolution reverb with the tuning capability of a feedback delay network. The sound quality of a convolution reverb depends on the quality of the used room impulse responses. HybridReverb2 comes with a set of room impulse responses which were synthesized with tinyAVE, an auralization software which was developed at the Institute of Communication Acoustics, Ruhr-Universit�t Bochum (Bor� and Martin, 2009; Bor�, 2009a). These room impulse responses are designed for a speaker setup with two front and two rear speakers (Bor�, 2009b). For a full surround sound effect, you will need two plugins, one plugin which uses a \"front\" preset for the front channels and a second plugin which uses the corresponding \"rear\" preset for the rear channels. \n\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "HybridReverb2 is a convolution-based reverberation effect which combines the superior sound quality of a convolution reverb with the tuning capability of a feedback delay network. The sound quality of a convolution reverb depends on the quality of the used room impulse responses. HybridReverb2 comes with a set of room impulse responses which were synthesized with tinyAVE, an auralization software which was developed at the Institute of Communication Acoustics, Ruhr-Universität Bochum (Borß and Martin, 2009; Borß, 2009a). These room impulse responses are designed for a speaker setup with two front and two rear speakers (Borß, 2009b). For a full surround sound effect, you will need two plugins, one plugin which uses a \"front\" preset for the front channels and a second plugin which uses the corresponding \"rear\" preset for the rear channels. \n\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/libfftw3f-3.dll:system32",
@@ -4019,7 +4290,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
-    "vendorNotes": "Ogun can produce exceptionally rich metallic and shimmering timbres, although it's not limited to this genre. Ogun�s distinctive synthesis engine can generate more than 32,000 harmonics, modulated by high-level �harmonic mapping� functions, that hand tonal control directly to the user. Try the VSTi demo and experience Ogun in your favorite host. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Ogun can produce exceptionally rich metallic and shimmering timbres, although it's not limited to this genre. Oguns distinctive synthesis engine can generate more than 32,000 harmonics, modulated by high-level harmonic mapping functions, that hand tonal control directly to the user. Try the VSTi demo and experience Ogun in your favorite host. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/Image-Line/Shared/dsp_ipp.dll:Shared",
@@ -4057,7 +4328,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
-    "vendorNotes": "Ogun can produce exceptionally rich metallic and shimmering timbres, although it's not limited to this genre. Ogun�s distinctive synthesis engine can generate more than 32,000 harmonics, modulated by high-level �harmonic mapping� functions, that hand tonal control directly to the user. Try the VSTi demo and experience Ogun in your favorite host. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Ogun can produce exceptionally rich metallic and shimmering timbres, although it's not limited to this genre. Oguns distinctive synthesis engine can generate more than 32,000 harmonics, modulated by high-level harmonic mapping functions, that hand tonal control directly to the user. Try the VSTi demo and experience Ogun in your favorite host. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/Image-Line/Shared/dsp_ipp.dll:Shared",
@@ -4108,6 +4379,44 @@
       "mac": "1"
     },
     "sourcePath": "wizard_database_20101112\\impOSCar_1231908943\\impOSCar_1231908943_Ver 1.01 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1231908943",
+    "name": "impOSCar",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "impOSCar/impOSCar.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 120,
+    "programCount": 36,
+    "editorWidth": 956,
+    "editorHeight": 411,
+    "vendor": "GForce",
+    "vendorUrl": "http://www.gforcesoftware.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "If you want subtractive, additive, monophonic, duophonic, polyphonic, multiple oscillator waveforms, multiple LFO types, multiple filter types, multiple triggering modes, keyboard velocity response, integrated effects, an arpeggiator, filter overdrive, programming immediacy, a hefty patch library and the capability of producing a vast and varied range of sublime tonal textures, then the impOSCar really could be the only virtual synth you need! \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "impOSCar.hrm",
+      "impOSCar.sup"
+    ],
+    "dirsToCopy": [],
+    "filesToCreate": {
+      "import_sequence": "gui_msg;This wizard is for the Full version of the plugin only, use another wizard for the demo.",
+      "license_sequence": "input_prompt;EnterFullName;Please Enter your full name.;$VFX_REG_STRING(HKEY_CURRENT_USER\\Software\\GForce\\impOSCar,registration_username,YourNameHere)\ninput_prompt;XXXXXXXXXXXXXXXXXXX;Please enter your imposcar serial number like the example format.;$VFX_REG_STRING(HKEY_CURRENT_USER\\Software\\GForce\\impOSCar,registration_key,EnterSerialHere)"
+    },
+    "symlinks": [],
+    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\GForce\\impOSCar]\n\"registration_username\"=\"$VFX_EXPAND(EnterFullName)\"\n\"registration_key\"=\"$VFX_EXPAND(XXXXXXXXXXXXXXXXXXX)\"",
+    "flags": {
+      "mac": "1",
+      "licence_required": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\impOSCar_1231908943\\impOSCar_1231908943_Ver 1.10.vfxwizard",
     "readme": null
   },
   {
@@ -4254,7 +4563,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nThe demo will crash if sent a VST Chunk, so use it in the plugin parade until authorised.\nFull version has no known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "Key Performer can be described as �the Swiss Army knife of the modern gigging keyboardist�. It's a single software instrument which offers a wide variety of keyboard sounds that are always used in almost all musical genres where a keyboardist is involved.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Key Performer can be described as the Swiss Army knife of the modern gigging keyboardist. It's a single software instrument which offers a wide variety of keyboard sounds that are always used in almost all musical genres where a keyboardist is involved.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "KeyPerformer.ini"
@@ -4624,6 +4933,40 @@
     "readme": null
   },
   {
+    "id": "892416055",
+    "name": "M51 Galaxy",
+    "nameAbbreviation": "M51",
+    "version": "1",
+    "dllName": "M51 Galaxy/M51PD.dll",
+    "dllVersion": "1.0.0.1",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 63,
+    "programCount": 128,
+    "editorWidth": 800,
+    "editorHeight": 536,
+    "vendor": "AlgoMusic",
+    "vendorUrl": "http://www.algomusic.net/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on a standard 1ghz vmachine.\n\n*Misc*",
+    "vendorNotes": "M51galaxy VSTI  Long in development, the M51 has finally arrived to our own galaxy. Sporting custom modules and hybrid synthesis along with rythmic algorithmic generators, the M51 can be used for anything from ambientspace to high techno trance music.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Banks",
+      "M51PD"
+    ],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\M51_892416055\\M51_892416055_Ver 1.1 Full.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1836348014",
     "name": "Metatron",
     "nameAbbreviation": "mtrn",
@@ -4748,6 +5091,37 @@
     "readme": null
   },
   {
+    "id": "1836215913",
+    "name": "MicroRock",
+    "nameAbbreviation": "mRck",
+    "version": "1",
+    "dllName": "Micromono/NUSofting_microrock_b0.1u.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": false,
+    "parameterCount": 19,
+    "programCount": 128,
+    "editorWidth": 0,
+    "editorHeight": 0,
+    "vendor": "NuSofting",
+    "vendorUrl": "http://nusofting.liqihsynth.com/",
+    "vendorType": "Free",
+    "genre": "Bass",
+    "notes": "*Known Issues*\nNuSofting have created two plugins with the same VST id number, be sure to select the right wizard file as this plugin reports the wrong name as well. The plugin is in BETA so these issues are probably bugs waiting to be fixed by Nusofting.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "Microrock is physically modelled mono bass with filters, distortion, overdrive and chorus. Some \"fake\" guitar sounds are possible too.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Micromono_1836215913\\Micromono_1836215913_MicroRock beta Ver 0.1.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1835623218",
     "name": "Micromoon",
     "nameAbbreviation": "mic2",
@@ -4845,6 +5219,41 @@
     "readme": null
   },
   {
+    "id": "1835823988",
+    "name": "Miles'Tone",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Miles'Tone/MilesTone.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 22,
+    "programCount": 8,
+    "editorWidth": 520,
+    "editorHeight": 370,
+    "vendor": "GSi",
+    "vendorUrl": "http://www.genuinesoundware.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [],
+    "filesToCreate": {
+      "license_sequence": "input_prompt;RegFullName;Please Enter Your registered name here\ninput_prompt;RegLicenseCode;Please Enter Your license code here"
+    },
+    "symlinks": [],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\GSImusic\\MilesTone]\n\"REGNAME\"=\"$VFX_EXPAND(RegFullName)\"\n\"REGCODE\"=\"$VFX_EXPAND(RegLicenseCode)\"",
+    "flags": {
+      "mac": "1",
+      "reglicensecode": "DEMO",
+      "regfullname": "foo"
+    },
+    "sourcePath": "wizard_database_20101112\\Miles'Tone_1835823988\\Miles'Tone_1835823988_Ver1.0.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1832349260",
     "name": "Minimal",
     "nameAbbreviation": "MinL",
@@ -4904,6 +5313,37 @@
       "mac": "1"
     },
     "sourcePath": "wizard_database_20101112\\MinimogueVA_909457712\\MinimogueVA_909457712_Ver 2.0.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "909457712",
+    "name": "MinimogueVA",
+    "nameAbbreviation": "MinVA",
+    "version": "1",
+    "dllName": "MinimogueVA/MinimogueVA.dll",
+    "dllVersion": "1.0.0.1",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 110,
+    "programCount": 128,
+    "editorWidth": 1004,
+    "editorHeight": 589,
+    "vendor": "VoltKitchen",
+    "vendorUrl": "http://glenstegner.com/softsynths.html",
+    "vendorType": "Free",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "Copy and paste a paragraph of info on the plugin from the vendors  \nwebsite\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\MinimogueVA_909457712\\MinimogueVA_909457712_Ver 2.1.vfxwizard",
     "readme": null
   },
   {
@@ -5057,7 +5497,7 @@
     "vendorType": "Free",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "The Mono/Fury is a VST�2.4 software synthesizer plug-in for Microsoft Windows� emulating the classic KORG Mono/Poly� analog synthesizer of the early 1980's. It is written in native C++ code for high performance even on \"lighter\" systems. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The Mono/Fury is a VST2.4 software synthesizer plug-in for Microsoft Windows® emulating the classic KORG Mono/Poly® analog synthesizer of the early 1980's. It is written in native C++ code for high performance even on \"lighter\" systems. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -5088,7 +5528,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nDemo may crash if sent a chunk, use the demo in the plugin parade as a work around. No known issues with full version.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "Arturia, in partnership with Bob Moog, has made a faithful reproduction of one of the most famous series of synthesizers: Moog Modular. Whether recreating the abstract tonal qualities of the classic electronic soundtracks, or pushing forward the sonic boundaries of today, the Moog Modular V is the synthesizer of choice for sound exploration, anywhere, anytime. It has all the vibe and the fat sound of the original, cleverly combined with important contemporary features like polyphony, MIDI control, loading and saving of patches�\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Arturia, in partnership with Bob Moog, has made a faithful reproduction of one of the most famous series of synthesizers: Moog Modular. Whether recreating the abstract tonal qualities of the classic electronic soundtracks, or pushing forward the sonic boundaries of today, the Moog Modular V is the synthesizer of choice for sound exploration, anywhere, anytime. It has all the vibe and the fat sound of the original, cleverly combined with important contemporary features like polyphony, MIDI control, loading and saving of patches\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/ArtFfct.dll:system32"
@@ -5180,6 +5620,55 @@
       "mac": "2"
     },
     "sourcePath": "wizard_database_20101112\\Morgana_825307725\\Morgana_825307725_Ver 1.0.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "825307725",
+    "name": "Morgana",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Morgana/Morgana.dll",
+    "dllVersion": "1.2.7.873",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 106,
+    "programCount": 16,
+    "editorWidth": 810,
+    "editorHeight": 420,
+    "vendor": "112dB",
+    "vendorUrl": "http://www.112db.com/",
+    "vendorType": "Commercial",
+    "genre": "Sampler",
+    "notes": "*Known Issues*\nWill not load if you save with a sound loaded via the BROWSE button, you need to load files via the LOAD button.\n\n*Performance* \nNo known problems.\n\n*Misc*\nThis plugin saves the location of any samples inside the 'vst chunk' in a non text format so it can not be read and edited. For any samples you wish to use in this plugin do the following otherwise the plugin will not find the sample..\n\n1. Copy the sample or sound font you wish to use into a folder called c:\\morganasamples\\ create this folder if it does not exsist. The folder name must be exact.\n2. Always load the sound font into the plugin from this folder and then press SAVE button in the vfx software to save the plugins state.\n3. When you add more samples into the c:\\morganasamples\\ folder, reimport the plugin so the extra samples get copied with the plugin.\n4. Sync or export the updated plugin and banks to the v-machine",
+    "vendorNotes": "Morgana is an authentic representation of a vintage digital sampler, designed to be musical rather than accurate while simultaneously free from the clumsy interface or sub-megabyte RAM limitations plagued by old hardware. Morgana doesn't try to boast the most impressive spec sheet, or the most transparent sound. By returning to a simpler architecture, Morgana actually transcends the limitations of typical software samplers, creating an experience that sounds and feels like an actual instrument--one that is inspiring and with a sound all its own.\n\nMorgana is also capable of sampling, either from the host audio inputs or through our proprietary SampLink technology. SampLink allows Morgana to directly sample from any track in a multi-track environment, and even across different hosts, in a simple and no-hassle way.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "/windows/system32/libsndfile.dll:system32",
+      "/windows/system32/REX Shared Library.dll:system32"
+    ],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/112dB/Morgana/Morgana Resources:Morgana",
+      "/morganasamples"
+    ],
+    "filesToCreate": {
+      "license_sequence": "input_prompt;UsrEmail;Please Enter Your email address that is registered with 112db;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,Email,vmachine@vmachine.com)\ninput_prompt;UsrFullName;Please Enter Your Full name;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,FullName,Morgana Demo)\nstore;RegKeyValue1;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,Signature,CubtjJ2lwkPcFRABC2M2Ec3eKFAcUEMQf6o4Ex8zve4QFIB1BotiGyiNaZEDVI+nanvqBo7kj8EZOz/+B8xvCh6BJzi7IPnGup3LMqE4EB3NEZ68FM+XODZDqF9j7bEO5SVqC9aBBxSXkmHgH4/Q75c7AyxWA892icu0gzsKTqolbhuSz/ua17o9KMxqW0yQRn83efRnqA5++qgGKAETB/G/BzN1mRyPwPiCNifXWRsGg8CR1avixsVrPE0Gak8IycAz1nGc+UhW3yzRczlx9JhZsUybRmPRIeRfWck0nE+ASoY3ekNE+ovs9CBCbeTYYkMBYr7T277EAQh5m2vYpvSm9aI30ssmamXXGCwJS+XLSWnWYa2ZAaVE3S8IgzyTf4frCQydpA9xw2wrL0yuJbjijOvf5akBusPdTc/8g5whmtCtXanH8gkfTwPbPTYDiQb0Z/9UKcoG9Tt8nT0+LIl2KFkOKJX0emSJ1cDKoMIPxjDTuAkOZVobAjxcusFD1d6b3lKjQL7KFRXPSyhMG2fJYvX+iWtUGGbTE/RBFmNP0l/ABuw9lHL3QOaiaA7bCgjz+y9iamfQt6p9qQ/s4vNoHuAys5f70pX64zcJrZduH6oPbVPMxs8aQbEi8JknuJPHnBCXyHE0bRZWp20BeOQ0Nc2T7ltbyLOU4Yc+9cU=)\nstore;RegKeyValue2;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,Key,dc31b880d6b8b909cab4)\nstore;RegKeyValue3;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,ExpiryUTC,000039df)\nstore;RegKeyValue4;$VFX_REG_STRING(HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization,UserName, )"
+    },
+    "symlinks": [
+      "morganasamples:Morgana/morganasamples",
+      "windows/system32/libsndfile.dll:Morgana/system32/libsndfile.dll",
+      "windows/system32/REX Shared Library.dll:Morgana/system32/REX Shared Library.dll",
+      "$VFX_BUILTIN(program_files)/112dB/Morgana:Morgana/Morgana",
+      "$VFX_BUILTIN(user_local_application_data)/112dB:Morgana/ERRORLOG"
+    ],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana]\n\"InstallPath\"=\"p:\\\\Morgana\\\\Morgana\"\n\"Version\"=\"1.2.7\"\n\"ImagesDir\"=\"Morgana Resources\\\\Images\"\n\"SamplesDir\"=\"Morgana Resources\\\\Samples\"\n\"ControlsXmlFile\"=\"Morgana Resources\\\\Controls.xml\"\n\"ResourcesXmlFile\"=\"Morgana Resources\\\\Resources.xml\"\n\"SettingsXmlFile\"=\"Morgana Resources\\\\Settings.xml\"\n\"FactoryPresetsPath\"=\"Factory Presets\"\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\112dB\\Morgana\\Authorization]\n\"Email\"=\"$VFX_EXPAND(UsrEmail)\"\n\"FullName\"=\"$VFX_EXPAND(UsrFullName)\"\n\"ExpiryDate\"=\"24 Jul 2010\"\n\"ExpiryUTC\"=dword:$VFX_EXPAND(RegKeyValue3)\n\"Key\"=\"$VFX_EXPAND(RegKeyValue2)\"\n\"Signature\"=\"$VFX_EXPAND(RegKeyValue1)\"\n\"UserName\"=hex(1):$VFX_EXPAND(RegKeyValue4)\n\n[HKEY_CURRENT_USER\\Software\\112dB\\Morgana]\n\"RecordedSamplesPath\"=\"P:\\\\Morgana\\\\Morgana\\\\Recorded Samples\"\n\"StartMenu\"=\"112dB\\\\Morgana\"\n\"LastCrashDump\"=dword:00000000\n\n[HKEY_CURRENT_USER\\Software\\112dB\\Morgana\\Analog Components]\n\"VCF Gain Compensation 1\"=dword:352121bd\n\"VCF Resonance 1\"=dword:3d1fd0c7\n\"VCF Resonance 2\"=dword:3e5d52d4\n\"VCF Resonance 3\"=dword:3e97a394\n\"VCA Attack 0\"=dword:3e3645a7\n\"VCA Attack 1\"=dword:bee1c412\n\"VCA Attack 2\"=dword:bf5164fc\n\"VCA Attack 3\"=dword:bf4bebad\n\"VCA Attack 4\"=dword:bf7148d9\n\"VCA Attack 6\"=dword:bf5db027\n\"VCA Decay 0\"=dword:bf13e44e\n\"VCA Decay 1\"=dword:bf1e2a77\n\"VCA Decay 2\"=dword:be9ca6e7\n\"VCA Decay 3\"=dword:bf75dafd\n\"VCA Decay 4\"=dword:bd1d134c\n\"VCA Decay 6\"=dword:bf789eb9\n\"VCA Peak 0\"=dword:beac5db6\n\"VCA Peak 1\"=dword:bed8351e\n\"VCA Peak 2\"=dword:bf41f8d0\n\"VCA Peak 3\"=dword:bf723663\n\"VCA Peak 4\"=dword:be4f49f6\n\"VCA Peak 6\"=dword:bf76dc4c\n\"VCA Release 0\"=dword:bf4e5680\n\"VCA Release 1\"=dword:bf7f68f0\n\"VCA Release 2\"=dword:bf7f9d45\n\"VCA Release 3\"=dword:bf3d88d9\n\"VCA Release 4\"=dword:bf634dc8\n\"VCA Release 6\"=dword:bf0e9cdc\n\"VCA Sustain 0\"=dword:3cb5462e\n\"VCA Sustain 1\"=dword:3f1dceb0\n\"VCA Sustain 2\"=dword:bf319b49\n\"VCA Sustain 3\"=dword:bf7cf05f\n\"VCA Sustain 4\"=dword:bedb8a27\n\"VCA Sustain 6\"=dword:bece668b\n\"VCF Attack 0\"=dword:bc2f8a4b\n\"VCF Attack 1\"=dword:bf7fe503\n\"VCF Attack 2\"=dword:3f0f95f7\n\"VCF Attack 3\"=dword:3ec57b1e\n\"VCF Attack 4\"=dword:bf2234e9\n\"VCF Attack 6\"=dword:bee83921\n\"VCF Cutoff 0\"=dword:bc83d022\n\"VCF Cutoff 1\"=dword:bd6badff\n\"VCF Cutoff 2\"=dword:be37700d\n\"VCF Cutoff 3\"=dword:bdc035d5\n\"VCF Decay 0\"=dword:bf2c1507\n\"VCF Decay 1\"=dword:be092eb0\n\"VCF Decay 2\"=dword:bec3575a\n\"VCF Decay 3\"=dword:3e2a1201\n\"VCF Decay 4\"=dword:bf7c2409\n\"VCF Decay 6\"=dword:3ebc9528\n\"VCF Feedback 0\"=dword:be31cfa9\n\"VCF Feedback 1\"=dword:bf6690f5\n\"VCF Feedback 2\"=dword:be7a1585\n\"VCF Feedback 3\"=dword:be0c28c1\n\"VCF Gain Compensation 0\"=dword:3f468d75\n\"VCF Peak 0\"=dword:bf33ef23\n\"VCF Peak 1\"=dword:bf7e6189\n\"VCF Peak 2\"=dword:bf57a72d\n\"VCF Peak 3\"=dword:bf0b9211\n\"VCF Peak 4\"=dword:bf0a419a\n\"VCF Peak 6\"=dword:3eb5794d\n\"VCF Release 0\"=dword:bf3d646e\n\"VCF Release 1\"=dword:bf7868c9\n\"VCF Release 2\"=dword:be744e7c\n\"VCF Release 3\"=dword:3ea75be9\n\"VCF Release 4\"=dword:3e9cdb9d\n\"VCF Release 6\"=dword:bf4667fb\n\"VCF Resonance 0\"=dword:bed60e20\n\"VCF Sustain 0\"=dword:3e33d74a\n\"VCF Sustain 1\"=dword:bf0a83e3\n\"VCF Sustain 2\"=dword:bf675905\n\"VCF Sustain 3\"=dword:bf56d2e4\n\"VCF Sustain 4\"=dword:bf315f6b\n\"VCF Sustain 6\"=dword:bf6cc898\n\"VCA Attack 5\"=dword:bea5285c\n\"VCA Attack 7\"=dword:bf4b956b\n\"VCA Decay 5\"=dword:bf78c572\n\"VCA Decay 7\"=dword:3ee6f8f0\n\"VCA Peak 5\"=dword:bf693d70\n\"VCA Peak 7\"=dword:bf52f082\n\"VCA Release 5\"=dword:be8bb2c4\n\"VCA Release 7\"=dword:bf589def\n\"VCA Sustain 5\"=dword:3e827139\n\"VCA Sustain 7\"=dword:beab3372\n\"VCF Attack 5\"=dword:bf669a3b\n\"VCF Attack 7\"=dword:bf74617e\n\"VCF Decay 5\"=dword:beb74f33\n\"VCF Decay 7\"=dword:befb4e91\n\"VCF Peak 5\"=dword:bf525762\n\"VCF Peak 7\"=dword:3e8d156b\n\"VCF Release 5\"=dword:bf6dc442\n\"VCF Release 7\"=dword:bf322f39\n\"VCF Sustain 5\"=dword:3e354286\n\"VCF Sustain 7\"=dword:bf79409d\n\n[HKEY_CURRENT_USER\\Software\\112dB\\Morgana\\MIDI Controllers]\n\"MidiPitchBend\"=dword:00000080\n\n[HKEY_CURRENT_USER\\Software\\112dB\\Morgana\\Preferences]\n\"OutputConfiguration\"=dword:00000001\n\"SampleRecordMask\"=\"Recorded #\"\n\"ZoneAutoSelect\"=dword:00000000\n\"AnalogCharacter\"=dword:3f400000\n\"TooltipDelay\"=dword:000003e8\n\"StepParameters\"=dword:00000000\n\"DigitalCrosstalk\"=dword:3b2d51d0\n\"DisplayFontSize\"=dword:00000001\n\"LCDContrast\"=dword:3f333333\n\"MasterTune\"=dword:43dc0000\n\"MasterVolume\"=dword:3f800000\n\"ImportFilterIndex\"=dword:00000004\n\n[HKEY_CURRENT_USER\\Software\\112dB\\Morgana\\Preferences\\Sample Folders]",
+    "flags": {
+      "mac": "1",
+      "licence_required": "1",
+      "regkeyvalue1": "CubtjJ2lwkPcFRABC2M2Ec3eKFAcUEMQf6o4Ex8zve4QFIB1BotiGyiNaZEDVI+nanvqBo7kj8EZOz/+B8xvCh6BJzi7IPnGup3LMqE4EB3NEZ68FM+XODZDqF9j7bEO5SVqC9aBBxSXkmHgH4/Q75c7AyxWA892icu0gzsKTqolbhuSz/ua17o9KMxqW0yQRn83efRnqA5++qgGKAETB/G/BzN1mRyPwPiCNifXWRsGg8CR1avixsVrPE0Gak8IycAz1nGc+UhW3yzRczlx9JhZsUybRmPRIeRfWck0nE+ASoY3ekNE+ovs9CBCbeTYYkMBYr7T277EAQh5m2vYpvSm9aI30ssmamXXGCwJS+XLSWnWYa2ZAaVE3S8IgzyTf4frCQydpA9xw2wrL0yuJbjijOvf5akBusPdTc/8g5whmtCtXanH8gkfTwPbPTYDiQb0Z/9UKcoG9Tt8nT0+LIl2KFkOKJX0emSJ1cDKoMIPxjDTuAkOZVobAjxcusFD1d6b3lKjQL7KFRXPSyhMG2fJYvX+iWtUGGbTE/RBFmNP0l/ABuw9lHL3QOaiaA7bCgjz+y9iamfQt6p9qQ/s4vNoHuAys5f70pX64zcJrZduH6oPbVPMxs8aQbEi8JknuJPHnBCXyHE0bRZWp20BeOQ0Nc2T7ltbyLOU4Yc+9cU=",
+      "regkeyvalue2": "dc31b880d6b8b909cab4",
+      "regkeyvalue3": "000039df"
+    },
+    "sourcePath": "wizard_database_20101112\\Morgana_825307725\\Morgana_825307725_Ver 1.2.7.vfxwizard",
     "readme": null
   },
   {
@@ -5301,7 +5790,7 @@
     "vendorType": "Free",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "MrTramp2 is the sequel of my previous plugin �MrTramp�, a physical modeling simulation of the soulful Wurlitzer 200A Electric Piano. What's different in this new version? Firstly, it's no more compiled in SynthEdit, it's fully programmed in C++ so is now also available for Mac OSX in both VST and AU formats; secondly, it takes way less CPU and RAM; furthermore, this not the exact same algorithm used in the previous MrTramp, this is a new revised formula which gives more 'bite' on the lower octaves and more 'body' on the high notes (same code used in KeyPerformer).",
+    "vendorNotes": "MrTramp2 is the sequel of my previous plugin MrTramp, a physical modeling simulation of the soulful Wurlitzer 200A Electric Piano. What's different in this new version? Firstly, it's no more compiled in SynthEdit, it's fully programmed in C++ so is now also available for Mac OSX in both VST and AU formats; secondly, it takes way less CPU and RAM; furthermore, this not the exact same algorithm used in the previous MrTramp, this is a new revised formula which gives more 'bite' on the lower octaves and more 'body' on the high notes (same code used in KeyPerformer).",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -5332,7 +5821,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "The M-Tron Pro virtual instrument is a remarkable emulation of the classic Mellotron � the unique tape playback keyboard made famous by such luminaries as The Beatles, Yes, Led Zeppelin and The Moody Blues. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The M-Tron Pro virtual instrument is a remarkable emulation of the classic Mellotron  the unique tape playback keyboard made famous by such luminaries as The Beatles, Yes, Led Zeppelin and The Moody Blues. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "$VFX_BUILTIN(program_files)/GForce/M-Tron Pro/Resources.cpt2"
@@ -5403,7 +5892,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
-    "vendorNotes": "The Octopus is a Dual-Matrix synthesizer containing one Matrix for Oscillator/Filter frequency modulation synthesis and another Matrix for general modulation. The key component for building a sound is the instrument�s 8 oscillators, Sampler, 2 filters and 32 envelopes. These components are all it needs to create anything from classic �old school� FM timbres to complex sounds far beyond those possible with conventional FM synthesis. Editing the Octopus is a breeze, because all controls are located on a single panel which is always on view.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The Octopus is a Dual-Matrix synthesizer containing one Matrix for Oscillator/Filter frequency modulation synthesis and another Matrix for general modulation. The key component for building a sound is the instruments 8 oscillators, Sampler, 2 filters and 32 envelopes. These components are all it needs to create anything from classic old school FM timbres to complex sounds far beyond those possible with conventional FM synthesis. Editing the Octopus is a breeze, because all controls are located on a single panel which is always on view.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -5446,7 +5935,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
-    "vendorNotes": "The Octopus is a Dual-Matrix synthesizer containing one Matrix for Oscillator/Filter frequency modulation synthesis and another Matrix for general modulation. The key component for building a sound is the instrument�s 8 oscillators, Sampler, 2 filters and 32 envelopes. These components are all it needs to create anything from classic �old school� FM timbres to complex sounds far beyond those possible with conventional FM synthesis. Editing the Octopus is a breeze, because all controls are located on a single panel which is always on view.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The Octopus is a Dual-Matrix synthesizer containing one Matrix for Oscillator/Filter frequency modulation synthesis and another Matrix for general modulation. The key component for building a sound is the instruments 8 oscillators, Sampler, 2 filters and 32 envelopes. These components are all it needs to create anything from classic old school FM timbres to complex sounds far beyond those possible with conventional FM synthesis. Editing the Octopus is a breeze, because all controls are located on a single panel which is always on view.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -6030,7 +6519,7 @@
     "vendorType": "Commercial",
     "genre": "Piano",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance*\nPlugin loads samples into ram for the first 60 seconds or so and will have reduced performance or miss notes during this time.\nThis plugin will only give limited polyphony unless you turn the 'Reverb' and 'Hammers' down to '0%', also press the ADJUST button and turn down to 0 the 'Sympathetic Resonance'. After doing this you can try the plugin out with much better polyphony. This plugin will also benefit from extra ram as it requires 1gb and the V-Machine has 512mb as standard.\n\n*Misc*\nWith some minor SSE2 optimizations this plugin could run with lower CPU load and give much better polyphony, contact Acoustica to ask them to do this.",
-    "vendorNotes": "Pianissimo uses a combination of sample playback and advanced physical modeling to create a stunning acoustic grand piano sound. Starting with 250 MB of high quality samples of a Steinway� Model D grand piano, Pianissimo uses complex signal processing and programming to recreate the warmth, response, and playability of a real grand piano. This warm, natural sound is then paired with a professional studio-quality reverb algorithm to add the depth and ambiance of a real acoustic space. Add in modeled sympathetic resonance, incidental mechanical hammer sounds, remarkable control over tone and velocity response, 256 voices of polyphony, and incredibly low CPU usage, and Pianissimo might just be the best sounding, most playable virtual piano ever. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Pianissimo uses a combination of sample playback and advanced physical modeling to create a stunning acoustic grand piano sound. Starting with 250 MB of high quality samples of a Steinway Model D grand piano, Pianissimo uses complex signal processing and programming to recreate the warmth, response, and playability of a real grand piano. This warm, natural sound is then paired with a professional studio-quality reverb algorithm to add the depth and ambiance of a real acoustic space. Add in modeled sympathetic resonance, incidental mechanical hammer sounds, remarkable control over tone and velocity response, 256 voices of polyphony, and incredibly low CPU usage, and Pianissimo might just be the best sounding, most playable virtual piano ever. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "Pianissimo.dat",
@@ -6527,7 +7016,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues with latest builds.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "Rapture is one of the most exciting synthesizers to hit the market in years. Capable of producing rich, hypnotic, and rhythmic basses, leads, and pads, Rapture is perfect for performing and designing the modern synthesized sounds igniting today�s pop, dance, and electronic music.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Rapture is one of the most exciting synthesizers to hit the market in years. Capable of producing rich, hypnotic, and rhythmic basses, leads, and pads, Rapture is perfect for performing and designing the modern synthesized sounds igniting todays pop, dance, and electronic music.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/WINDOWS/system32/MSVCP60.dll:system32",
@@ -6726,6 +7215,41 @@
     "readme": null
   },
   {
+    "id": "1380860468",
+    "name": "Rhino",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Rhino2/rhino2.dll",
+    "dllVersion": "0.2.0.6",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 224,
+    "programCount": 64,
+    "editorWidth": 800,
+    "editorHeight": 600,
+    "vendor": "BigTick",
+    "vendorUrl": "http://bigtick.pastnotecut.org/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues on PC or V-Machine.\nMac app has a wine issue which stops the plugin running.\n\n*Performance* \nWorks with limited polyphony on a 1ghz V-Machine if the sustain pedal is held down. The plugin has a polyphony/voice limiter which does help.\n\n*Misc*",
+    "vendorNotes": "Made for big sounds.\nOur virtual synthesizer is used by thousands of professional musicians all over the world.\nDownload the free trial and find out why.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/Rhino"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;You need to manually place the KEY file next the the plugins DLL inside your vfxlibrary to unlock the demo."
+    },
+    "symlinks": [],
+    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\BigTick\\Rhino2]\n\"path\"=\"P:\\\\Rhino2\\\\Rhino\\\\\"\n\"defaultGain\"=\"0.25\"\n\"BankPath\"=\"P:\\\\Rhino2\\\\Rhino\\\\presets\"\n\"EffectsPath\"=\"P:\\\\Rhino2\\\\Rhino\\\\Effects Settings\"\n\"EnvPath\"=\"P:\\\\Rhino2\\\\Rhino\\\\Envelope Settings\"\n\"additivePath\"=\"P:\\\\Rhino2\\\\Rhino\\\\Additive Settings\"\n\"TuningPath\"=\"P:\\\\Rhino2\\\\Rhino\\\\tunings\"\n\"PatchPath\"=\"P:\\\\Rhino2\\\\Rhino\\\\presets\"",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Rhino_1380860468\\Rhino_1380860468_Ver 2.06.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "926103396",
     "name": "RMV",
     "nameAbbreviation": "RMV",
@@ -6743,7 +7267,7 @@
     "vendorType": "Commercial",
     "genre": "Drum/Percussion",
     "notes": "Plugin Version Tested to work: 5.03 Demo\n\nKnown Issues: plugin does not support any VST Automation so no parameters are available to edit on the Vmachine.\nAsk the plugin vendor to add better VST support. If you like the demo of this plugin contact linplug and ask them\nto support the vmachine in the full versions of all their plugins.\n\nPlugin Extra Info:\n\n1. The plugin stores its settings like the midi channels your going to use to trigger events inside the\nregistry. If you change the default midi channels then edit the wizard to reflect the changes in your computers\nregistry. \n\n2. Replace the file Samples.cfg with the one in this zip file. If you open it in wordpad you will notice all the\nsamples paths listed. \n\n3. Edit the line in dirs_to_copy: /Documents and Settings/Demo/Application Data/RM V Drum Addiction so that you \nreplace the word 'demo' with your windows USERNAME.",
-    "vendorNotes": "�The RMV is a dream machine, but you need to try it to understand just how flexible it is, how intuitive and easy to use the interface is, how well the library system works. A wonderfull machine�\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The RMV is a dream machine, but you need to try it to understand just how flexible it is, how intuitive and easy to use the interface is, how well the library system works. A wonderfull machine\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/REX Shared Library.dll:system32"
@@ -6884,7 +7408,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "Like the transient beauty of Sakura (Japanese for Cherry Blossom), the sound of stringed instruments blossoms and fades. Image-Line brings you �Sakura�, the string physical modelling instrument, to express the delicacy and beauty of stringed sounds.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Like the transient beauty of Sakura (Japanese for Cherry Blossom), the sound of stringed instruments blossoms and fades. Image-Line brings you Sakura, the string physical modelling instrument, to express the delicacy and beauty of stringed sounds.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/Windows/System32/version.dll:system32",
@@ -6959,7 +7483,7 @@
     "vendorType": "Commercial",
     "genre": "Sample Player",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "SampleMoog� includes the sounds of all the most sought-after vintage and modern Moog� synthesizers spanning the entire Moog history, in an easy to use, sample-based virtual instrument �powered by SampleTank� available as a plug-in for the most popular DAWs and a standalone application for Mac and PC.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "SampleMoog includes the sounds of all the most sought-after vintage and modern Moog synthesizers spanning the entire Moog history, in an easy to use, sample-based virtual instrument powered by SampleTank available as a plug-in for the most popular DAWs and a standalone application for Mac and PC.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "SampleMoog.ini",
@@ -7169,6 +7693,171 @@
     "readme": null
   },
   {
+    "id": "1936994865",
+    "name": "SampleTank 2XL",
+    "nameAbbreviation": "ST2x",
+    "version": "1",
+    "dllName": "IK SampleTank 2/SampleTank2.x.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 97,
+    "programCount": 1,
+    "editorWidth": 851,
+    "editorHeight": 470,
+    "vendor": "IK Multimedia",
+    "vendorUrl": "http://www.ikmultimedia.com/",
+    "vendorType": "Commercial",
+    "genre": "Sample Player",
+    "notes": "*Known Issues*\nNewer versions of this plugin may have problems crashing when switching between multiple large samples.\nAny library from IK which contains .MID files are not compatable on the vfx platform at this time, Phil Gould on Drums, Loop, and Tony Mason\ncontain these .MID files and will not copy to the V-Machine.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "SampleTank is the ultimate sample-workstation. With an exclusive combination of features and sounds, SampleTank stands apart from any other sample-based virtual instrument, as one of the most powerful and easy-to-use solutions for making fully produced songs out of the box.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "SampleTank2.x.ini",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.vpa:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.xrs:SampleTank 2.5",
+      "/windows/msocreg32.dat:system32",
+      "/windows/system32/w3data.vss:system32"
+    ],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Instruments:SampleTank 2.5;exclude:Midi Files;exclude:ST2InstrCache.dat;exclude:Phil Gould on Drums;exclude:Loop;exclude:Tony Mason",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Preferences:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Effects:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Images:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Presets:SampleTank 2.5"
+    ],
+    "filesToCreate": {
+      "files_to_create": "SampleTank 2.5/Preferences/ST2Pref.txt",
+      "vmachine_files_to_create": "SampleTank2.x.ini",
+      "SampleTank2.x.ini": "[VPA]\nGUID={5855EAC1-522D-45be-A6B0-943B329A0E65}\nChannelsIn=0\nChannelsOut=ASK\nID=1936994865\nProcessIndex=0\n\n[VST]\nName=SampleTank 2.x",
+      "SampleTank 2.5/Preferences/ST2Pref.txt": "BrowseLoad=-1\nBrowseNext=-1\nBrowsePrev=-1\nColor=255\nFirstRun=no\nFlatVelocity=100\nGlobalSync=0\nInstrumentPath=P:\\IK SampleTank 2\\SampleTank 2.5\\Instruments\\\nLuminosity=124\nMode=0\nNumOutputPairs=1\nRegID=$VFX_EXPAND(XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX)\nReload=0\nSaturation=255\nSerial=$VFX_EXPAND(STX20-XXXXXXXX-XXXXX)",
+      "license_sequence": "input_prompt;STX20-XXXXXXXX-XXXXX;Please Enter Your Serial Number for Sampletank 2 XL\nexecute_tool;SerialChk;5;12;IKLicenseTool.exe;-p;STX20;-s;$VFX_EXPAND(STX20-XXXXXXXX-XXXXX)\ncheck;$VFX_EXPAND(SerialChk);==;Valid Serial\nexecute_tool;digitalid;5;32;IKLicenseTool.exe;-d\ninfo_prompt;$VFX_EXPAND(digitalid);Please copy this special V-Machine 'Digital ID' and used it at the IK website to create a new Activation code.\ninput_prompt;XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX;Please enter your newly created 'Activation Code' created from the digital ID given in the last step. \nexecute_tool;activationChk;5;24;IKLicenseTool.exe;-p;STX20;-s;$VFX_EXPAND(STX20-XXXXXXXX-XXXXX);-a;$VFX_EXPAND(XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX)\ncheck;$VFX_EXPAND(activationChk);==;Valid Authorization code"
+    },
+    "symlinks": [
+      "windows/msocreg32.dat:IK SampleTank 2/system32/msocreg32.dat",
+      "windows/system32/w3data.vss:IK SampleTank 2/system32/w3data.vss"
+    ],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\VPA\\{5855EAC1-522D-45be-A6B0-943B329A0E65}]\n\"PathName\"=\"p:\\\\IK SampleTank 2\\\\SampleTank 2.5\\\\SampleTank2.x.vpa\"",
+    "flags": {
+      "mac": "1",
+      "licence_required": "1",
+      "stx20-xxxxxxxx-xxxxx": "STX20-EXAMPLEXXX-SERIAL",
+      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx": "REPLACE-WITH-YOUR-NEW-AUTHCODEXXXXXX"
+    },
+    "sourcePath": "wizard_database_20101112\\SampleTank2.x_1936994865\\SampleTank2.x_1936994865_Ver 2.5.3 XL.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1936994865",
+    "name": "SampleTank 2 XT",
+    "nameAbbreviation": "ST2XT",
+    "version": "1",
+    "dllName": "IK SampleTank 2/SampleTank2.x.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 97,
+    "programCount": 1,
+    "editorWidth": 851,
+    "editorHeight": 470,
+    "vendor": "IK Multimedia",
+    "vendorUrl": "http://www.ikmultimedia.com/",
+    "vendorType": "Commercial",
+    "genre": "Sample Player",
+    "notes": "*Known Issues*\nNewer versions of this plugin may have problems crashing when switching between multiple large samples.\nAny library from IK which contains .MID files are not compatable on the vfx platform at this time, Phil Gould on Drums, Loop, and Tony Mason\ncontain these .MID files and will not copy to the V-Machine.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "SampleTank is the ultimate sample-workstation. With an exclusive combination of features and sounds, SampleTank stands apart from any other sample-based virtual instrument, as one of the most powerful and easy-to-use solutions for making fully produced songs out of the box.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "SampleTank2.x.ini",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.vpa:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.xrs:SampleTank 2.5",
+      "/windows/msocreg32.dat:system32",
+      "/windows/system32/w3data.vss:system32"
+    ],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Instruments:SampleTank 2.5;exclude:Midi Files;exclude:ST2InstrCache.dat;exclude:Phil Gould on Drums;exclude:Loop;exclude:Tony Mason",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Preferences:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Effects:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Images:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Presets:SampleTank 2.5"
+    ],
+    "filesToCreate": {
+      "files_to_create": "SampleTank 2.5/Preferences/ST2Pref.txt",
+      "vmachine_files_to_create": "SampleTank2.x.ini",
+      "SampleTank2.x.ini": "[VPA]\nGUID={5855EAC1-522D-45be-A6B0-943B329A0E65}\nChannelsIn=0\nChannelsOut=ASK\nID=1936994865\nProcessIndex=0\n\n[VST]\nName=SampleTank 2.x",
+      "SampleTank 2.5/Preferences/ST2Pref.txt": "BrowseLoad=-1\nBrowseNext=-1\nBrowsePrev=-1\nColor=255\nFirstRun=no\nFlatVelocity=100\nGlobalSync=0\nInstrumentPath=P:\\IK SampleTank 2\\SampleTank 2.5\\Instruments\\\nLuminosity=124\nMode=0\nNumOutputPairs=1\nRegID=$VFX_EXPAND(XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX)\nReload=0\nSaturation=255\nSerial=$VFX_EXPAND(SXT20-XXXXXXXX-XXXXX)",
+      "license_sequence": "input_prompt;SXT20-XXXXXXXX-XXXXX;Please Enter Your Serial Number for Sampletank 2 XT\nexecute_tool;digitalid;5;32;IKLicenseTool.exe;-d\ninfo_prompt;$VFX_EXPAND(digitalid);Please copy this special V-Machine 'Digital ID' and used it at the IK website to create a new Activation code.\ninput_prompt;XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX;Please enter your newly created 'Activation Code' created from the digital ID given in the last step."
+    },
+    "symlinks": [
+      "windows/msocreg32.dat:IK SampleTank 2/system32/msocreg32.dat",
+      "windows/system32/w3data.vss:IK SampleTank 2/system32/w3data.vss"
+    ],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\VPA\\{5855EAC1-522D-45be-A6B0-943B329A0E65}]\n\"PathName\"=\"p:\\\\IK SampleTank 2\\\\SampleTank 2.5\\\\SampleTank2.x.vpa\"",
+    "flags": {
+      "mac": "1",
+      "licence_required": "1",
+      "sxt20-xxxxxxxx-xxxxx": "SXT20-EXAMPLEXXX-SERIAL",
+      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx": "REPLACE-WITH-YOUR-NEW-AUTHCODEXXXXXX"
+    },
+    "sourcePath": "wizard_database_20101112\\SampleTank2.x_1936994865\\SampleTank2.x_1936994865_Ver 2.5.4 XT.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1936994865",
+    "name": "SampleTank 2 FREE",
+    "nameAbbreviation": "ST2free",
+    "version": "1",
+    "dllName": "SampleTank2Free/SampleTank2.x.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 97,
+    "programCount": 1,
+    "editorWidth": 851,
+    "editorHeight": 470,
+    "vendor": "IK Multimedia",
+    "vendorUrl": "http://www.ikmultimedia.com/",
+    "vendorType": "Free",
+    "genre": "Sample Player",
+    "notes": "*Known Issues*\nNo known problems.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "SampleTank is the ultimate sample-workstation. With an exclusive combination of features and sounds, SampleTank stands apart from any other sample-based virtual instrument, as one of the most powerful and easy-to-use solutions for making fully produced songs out of the box.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "SampleTank2.x.ini",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.vpa:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/SampleTank2.x.xrs:SampleTank 2.5",
+      "/windows/msocreg32.dat:system32",
+      "/windows/system32/w3data.vss:system32"
+    ],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/IK Multimedia/Instruments:SampleTank 2.5;exclude:Midi Files;exclude:ST2InstrCache.dat;exclude:Phil Gould on Drums;exclude:Loop;exclude:Tony Mason",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Preferences:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Effects:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Images:SampleTank 2.5",
+      "$VFX_BUILTIN(program_files)/IK Multimedia/SampleTank 2.5/Presets:SampleTank 2.5"
+    ],
+    "filesToCreate": {
+      "files_to_create": "SampleTank 2.5/Preferences/ST2Pref.txt",
+      "vmachine_files_to_create": "SampleTank2.x.ini",
+      "SampleTank2.x.ini": "[VPA]\nGUID={5855EAC1-522D-45be-A6B0-943B329A0E65}\nChannelsIn=0\nChannelsOut=ASK\nID=1936994865\nProcessIndex=0\n\n[VST]\nName=SampleTank 2.x",
+      "SampleTank 2.5/Preferences/ST2Pref.txt": "BrowseLoad=-1\nBrowseNext=-1\nBrowsePrev=-1\nColor=255\nFirstRun=no\nFlatVelocity=100\nGlobalSync=0\nInstrumentPath=P:\\SampleTank2Free\\SampleTank 2.5\\Instruments\\\nLuminosity=124\nMode=0\nNumOutputPairs=1\nRegID=$VFX_EXPAND(IK_ACTIVATION_CODE)\nReload=0\nSaturation=255\nSerial=$VFX_EXPAND(IK_Serial_Number)",
+      "license_sequence": "input_prompt;IK_Serial_Number;Please Enter Your Serial Number for Sampletank 2 FREE\nexecute_tool;digitalid;5;32;IKLicenseTool.exe;-d\ngui_msg;To authorize Sampletank Free for use on the V-Machine you must save an ActivationRequestFile.html file to a location on your computer, please remember where you save it.\nsave_file_prompt;Authorization Request.html;Choose where the Authorization Request.html file will be saved:\ngui_msg;Now you need to move the Authorization Request.html file to a computer that is connected to the internet. Double click the file to open it in a web browser and follow the instructions.\ngui_msg;Now you have completed the steps in the web browser, you will be asked to locate the Authorization.xml file that the website created for you.\nparse_input_file;IK_ACTIVATION_CODE;Authorization.xml;$VFX_EXPAND(IK_Serial_Number)\" AuthorizationCode = \";\" />",
+      "Authorization Request.html": "<html><body onload=\"javascript:AuthWizardForm.submit();\"><form name=\"AuthWizardForm\" action=\"https://www.ikmultimedia.com/AuthWizard/AuthWizard.php\" method=\"post\"><input type=\"hidden\" name=\"action\" value=\"login\"><input type=\"hidden\" name=\"DigitalID\" value=\"$VFX_EXPAND(digitalid)\"><input type=\"hidden\" name=\"Version\" value=\"1.0\"></form></body></html>"
+    },
+    "symlinks": [
+      "windows/msocreg32.dat:SampleTank2Free/system32/msocreg32.dat",
+      "windows/system32/w3data.vss:SampleTank2Free/system32/w3data.vss"
+    ],
+    "registryKeys": "REGEDIT4\n\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\VPA\\{5855EAC1-522D-45be-A6B0-943B329A0E65}]\n\"PathName\"=\"p:\\\\SampleTank2Free\\\\SampleTank 2.5\\\\SampleTank2.x.vpa\"",
+    "flags": {
+      "mac": "1",
+      "licence_required": "1",
+      "ik_serial_number": "SXF20-EXAMPLEXXX-SERIAL"
+    },
+    "sourcePath": "wizard_database_20101112\\SampleTank2.x_1936994865\\SampleTank2.x_1936994865_Ver 2.5.5 FREE.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1400139313",
     "name": "SampleTron",
     "nameAbbreviation": "STron",
@@ -7186,7 +7875,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "SampleTron is a new virtual instrument from IK Multimedia and Sonic Reality that combines the authentic recreation of �Tron� sounds such as Mellotrons, Chamberlins, and Optigans with the powerful SampleTank engine to take those nostalgic sounds into the new millenium. No other product allows you to manipulate, process and stretch such gritty, emotional and quirky lofi sounds like SampleTron. It�s a virtual instrument made for many styles from hip hop to electronic to classic rock and offers some of the most unique musically useful tones you can imagine. From the nostalgic sounds used by The Beatles, Moody Blues, Genesis, Yes and other rock bands of the 60�s and 70�s to the modern production of artists like Kanye West, Smashing Pumpkins and Beck to new sonic creations now possible only with SampleTron, the sounds in this package are diverse, powerful and inspiring!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "SampleTron is a new virtual instrument from IK Multimedia and Sonic Reality that combines the authentic recreation of Tron sounds such as Mellotrons, Chamberlins, and Optigans with the powerful SampleTank engine to take those nostalgic sounds into the new millenium. No other product allows you to manipulate, process and stretch such gritty, emotional and quirky lofi sounds like SampleTron. Its a virtual instrument made for many styles from hip hop to electronic to classic rock and offers some of the most unique musically useful tones you can imagine. From the nostalgic sounds used by The Beatles, Moody Blues, Genesis, Yes and other rock bands of the 60s and 70s to the modern production of artists like Kanye West, Smashing Pumpkins and Beck to new sonic creations now possible only with SampleTron, the sounds in this package are diverse, powerful and inspiring!\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "SampleTron.ini",
@@ -7266,7 +7955,7 @@
     "vendorType": "Free",
     "genre": "Sample Player",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*\n\nThis plugin saves the location to any samples in the 'vst chunk' in a non text format so it can not be read and edited. For any samples you wish to use in this plugin do the following..\n\n1. Copy the sample or sound font you wish to use into a folder called c:\\SfzSamples\\ create this folder if it does not exsist. Notice the 2 upper case 'S' in the folder name as this must be exact.\n2. Always load the sample/font into SFZ+ from this folder and then press SAVE in the vfx software.\n3. When ever you add more samples into the c:\\SfzSamples\\ folder, reimport the plugin so the extra samples get copied with the plugin.\n4. Sync or export the updated plugin and banks onto a usb drive or direct to the v-machine.",
-    "vendorNotes": "rgc:audio�s revolutionary SoundFont player sample-playback engine, packed in a professional VST/DXi instrument.\n\nOutstanding sound quality, stereo built-in effects, adjustable CPU/quality settings to adjust it to your hardware, fully multitimbral operation, multiple stereo outputs, several loading modes and a beautiful interface make sfz+ the perfect choice for SoundFont users and professional composers.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "rgc:audios revolutionary SoundFont player sample-playback engine, packed in a professional VST/DXi instrument.\n\nOutstanding sound quality, stereo built-in effects, adjustable CPU/quality settings to adjust it to your hardware, fully multitimbral operation, multiple stereo outputs, several loading modes and a beautiful interface make sfz+ the perfect choice for SoundFont users and professional composers.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [
@@ -7677,7 +8366,7 @@
     "vendorType": "Free",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "A new and much �Improved� version of StringZ, we present StringZ2. Now much more capable of providing pad ensemble sounds as well as the PM sounds that StringZ was famous for. This version boasts the keyscale controls first introduced in Rticul8r. Here they can be used to good effect to fine tune the filter or harmonics across the keyboard. This version also has a reverb unit built in that can become part of the voice architecture. Complete with a full bank of 128 presets which have been kindly contributed by Tim Conrardy and Himalaya showing the full range of this distinctive keyboard.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "A new and much Improved version of StringZ, we present StringZ2. Now much more capable of providing pad ensemble sounds as well as the PM sounds that StringZ was famous for. This version boasts the keyscale controls first introduced in Rticul8r. Here they can be used to good effect to fine tune the filter or harmonics across the keyboard. This version also has a reverb unit built in that can become part of the voice architecture. Complete with a full bank of 128 presets which have been kindly contributed by Tim Conrardy and Himalaya showing the full range of this distinctive keyboard.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -7962,6 +8651,86 @@
       "mac": "2"
     },
     "sourcePath": "wizard_database_20101112\\Synth1 VSTi_1395742323\\Synth1 VSTi_1395742323_Ver 1.07.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1395742323",
+    "name": "Synth1 VSTi",
+    "nameAbbreviation": "Syn1",
+    "version": "1",
+    "dllName": "Synth1 VSTi/Synth1 VST.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 255,
+    "programCount": 1,
+    "editorWidth": 699,
+    "editorHeight": 510,
+    "vendor": "Ichiro Toda",
+    "vendorUrl": "http://www.geocities.jp/daichi1969/softsynth/index.html",
+    "vendorType": "Free",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
+    "vendorNotes": "Synth1 is a software synthesizer for computer music use. It is VSTi compatible. The current version is freeware. \nFunctionally it is modelled on the Clavia Nord Lead 2Red Synth.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "$VFX_BUILTIN(user_application_data)/Daichi/Synth1/synth1.ini"
+    ],
+    "dirsToCopy": [],
+    "filesToCreate": {
+      "import_sequence": "gui_msg;This wizard can be used when the normal Synth1 wizards automation fails. The plugin does not need the following steps done unless you want the name to display correctly on the LCD screen.\ngui_msg;Copy your Synth1 patches into the vfxlibrary/plugs/Synth1 VSTi/Patches folder. There is a readme.txt file in there with further info.",
+      "files_to_create": "synth1example.ini\nPatches/readme.txt",
+      "Patches/readme.txt": "You can use this wizard and not perform any of the following steps and the plugin will work fine. If you find the loaded patch displays as 'initial sound' even though the plugin is creating the correct sound, then this means the synth1.ini will need to be edited by following the below steps.\n\n1. First copy all your patch files into your vfxlibrary manually. This location will be where you found this readme file and is \nvfxlibrary/plugs/Synth1 VSTi/Patches\n\n2. Open up your synth1.ini file in a text editor, the file is found at this location.\nvfxlibrary/plugs/Synth1 VSTi/synth1.ini\n\n3. Edit the paths inside your ini file to point to the place they will live inside the V-Machine. I have created an example ini file that you can open and veiw and it is found at this location.\nvfxlibrary/plugs/Synth1 VSTi/synth1example.ini\n\n4. By using find and replace you need to make the paths into p:\\Synth1 VSTi\\Patches\\\nThe reason for this is that all the folders inside a VFX libraries 'plugs' folder get loaded onto a P: inside the V-Machine, hence why this path needs to be changed.\n\n5.If you have copied the files over and the ini file has been edited to correctly point to these files on the P drive, then you should then have the patch names displaying correctly on the V-Machine's LCD screen.\n\nAs mentioned the above is all OPTIONAL and NOT REQUIRED for the plugin to save and recall sounds, in fact doing the above will increase the file size of this plugin to gain only a small feature of having the patch name display correctly. If you need further help please contact VFX support.",
+      "synth1example.ini": "[global]\nbankfolder0=p:\\Synth1 VSTi\\Patches\\Factory Presets\nbankfolder1=p:\\Synth1 VSTi\\Patches\\Alfmeister's Magic Cracker Bank\nbankfolder2=p:\\Synth1 VSTi\\Patches\\Ami Evan Bank\nbankfolder3=p:\\Synth1 VSTi\\Patches\\Ann Bank 1\nbankfolder4=p:\\Synth1 VSTi\\Patches\\Ann Bank 2\nbankfolder5=p:\\Synth1 VSTi\\Patches\\Ann Bank 3\nbankfolder6=p:\\Synth1 VSTi\\Patches\\Audiowhore 128 Bank\nbankfolder7=p:\\Synth1 VSTi\\Patches\\Audiowhore Techno Essentials Bank\nbankfolder8=p:\\Synth1 VSTi\\Patches\\Audiowhore Unison Delights Bank\nbankfolder9=p:\\Synth1 VSTi\\Patches\\BE Random Patch Generator\nbankfolder10=p:\\Synth1 VSTi\\Patches\\Bladerunner Patches\nbankfolder11=p:\\Synth1 VSTi\\Patches\\bwwd's Gold Bank\nbankfolder12=p:\\Synth1 VSTi\\Patches\\bwwd's Green Bank\nbankfolder13=p:\\Synth1 VSTi\\Patches\\bwwd's Pads Bank\nbankfolder14=p:\\Synth1 VSTi\\Patches\\Civilized Creation\nbankfolder15=p:\\Synth1 VSTi\\Patches\\CreateAudio Bank\nbankfolder16=p:\\Synth1 VSTi\\Patches\\Dance Bank by Rob Rouleau\nbankfolder17=p:\\Synth1 VSTi\\Patches\\Dezma Soundbank\nbankfolder18=p:\\Synth1 VSTi\\Patches\\Dover Bank\nbankfolder19=p:\\Synth1 VSTi\\Patches\\DrFx Bank\nbankfolder20=p:\\Synth1 VSTi\\Patches\\Echopark Bank\nbankfolder21=p:\\Synth1 VSTi\\Patches\\JamesXIIC Bank\nbankfolder22=p:\\Synth1 VSTi\\Patches\\jf1 Bank\nbankfolder23=p:\\Synth1 VSTi\\Patches\\JS Hip Hop Collection\nbankfolder24=p:\\Synth1 VSTi\\Patches\\Kaiyoti Bank 1\nbankfolder25=p:\\Synth1 VSTi\\Patches\\Kujashi Bank\nbankfolder26=p:\\Synth1 VSTi\\Patches\\KvR Soundbank\nbankfolder27=p:\\Synth1 VSTi\\Patches\\LiKwid DaTaBaSsEs\nbankfolder28=p:\\Synth1 VSTi\\Patches\\Lila K Bank\nbankfolder29=p:\\Synth1 VSTi\\Patches\\Luck's Kultura Bank\nbankfolder30=p:\\Synth1 VSTi\\Patches\\Luck's Monstronomo Bank\nbankfolder31=p:\\Synth1 VSTi\\Patches\\Luck's Rainbow Bank\nbankfolder32=p:\\Synth1 VSTi\\Patches\\Lunatique Bank\nbankfolder33=p:\\Synth1 VSTi\\Patches\\Mickygemma Bank\nbankfolder34=p:\\Synth1 VSTi\\Patches\\Mutant Bank\nbankfolder35=p:\\Synth1 VSTi\\Patches\\neko's Braindance Bank\nbankfolder36=p:\\Synth1 VSTi\\Patches\\neko's The 80's Bank\nbankfolder37=p:\\Synth1 VSTi\\Patches\\Ouroboros Bank 1\nbankfolder38=p:\\Synth1 VSTi\\Patches\\Ouroboros Bank 2\nbankfolder39=p:\\Synth1 VSTi\\Patches\\Ouroboros Bank 3\nbankfolder40=p:\\Synth1 VSTi\\Patches\\Pencilgod Bank 1\nbankfolder41=p:\\Synth1 VSTi\\Patches\\Pencilgod Bank 2\nbankfolder42=p:\\Synth1 VSTi\\Patches\\Pencilgod Bank 3\nbankfolder43=p:\\Synth1 VSTi\\Patches\\Pencilgod Bank 4\nbankfolder44=p:\\Synth1 VSTi\\Patches\\Pummel's Filtered FM\nbankfolder45=p:\\Synth1 VSTi\\Patches\\Rydeen Bank\nbankfolder46=p:\\Synth1 VSTi\\Patches\\S1 Project Sound Library\nbankfolder47=p:\\Synth1 VSTi\\Patches\\Sonicstyle Trance & Techno Patches\nbankfolder48=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 01\nbankfolder49=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 02\nbankfolder50=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 03\nbankfolder51=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 04\nbankfolder52=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 05\nbankfolder53=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 06\nbankfolder54=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 07\nbankfolder55=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 08\nbankfolder56=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 09\nbankfolder57=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 10\nbankfolder58=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 11\nbankfolder59=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 12\nbankfolder60=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 13\nbankfolder61=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 14\nbankfolder62=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 15\nbankfolder63=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 16\nbankfolder64=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 17\nbankfolder65=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 18\nbankfolder66=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 19\nbankfolder67=p:\\Synth1 VSTi\\Patches\\SOS NL2 Bank 20\nbankfolder68=p:\\Synth1 VSTi\\Patches\\SSR Bank\nbankfolder69=p:\\Synth1 VSTi\\Patches\\Stephan Musch Bank 1 (Arp)\nbankfolder70=p:\\Synth1 VSTi\\Patches\\Stephan Musch Bank 2 (Bass)\nbankfolder71=p:\\Synth1 VSTi\\Patches\\Stephan Musch Bank 3 (Pad)\nbankfolder72=p:\\Synth1 VSTi\\Patches\\Summa & DocT Bank\nbankfolder73=p:\\Synth1 VSTi\\Patches\\Synth1 Bank2\nbankfolder74=p:\\Synth1 VSTi\\Patches\\Synthgeek Bank\nbankfolder75=p:\\Synth1 VSTi\\Patches\\Teksonik 2008 Edit\nbankfolder76=p:\\Synth1 VSTi\\Patches\\Teksonik Bank 1\nbankfolder77=p:\\Synth1 VSTi\\Patches\\Teksonik Bank 2\nbankfolder78=p:\\Synth1 VSTi\\Patches\\Teksonik Synth1 50 More Sounds\nbankfolder79=p:\\Synth1 VSTi\\Patches\\Teksonik Synth1 64 More Sounds\nbankfolder80=p:\\Synth1 VSTi\\Patches\\The Definitive Bank by VitaminD\nbankfolder81=p:\\Synth1 VSTi\\Patches\\Tim Conrardy Bank\nbankfolder82=p:\\Synth1 VSTi\\Patches\\Timfonie Bank\nbankfolder83=p:\\Synth1 VSTi\\Patches\\Toast-Synthhunter-Atonal Abstractions-Axiom-EinTon (5-in-1)\nbankfolder84=p:\\Synth1 VSTi\\Patches\\Wavephonic Bank\nbankfolder85=p:\\Synth1 VSTi\\Patches\\Wowoma Bank\nbankfolder86=p:\\Synth1 VSTi\\Patches\\Xenos Signature\nbankfolder87=p:\\Synth1 VSTi\\Patches\\XIC Bank\nbankfolder88=p:\\Synth1 VSTi\\Patches\\X-Protocol S1\ninstallfolder=p:\\Synth1 VSTi\nzipfolder=p:\\Synth1 VSTi\\zipbank"
+    },
+    "symlinks": [
+      "$VFX_BUILTIN(user_application_data)/Daichi/Synth1/synth1.ini:Synth1 VSTi/synth1.ini"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Synth1 VSTi_1395742323\\Synth1 VSTi_1395742323_Ver 1.12.2010.5 FailSafeWiz.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1395742323",
+    "name": "Synth1 VSTi",
+    "nameAbbreviation": "Syn1",
+    "version": "1",
+    "dllName": "Synth1 VSTi/Synth1 VST.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 255,
+    "programCount": 1,
+    "editorWidth": 699,
+    "editorHeight": 510,
+    "vendor": "Ichiro Toda",
+    "vendorUrl": "http://www.geocities.jp/daichi1969/softsynth/index.html",
+    "vendorType": "Free",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*\nIf you find the loaded patch displays as 'initial sound' even though the plugin is creating the correct sound, then this means the synth1.ini file may need to be edited or you may need to move the files to a C: location on your host computer.",
+    "vendorNotes": "Synth1 is a software synthesizer for computer music use. It is VSTi compatible. The current version is freeware. \nFunctionally it is modelled on the Clavia Nord Lead 2Red Synth.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "$VFX_BUILTIN(user_application_data)/Daichi/Synth1/synth1.ini"
+    ],
+    "dirsToCopy": [
+      "$VFX_EXPAND(PatchLocation)/Synth1"
+    ],
+    "filesToCreate": {
+      "import_sequence": "gui_msg;In the next step please locate your synth1.ini file, which is found here $VFX_BUILTIN(user_application_data)/Daichi/Synth1/synth1.ini\nparse_input_file;SYNTH1_PATH;synth1.ini;bankfolder0=;\\Synth1\\\nstore;PatchLocation;$VFX_FORWARD_SLASHES($VFX_EXPAND(SYNTH1_PATH))"
+    },
+    "symlinks": [
+      "$VFX_BUILTIN(user_application_data)/Daichi/Synth1/synth1.ini:Synth1 VSTi/synth1.ini",
+      "$VFX_EXPAND(PatchLocation)/Synth1:Synth1 VSTi/Synth1"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\Synth1 VSTi_1395742323\\Synth1 VSTi_1395742323_Ver 1.12.2010.5.vfxwizard",
     "readme": null
   },
   {
@@ -8329,7 +9098,7 @@
     "vendorType": "Free",
     "genre": "Synth",
     "notes": "*Known Issues*\nNo known issues on PC or V-Machine.\nMac can not install the plugin due to a wine error about registering a DLL/OCX file.\n\n*Performance* \nNo known problems.\n\n*Misc*",
-    "vendorNotes": "Performance Oriented Monophonic Synthesizer\n\nCapable of a broad range of sounds, from warm to aggressive, Triangle II packs the perfect feature set for a mono synthesizer for uncompromised playability. And best of all we�re making Triangle II available as a free download to give you a taste of the quality of instruments available from Cakewalk.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Performance Oriented Monophonic Synthesizer\n\nCapable of a broad range of sounds, from warm to aggressive, Triangle II packs the perfect feature set for a mono synthesizer for uncompromised playability. And best of all were making Triangle II available as a free download to give you a taste of the quality of instruments available from Cakewalk.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [
       "/windows/system32/MSVCP60.dll:system32"
@@ -8515,6 +9284,76 @@
     "readme": null
   },
   {
+    "id": "1432568113",
+    "name": "Uhbik-A",
+    "nameAbbreviation": "UbkA",
+    "version": "1",
+    "dllName": "Uhbik-A/Uhbik-A.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 13,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Reverb",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Modelled with the best in mind. This ambience processor provides the depth and the glue for your tracks. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-A/Uhbik",
+      "Program Files/u-he/Support:Uhbik-A/Support"
+    ],
+    "registryKeys": "",
+    "flags": {},
+    "sourcePath": "wizard_database_20101112\\Uhbik-A_1432568113\\Uhbik-A_1432568113_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432568113",
+    "name": "Uhbik-A",
+    "nameAbbreviation": "UbkA",
+    "version": "1",
+    "dllName": "Uhbik-A/Uhbik-A.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 14,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Reverb",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Modelled with the best in mind. This ambience processor provides the depth and the glue for your tracks. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-A_1432568113\\Uhbik-A_1432568113_Ver 1.1.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1432568881",
     "name": "Uhbik-D",
     "nameAbbreviation": "UbkD",
@@ -8545,6 +9384,78 @@
     "registryKeys": "",
     "flags": {},
     "sourcePath": "wizard_database_20101112\\Uhbik-D_1432568881\\Uhbik-D_1432568881_Ver 1.0 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432568881",
+    "name": "Uhbik-D",
+    "nameAbbreviation": "UbkD",
+    "version": "1",
+    "dllName": "Uhbik-D/Uhbik-D.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 24,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Delay/Echo",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "5-tap tape-style delay with a clue or two. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-D/Uhbik",
+      "Program Files/u-he/Support:Uhbik-D/Support"
+    ],
+    "registryKeys": "",
+    "flags": {},
+    "sourcePath": "wizard_database_20101112\\Uhbik-D_1432568881\\Uhbik-D_1432568881_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432568881",
+    "name": "Uhbik-D",
+    "nameAbbreviation": "UbkD",
+    "version": "1",
+    "dllName": "Uhbik-D/Uhbik-D.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 25,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Delay/Echo",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "5-tap tape-style delay with a clue or two. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data/Data:Uhbik.data",
+      "Uhbik.data/Presets:Uhbik.data",
+      "Uhbik.data/Support:Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-D_1432568881\\Uhbik-D_1432568881_Ver 1.1.vfxwizard",
     "readme": null
   },
   {
@@ -8580,6 +9491,78 @@
       "mac": "0"
     },
     "sourcePath": "wizard_database_20101112\\Uhbik-F_1432569393\\Uhbik-F_1432569393_Ver 1.0 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432569393",
+    "name": "Uhbik-F",
+    "nameAbbreviation": "UbkF",
+    "version": "1",
+    "dllName": "Uhbik-F/Uhbik-F.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 13,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Modulation",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "So you think you don't need another flanger? Try this one anyway. \nUhbik-F does both tape-style and stomp-style flanging in extraordinary quality. Chorus on top of that.  \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-F/Uhbik",
+      "Program Files/u-he/Support:Uhbik-F/Support"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-F_1432569393\\Uhbik-F_1432569393_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432569393",
+    "name": "Uhbik-F",
+    "nameAbbreviation": "UbkF",
+    "version": "1",
+    "dllName": "Uhbik-F/Uhbik-F.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 14,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Modulation",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "So you think you don't need another flanger? Try this one anyway. \nUhbik-F does both tape-style and stomp-style flanging in extraordinary quality. Chorus on top of that.  \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-F_1432569393\\Uhbik-F_1432569393_Ver 1.1.vfxwizard",
     "readme": null
   },
   {
@@ -8653,6 +9636,78 @@
     "readme": null
   },
   {
+    "id": "1432571953",
+    "name": "Uhbik-P",
+    "nameAbbreviation": "UbkP",
+    "version": "1",
+    "dllName": "Uhbik-P/Uhbik-P.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 11,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Modulation",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "A Phaser with 14, 28 or 42 stages. Really.  \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-P/Uhbik",
+      "Program Files/u-he/Support:Uhbik-P/Support"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-P_1432571953\\Uhbik-P_1432571953_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432571953",
+    "name": "Uhbik-P",
+    "nameAbbreviation": "UbkP",
+    "version": "1",
+    "dllName": "Uhbik-P/Uhbik-P.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 12,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Modulation",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "A Phaser with 14, 28 or 42 stages. Really.  \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-P_1432571953\\Uhbik-P_1432571953_Ver 1.1.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1432572209",
     "name": "Uhbik-Q",
     "nameAbbreviation": "UbkQ",
@@ -8685,6 +9740,78 @@
       "mac": "0"
     },
     "sourcePath": "wizard_database_20101112\\Uhbik-Q_1432572209\\Uhbik-Q_1432572209_Ver 1.0 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432572209",
+    "name": "Uhbik-Q",
+    "nameAbbreviation": "UbkQ",
+    "version": "1",
+    "dllName": "Uhbik-Q/Uhbik-Q.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 7,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "EQ",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "An EQ that is Transparent. Powerful. Flexible. Fast.   \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-Q/Uhbik",
+      "Program Files/u-he/Support:Uhbik-Q/Support"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-Q_1432572209\\Uhbik-Q_1432572209_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432572209",
+    "name": "Uhbik-Q",
+    "nameAbbreviation": "UbkQ",
+    "version": "1",
+    "dllName": "Uhbik-Q/Uhbik-Q.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 8,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "EQ",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "An EQ that is Transparent. Powerful. Flexible. Fast.   \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-Q_1432572209\\Uhbik-Q_1432572209_Ver 1.1.vfxwizard",
     "readme": null
   },
   {
@@ -8723,6 +9850,78 @@
     "readme": null
   },
   {
+    "id": "1432572721",
+    "name": "Uhbik-S",
+    "nameAbbreviation": "UbkS",
+    "version": "1",
+    "dllName": "Uhbik-S/Uhbik-S.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 10,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Multi FX",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Frequency Shifter, Not just renowned for cruelty but also applicable in small & smooth doses.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-S/Uhbik",
+      "Program Files/u-he/Support:Uhbik-S/Support"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-S_1432572721\\Uhbik-S_1432572721_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432572721",
+    "name": "Uhbik-S",
+    "nameAbbreviation": "UbkS",
+    "version": "1",
+    "dllName": "Uhbik-S/Uhbik-S.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 11,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Multi FX",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "Frequency Shifter, Not just renowned for cruelty but also applicable in small & smooth doses.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-S_1432572721\\Uhbik-S_1432572721_Ver 1.1.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1432572977",
     "name": "Uhbik-T",
     "nameAbbreviation": "UbkT",
@@ -8755,6 +9954,78 @@
       "mac": "0"
     },
     "sourcePath": "wizard_database_20101112\\Uhbik-T_1432572977\\Uhbik-T_1432572977_Ver 1.0 Demo.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432572977",
+    "name": "Uhbik-T",
+    "nameAbbreviation": "UbkT",
+    "version": "1",
+    "dllName": "Uhbik-T/Uhbik-T.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 11,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Multi FX",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "If you think that tremolo is only a wobbly gain, Uhbik-T twists your audio around like nuts. Surround trance gate effects included.   \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "$VFX_BUILTIN(program_files)/u-he/Uhbik",
+      "$VFX_BUILTIN(program_files)/u-he/Support"
+    ],
+    "filesToCreate": {},
+    "symlinks": [
+      "Program Files/u-he/Uhbik:Uhbik-T/Uhbik",
+      "Program Files/u-he/Support:Uhbik-T/Support"
+    ],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-T_1432572977\\Uhbik-T_1432572977_Ver 1.0 Full.vfxwizard",
+    "readme": null
+  },
+  {
+    "id": "1432572977",
+    "name": "Uhbik-T",
+    "nameAbbreviation": "UbkT",
+    "version": "1",
+    "dllName": "Uhbik-T/Uhbik-T.dll",
+    "dllVersion": "",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 12,
+    "programCount": 1,
+    "editorWidth": 888,
+    "editorHeight": 344,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Multi FX",
+    "notes": "*Known Issues*\nNo known issues on PC.\nMac application has GUI problems and the main preset display in the plugin does not display the info.\n\n*Performance* \nNo known problems.\n\n*Misc*",
+    "vendorNotes": "If you think that tremolo is only a wobbly gain, Uhbik-T twists your audio around like nuts. Surround trance gate effects included.   \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Uhbik.data"
+    ],
+    "filesToCreate": {
+      "license_sequence": "gui_msg;This plugin is authorised via its GUI, follow the Uhbik manual to learn how to authorise this plugin inside the VFX software which is the same as any other host program."
+    },
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Uhbik-T_1432572977\\Uhbik-T_1432572977_Ver 1.1.vfxwizard",
     "readme": null
   },
   {
@@ -8810,7 +10081,7 @@
     "vendorType": "Commercial",
     "genre": "Synth",
     "notes": "*Known Issues*\nThe mac version of VFX may lock up with the full version of this plugin when it begins to load. No known issues with the Demo.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "The V-Station gets the same real 3-oscillator flexibility as the award winning K-Station, with awesome liquid analog filters, 8-voice polyphony, rippin� simultaneous FX and the kind of phatt sounds only a genuine Novation synth can offer. It�s got masses of sophistication, acres of program locations and the flexibility of integrating it with your favourite sequencer/disc-based recording set-up.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "The V-Station gets the same real 3-oscillator flexibility as the award winning K-Station, with awesome liquid analog filters, 8-voice polyphony, rippin simultaneous FX and the kind of phatt sounds only a genuine Novation synth can offer. Its got masses of sophistication, acres of program locations and the flexibility of integrating it with your favourite sequencer/disc-based recording set-up.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -9008,6 +10279,39 @@
     "readme": null
   },
   {
+    "id": "1412585302",
+    "name": "WarmVerb",
+    "nameAbbreviation": "",
+    "version": "1",
+    "dllName": "Tone2 WarmVerb/Warmverb.dll",
+    "dllVersion": "1.0.1.0",
+    "isSynth": false,
+    "hasEditor": true,
+    "parameterCount": 38,
+    "programCount": 153,
+    "editorWidth": 998,
+    "editorHeight": 377,
+    "vendor": "Tone2",
+    "vendorUrl": "http://www.tone2.com/",
+    "vendorType": "Commercial",
+    "genre": "Reverb",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nWorks very well for most internal patches, however not the default sound on the 1ghz V-Machine. Some of the presets use all of the cpu power in the 1ghz V-Machine to run, so the plugin appears to have hung however the plugin still processes audio.\n\n*Misc*",
+    "vendorNotes": "Warmverb is a multi-effect unit which gives you the flexibility to create unique sounding custom effects with a mouse click. Not only can it do classic effects with pristine sound quality - it can do crazy stuff like a 'distorted-reverb-phaser-feedback-vocoder'! \nWarmverb gives you instant access to a large selection of essential effects and inspiring new sounds. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [
+      "warmverb.t2k"
+    ],
+    "dirsToCopy": [],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "1"
+    },
+    "sourcePath": "wizard_database_20101112\\WarmVerb_1412585302\\WarmVerb_1412585302_Ver 1.01 Full.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1467239284",
     "name": "WatKat",
     "nameAbbreviation": "WtKt",
@@ -9025,7 +10329,7 @@
     "vendorType": "Free",
     "genre": "Piano",
     "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "WatKat is a digital �clone� of a Wem Watkins �Custom� Copicat. It sounds very lo-fi, noisy, irregular. When you turn it off and leave the tape loaded, the tape bends in proximity of the capstan, and this turns into a periodic pitch fall during echo playback; plus, it gets hot and the background hum gets worse in time... you should turn it off every now and then; the tape is never completely erased, and the capstan motor flutters... and it gets worse if you touch it while it's spinning; heads tend to get dirty very soon, infact you should clean them often. This is true for the actual hardware unit, and for the digital simulation as well!",
+    "vendorNotes": "WatKat is a digital clone of a Wem Watkins Custom Copicat. It sounds very lo-fi, noisy, irregular. When you turn it off and leave the tape loaded, the tape bends in proximity of the capstan, and this turns into a periodic pitch fall during echo playback; plus, it gets hot and the background hum gets worse in time... you should turn it off every now and then; the tape is never completely erased, and the capstan motor flutters... and it gets worse if you touch it while it's spinning; heads tend to get dirty very soon, infact you should clean them often. This is true for the actual hardware unit, and for the digital simulation as well!",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
@@ -9130,7 +10434,7 @@
       "Wusikstation.wIni"
     ],
     "dirsToCopy": [
-      "Wusikstation DATA;exclude:*�;exclude:*�"
+      "Wusikstation DATA;exclude:*é;exclude:*ê"
     ],
     "filesToCreate": {
       "import_sequence": "store;ImportedPathLoc;$VFX_BUILTIN(dll_dir)\nstore;RegKeyValue;$VFX_REG_STRING(HKEY_CURRENT_USER\\Software\\Wusik.com\\Wusikstation,DataDirectory,KEYNOTFOUND)"
@@ -9252,6 +10556,39 @@
     "readme": null
   },
   {
+    "id": "1397572658",
+    "name": "Zebra2",
+    "nameAbbreviation": "ZBRA",
+    "version": "1",
+    "dllName": "Zebra2/Zebra2.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 648,
+    "programCount": 1,
+    "editorWidth": 900,
+    "editorHeight": 700,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
+    "vendorNotes": "Zebra is a wireless modular synthesizer. It combines numerous synthesis techniques (subtractive, additive, fm, wavetable, etc.) with a powerful modulation engine that even smoothly integrates with the built-in effects section. \n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Zebra2.data"
+    ],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Zebra2_1397572658\\Zebra2_1397572658_Ver 2.5.0.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1397572659",
     "name": "Zebralette",
     "nameAbbreviation": "Zeblet",
@@ -9289,8 +10626,41 @@
     "readme": null
   },
   {
+    "id": "1397572659",
+    "name": "Zebralette",
+    "nameAbbreviation": "Zeblet",
+    "version": "1",
+    "dllName": "Zebralette/Zebralette.dll",
+    "dllVersion": "",
+    "isSynth": true,
+    "hasEditor": true,
+    "parameterCount": 75,
+    "programCount": 1,
+    "editorWidth": 1024,
+    "editorHeight": 768,
+    "vendor": "U-He",
+    "vendorUrl": "http://www.u-he.com/",
+    "vendorType": "Commercial",
+    "genre": "Synth",
+    "notes": "*Known Issues*\nNo known issues.\n\n*Performance* \nLimited polyphony on 1ghz V-Machine.\n\n*Misc*",
+    "vendorNotes": "Included with Zebra 2.0 comes another little synthesizer going by the name of Zebralette. \n\nThis little gem consists basically of only one Zebra oscillator. It helps you learning and using the oscillators with their wavetables, morphable additive synthesis and innovative Osc FX quite easily.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "created": "",
+    "filesToCopy": [],
+    "dirsToCopy": [
+      "Zebra2.data"
+    ],
+    "filesToCreate": {},
+    "symlinks": [],
+    "registryKeys": "",
+    "flags": {
+      "mac": "0"
+    },
+    "sourcePath": "wizard_database_20101112\\Zebralette_1397572659\\Zebralette_1397572659_Ver 2.5.vfxwizard",
+    "readme": null
+  },
+  {
     "id": "1316310356",
-    "name": "�Tonic Demo",
+    "name": "µTonic Demo",
     "nameAbbreviation": "NuMT",
     "version": "1",
     "dllName": "MicroTonic/MicroTonicVST.dll",
@@ -9306,20 +10676,20 @@
     "vendorType": "Commercial",
     "genre": "Drum/Percussion",
     "notes": "*Known Issues*\nThe plugin does not seem to have a way to trigger the PLAY button without a mouse so you need to use this plug triggered by midi notes. To do this click to enable the little keyboard icon in the plugin.\nAsk the plugin vendor to add an AUTOPLAY feature or a way to trigger via midi the play button. The playnow automation parameter may have a bug and will not work.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "Sonic Charge �Tonic (pronounced \"MicroTonic\") is a VST / AU plug-in for Windows and Mac featuring a unique drum and percussion synthesizer combined with a pattern based drum-machine engine.\n\nYou can use �Tonic as a sound module to play drum sounds from your MIDI keyboard or sequencer, or you can use the built-in pattern engine to play drum patterns in sync with your sequencer. The sound of �Tonic is 100% synthetic and rendered in real-time. No samples or pre-rendered waveforms are used.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Sonic Charge µTonic (pronounced \"MicroTonic\") is a VST / AU plug-in for Windows and Mac featuring a unique drum and percussion synthesizer combined with a pattern based drum-machine engine.\n\nYou can use µTonic as a sound module to play drum sounds from your MIDI keyboard or sequencer, or you can use the built-in pattern engine to play drum patterns in sync with your sequencer. The sound of µTonic is 100% synthetic and rendered in real-time. No samples or pre-rendered waveforms are used.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
     "filesToCreate": {},
     "symlinks": [],
-    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\NuEdge Development\\SonicCharge]\n\"Data\"=hex:ed,ca,25,b7,b2,20,1a,33,44,00,3f,da,3f,61,f2,78,c0,64,ad,e6,b3,55,\\\n  53,e6,4f,d4,fc,90,96,b8,91,8f,4d,81,db,ad,64,ec,84,f4,4a,c0,ee,18,e2,5b,5e,\\\n  22,71,ab,29,d8,a4,85,fb,60,ae,d4,ab,a6,a6,a3,f6,f8,95,e1,cc,2e,07,a7,7e,78,\\\n  e0,f8,9b,b7,d8,54,68,95,be,95,97,2a,37,88,a1,c0,71,2a,6d,a6,e0,d8,fd,61,b8,\\\n  0b,94,4c,a1,e6,96,ea,d0,69,94,22,eb,9d,dd,5e,b9,53,22,77,27,a6,cf,38,cb,4f,\\\n  63,ea,ce,16,45,ed,7d,b0,9f,f2,e4,46,4a,6f,3b,8d,62,90,fc,f4,3f,90,a8,da,92,\\\n  da,46,30,0b,14,cc,dc,87,fc,bd,f5,8f,a1,77,dc,6a,d4,fb,d2,75,5f,b6,6b,96,6f,\\\n  fa,34,d9,ad,0c,89,f5,08,31,aa,42,7c,61,68,cc,b2,67,96,96,ed,bb,54,0d,8d,18,\\\n  62,7c,7c,49,38,77,21,7a,29,bf,da,00,e3,f6,a1,1a,5e,c4,b8,db,56,10,30,8e,bb,\\\n  9b,a1,0b,55,22,b1,d1,ff,82,21,f2,cc,a0,cb,cf,c3,c5,03,fa,f3,61,6d,f1,5a,45,\\\n  23,19,cb,be,e5,be,c9,d8,87,c0,a5,73,78,f7,ea,85,7f,29,7a,46,24,d3,96,2d,9f,\\\n  d7,3d,02,e7,32,67,53,a0,9f,c8,62,95,0e,eb,61,81,65,dc,cc,19,2c,33,c2,c4,54,\\\n  b8,b4,92,a1,bf,14,49,2c,59,c1,90,37,4b,22,4f,8a,6a,22,ce,20,67,68,ef,be,51,\\\n  02,b9,3d,33,3c,a9,2b,e1,4f,cc,d0,4a,b1,39,50,3d,5d,0a,79,d5,f7,6c,c4,ab,eb,\\\n  94,3a,ae,44,94,71,a1,df,99,06,26,1c,70,5e,e6,d3,ac,2f,15,4f,a2,ff,ae,97,e2,\\\n  d9,07,c3,8a,70,a2,05,78,93,11,c4,1c,56,b4,d9,c6,b8,9c,e9,be,55,00,67,d7,47,\\\n  37,2d,3d,24,94,3e,97,24,57,c3,42,68,8c,e5,c4,85,39,44,52\n\n[HKEY_CLASSES_ROOT\\.mtpg]\n@=\"SonicCharge.MicroTonic.mtpg\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp]\n@=\"�Tonic Drum Patch\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\�Tonic\\\\MicroTonicVST.dll,1\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg]\n@=\"�Tonic Program\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\�Tonic\\\\MicroTonicVST.dll,0\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc]\n@=\"Sonic Charge MIDI Config\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\�Tonic\\\\MicroTonicVST.dll,2\"",
+    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\NuEdge Development\\SonicCharge]\n\"Data\"=hex:ed,ca,25,b7,b2,20,1a,33,44,00,3f,da,3f,61,f2,78,c0,64,ad,e6,b3,55,\\\n  53,e6,4f,d4,fc,90,96,b8,91,8f,4d,81,db,ad,64,ec,84,f4,4a,c0,ee,18,e2,5b,5e,\\\n  22,71,ab,29,d8,a4,85,fb,60,ae,d4,ab,a6,a6,a3,f6,f8,95,e1,cc,2e,07,a7,7e,78,\\\n  e0,f8,9b,b7,d8,54,68,95,be,95,97,2a,37,88,a1,c0,71,2a,6d,a6,e0,d8,fd,61,b8,\\\n  0b,94,4c,a1,e6,96,ea,d0,69,94,22,eb,9d,dd,5e,b9,53,22,77,27,a6,cf,38,cb,4f,\\\n  63,ea,ce,16,45,ed,7d,b0,9f,f2,e4,46,4a,6f,3b,8d,62,90,fc,f4,3f,90,a8,da,92,\\\n  da,46,30,0b,14,cc,dc,87,fc,bd,f5,8f,a1,77,dc,6a,d4,fb,d2,75,5f,b6,6b,96,6f,\\\n  fa,34,d9,ad,0c,89,f5,08,31,aa,42,7c,61,68,cc,b2,67,96,96,ed,bb,54,0d,8d,18,\\\n  62,7c,7c,49,38,77,21,7a,29,bf,da,00,e3,f6,a1,1a,5e,c4,b8,db,56,10,30,8e,bb,\\\n  9b,a1,0b,55,22,b1,d1,ff,82,21,f2,cc,a0,cb,cf,c3,c5,03,fa,f3,61,6d,f1,5a,45,\\\n  23,19,cb,be,e5,be,c9,d8,87,c0,a5,73,78,f7,ea,85,7f,29,7a,46,24,d3,96,2d,9f,\\\n  d7,3d,02,e7,32,67,53,a0,9f,c8,62,95,0e,eb,61,81,65,dc,cc,19,2c,33,c2,c4,54,\\\n  b8,b4,92,a1,bf,14,49,2c,59,c1,90,37,4b,22,4f,8a,6a,22,ce,20,67,68,ef,be,51,\\\n  02,b9,3d,33,3c,a9,2b,e1,4f,cc,d0,4a,b1,39,50,3d,5d,0a,79,d5,f7,6c,c4,ab,eb,\\\n  94,3a,ae,44,94,71,a1,df,99,06,26,1c,70,5e,e6,d3,ac,2f,15,4f,a2,ff,ae,97,e2,\\\n  d9,07,c3,8a,70,a2,05,78,93,11,c4,1c,56,b4,d9,c6,b8,9c,e9,be,55,00,67,d7,47,\\\n  37,2d,3d,24,94,3e,97,24,57,c3,42,68,8c,e5,c4,85,39,44,52\n\n[HKEY_CLASSES_ROOT\\.mtpg]\n@=\"SonicCharge.MicroTonic.mtpg\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp]\n@=\"µTonic Drum Patch\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\µTonic\\\\MicroTonicVST.dll,1\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg]\n@=\"µTonic Program\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\µTonic\\\\MicroTonicVST.dll,0\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc]\n@=\"Sonic Charge MIDI Config\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc\\DefaultIcon]\n@=\"C:\\\\Users\\\\Admin\\\\Music\\\\VFX Library.vfxlibrary\\\\plugs\\\\µTonic\\\\MicroTonicVST.dll,2\"",
     "flags": {},
     "sourcePath": "wizard_database_20101112\\ÁTonic_1316310356\\ÁTonic_1316310356_Ver 2.0.1 Demo.vfxwizard",
     "readme": null
   },
   {
     "id": "1316310356",
-    "name": "�Tonic Demo",
+    "name": "µTonic Demo",
     "nameAbbreviation": "NuMT",
     "version": "1",
     "dllName": "MicroTonic/MicroTonicVST.dll",
@@ -9335,13 +10705,13 @@
     "vendorType": "Commercial",
     "genre": "Drum/Percussion",
     "notes": "*Known Issues*\nThe plugin does not seem to have a way to trigger the PLAY button without a mouse so you need to use this plug triggered by midi notes. To do this click to enable the little keyboard icon in the plugin.\nAsk the plugin vendor to add an AUTOPLAY feature or a way to trigger via midi the play button. The playnow automation parameter may have a bug and will not work.\n\n*Performance* \nNo known issues.\n\n*Misc*",
-    "vendorNotes": "Sonic Charge �Tonic (pronounced \"MicroTonic\") is a VST / AU plug-in for Windows and Mac featuring a unique drum and percussion synthesizer combined with a pattern based drum-machine engine.\n\nYou can use �Tonic as a sound module to play drum sounds from your MIDI keyboard or sequencer, or you can use the built-in pattern engine to play drum patterns in sync with your sequencer. The sound of �Tonic is 100% synthetic and rendered in real-time. No samples or pre-rendered waveforms are used.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
+    "vendorNotes": "Sonic Charge µTonic (pronounced \"MicroTonic\") is a VST / AU plug-in for Windows and Mac featuring a unique drum and percussion synthesizer combined with a pattern based drum-machine engine.\n\nYou can use µTonic as a sound module to play drum sounds from your MIDI keyboard or sequencer, or you can use the built-in pattern engine to play drum patterns in sync with your sequencer. The sound of µTonic is 100% synthetic and rendered in real-time. No samples or pre-rendered waveforms are used.\n\nVendor product information is sourced from the vendors website. All product names, registered trademarks, and copyright text copy is the property of their respective owners.",
     "created": "",
     "filesToCopy": [],
     "dirsToCopy": [],
     "filesToCreate": {},
     "symlinks": [],
-    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\NuEdge Development\\SonicCharge]\n\"Data\"=hex:ed,ca,25,b7,b2,20,1a,33,44,00,3f,da,3f,61,f2,78,c0,64,ad,e6,b3,55,\\\n  53,e6,4f,d4,fc,90,96,b8,91,8f,4d,81,db,ad,64,ec,84,f4,4a,c0,ee,18,e2,5b,5e,\\\n  22,71,ab,29,d8,a4,85,fb,60,ae,d4,ab,a6,a6,a3,f6,f8,95,e1,cc,2e,07,a7,7e,78,\\\n  e0,f8,9b,b7,d8,54,68,95,be,95,97,2a,37,88,a1,c0,71,2a,6d,a6,e0,d8,fd,61,b8,\\\n  0b,94,4c,a1,e6,96,ea,d0,69,94,22,eb,9d,dd,5e,b9,53,22,77,27,a6,cf,38,cb,4f,\\\n  63,ea,ce,16,45,ed,7d,b0,9f,f2,e4,46,4a,6f,3b,8d,62,90,fc,f4,3f,90,a8,da,92,\\\n  da,46,30,0b,14,cc,dc,87,fc,bd,f5,8f,a1,77,dc,6a,d4,fb,d2,75,5f,b6,6b,96,6f,\\\n  fa,34,d9,ad,0c,89,f5,08,31,aa,42,7c,61,68,cc,b2,67,96,96,ed,bb,54,0d,8d,18,\\\n  62,7c,7c,49,38,77,21,7a,29,bf,da,00,e3,f6,a1,1a,5e,c4,b8,db,56,10,30,8e,bb,\\\n  9b,a1,0b,55,22,b1,d1,ff,82,21,f2,cc,a0,cb,cf,c3,c5,03,fa,f3,61,6d,f1,5a,45,\\\n  23,19,cb,be,e5,be,c9,d8,87,c0,a5,73,78,f7,ea,85,7f,29,7a,46,24,d3,96,2d,9f,\\\n  d7,3d,02,e7,32,67,53,a0,9f,c8,62,95,0e,eb,61,81,65,dc,cc,19,2c,33,c2,c4,54,\\\n  b8,b4,92,a1,bf,14,49,2c,59,c1,90,37,4b,22,4f,8a,6a,22,ce,20,67,68,ef,be,51,\\\n  02,b9,3d,33,3c,a9,2b,e1,4f,cc,d0,4a,b1,39,50,3d,5d,0a,79,d5,f7,6c,c4,ab,eb,\\\n  94,3a,ae,44,94,71,a1,df,99,06,26,1c,70,5e,e6,d3,ac,2f,15,4f,a2,ff,ae,97,e2,\\\n  d9,07,c3,8a,70,a2,05,78,93,11,c4,1c,56,b4,d9,c6,b8,9c,e9,be,55,00,67,d7,47,\\\n  37,2d,3d,24,94,3e,97,24,57,c3,42,68,8c,e5,c4,85,39,44,52\n\n[HKEY_CLASSES_ROOT\\.mtpg]\n@=\"SonicCharge.MicroTonic.mtpg\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp]\n@=\"�Tonic Drum Patch\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,1\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg]\n@=\"�Tonic Program\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,0\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc]\n@=\"Sonic Charge MIDI Config\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,2\"",
+    "registryKeys": "REGEDIT4\n\n[HKEY_CURRENT_USER\\Software\\NuEdge Development\\SonicCharge]\n\"Data\"=hex:ed,ca,25,b7,b2,20,1a,33,44,00,3f,da,3f,61,f2,78,c0,64,ad,e6,b3,55,\\\n  53,e6,4f,d4,fc,90,96,b8,91,8f,4d,81,db,ad,64,ec,84,f4,4a,c0,ee,18,e2,5b,5e,\\\n  22,71,ab,29,d8,a4,85,fb,60,ae,d4,ab,a6,a6,a3,f6,f8,95,e1,cc,2e,07,a7,7e,78,\\\n  e0,f8,9b,b7,d8,54,68,95,be,95,97,2a,37,88,a1,c0,71,2a,6d,a6,e0,d8,fd,61,b8,\\\n  0b,94,4c,a1,e6,96,ea,d0,69,94,22,eb,9d,dd,5e,b9,53,22,77,27,a6,cf,38,cb,4f,\\\n  63,ea,ce,16,45,ed,7d,b0,9f,f2,e4,46,4a,6f,3b,8d,62,90,fc,f4,3f,90,a8,da,92,\\\n  da,46,30,0b,14,cc,dc,87,fc,bd,f5,8f,a1,77,dc,6a,d4,fb,d2,75,5f,b6,6b,96,6f,\\\n  fa,34,d9,ad,0c,89,f5,08,31,aa,42,7c,61,68,cc,b2,67,96,96,ed,bb,54,0d,8d,18,\\\n  62,7c,7c,49,38,77,21,7a,29,bf,da,00,e3,f6,a1,1a,5e,c4,b8,db,56,10,30,8e,bb,\\\n  9b,a1,0b,55,22,b1,d1,ff,82,21,f2,cc,a0,cb,cf,c3,c5,03,fa,f3,61,6d,f1,5a,45,\\\n  23,19,cb,be,e5,be,c9,d8,87,c0,a5,73,78,f7,ea,85,7f,29,7a,46,24,d3,96,2d,9f,\\\n  d7,3d,02,e7,32,67,53,a0,9f,c8,62,95,0e,eb,61,81,65,dc,cc,19,2c,33,c2,c4,54,\\\n  b8,b4,92,a1,bf,14,49,2c,59,c1,90,37,4b,22,4f,8a,6a,22,ce,20,67,68,ef,be,51,\\\n  02,b9,3d,33,3c,a9,2b,e1,4f,cc,d0,4a,b1,39,50,3d,5d,0a,79,d5,f7,6c,c4,ab,eb,\\\n  94,3a,ae,44,94,71,a1,df,99,06,26,1c,70,5e,e6,d3,ac,2f,15,4f,a2,ff,ae,97,e2,\\\n  d9,07,c3,8a,70,a2,05,78,93,11,c4,1c,56,b4,d9,c6,b8,9c,e9,be,55,00,67,d7,47,\\\n  37,2d,3d,24,94,3e,97,24,57,c3,42,68,8c,e5,c4,85,39,44,52\n\n[HKEY_CLASSES_ROOT\\.mtpg]\n@=\"SonicCharge.MicroTonic.mtpg\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp]\n@=\"µTonic Drum Patch\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtdp\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,1\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg]\n@=\"µTonic Program\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.MicroTonic.mtpg\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,0\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc]\n@=\"Sonic Charge MIDI Config\"\n\n[HKEY_CLASSES_ROOT\\SonicCharge.scmc\\DefaultIcon]\n@=\"p:\\\\MicroTonic\\\\MicroTonicVST.dll,2\"",
     "flags": {
       "mac": "1"
     },

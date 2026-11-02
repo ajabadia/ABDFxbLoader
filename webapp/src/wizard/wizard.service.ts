@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { existsSync } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -115,6 +116,80 @@ export function cleanNotesForCommon(raw: string): string {
     .slice(0, 250);
 }
 
+/**
+ * Clave con la que se reconoce el mismo wizard entre el catálogo y el disco: la
+ * ruta del fichero. El id y el nombre se repiten entre versiones del mismo
+ * plugin (`Demo`/`Full`, `Ver 1.0`/`Ver 1.4`) y son ficheros distintos, así que
+ * usarlos como identidad fundiría wizards reales.
+ */
+function wizardKey(record: WizardRecord): string | null {
+  const source = (record.sourcePath ?? '').replace(/\\/g, '/').trim().toLowerCase();
+  return source === '' ? null : `src:${source}`;
+}
+
+/**
+ * Fusiona el catálogo empaquetado con lo leído en disco. Las entradas de disco
+ * mandan porque reflejan lo que hay ahora, pero no duplican a las del catálogo
+ * cuando describen el mismo fichero.
+ */
+export function mergeWizardRecords(base: WizardRecord[], extra: WizardRecord[]): WizardRecord[] {
+  const merged: WizardRecord[] = [];
+  const positions = new Map<string, number>();
+
+  const add = (record: WizardRecord, override: boolean): void => {
+    const key = wizardKey(record);
+
+    // Sin ruta no hay forma fiable de saber si es el mismo wizard: se conserva
+    // tal cual en vez de arriesgar una fusión que perdería datos.
+    if (key === null) {
+      merged.push(record);
+      return;
+    }
+
+    const existing = positions.get(key);
+
+    if (existing === undefined) {
+      positions.set(key, merged.length);
+      merged.push(record);
+      return;
+    }
+
+    if (!override) return;
+
+    // El wizard sigue vivo, pero con los datos que hay ahora en disco.
+    merged[existing] = record;
+  };
+
+  for (const record of base) add(record, false);
+  for (const record of extra) add(record, true);
+
+  return merged;
+}
+
+/** `.vfxwizard` en cualquier caja; `vfxinfo.txt` se trata aparte, una vez por carpeta. */
+function isWizardFileName(name: string): boolean {
+  return name.toLowerCase().endsWith('.vfxwizard');
+}
+
+/** Rutas comparables: Windows no distingue mayúsculas ni separadores. */
+function sameDirectory(a: string, b: string): boolean {
+  const normalize = (dir: string): string => path.resolve(dir).replace(/\\/g, '/').toLowerCase();
+  return normalize(a) === normalize(b);
+}
+
+/** Texto del readme de la carpeta del wizard, si lo hay y se puede leer. */
+async function readReadme(dir: string, files: readonly Dirent[]): Promise<string | null> {
+  const readmeFile = files.find((file) => file.isFile() && file.name.toLowerCase().startsWith('readme'));
+  if (!readmeFile) return null;
+
+  try {
+    return await fs.readFile(path.join(dir, readmeFile.name), 'utf8');
+  } catch {
+    // Un readme ilegible no invalida el wizard.
+    return null;
+  }
+}
+
 const WIZARD_SORT_FIELDS: readonly WizardSortField[] = ['name', 'vendor', 'genre', 'dllName', 'id'];
 
 /** Valida `sort`/`dir` de la query; campo desconocido o dirección rara vuelven al por defecto (`name` ascendente). */
@@ -172,7 +247,9 @@ export class WizardService implements OnModuleInit {
   /**
    * Inicializa o recarga el índice en memoria de todos los wizards disponibles.
    * Si no se especifica customDir ni forceScanDisk y existe `wizards-catalog.json`,
-   * carga directamente desde el JSON empaquetado de forma instantánea.
+   * carga directamente desde el JSON empaquetado de forma instantánea. Al escanear
+   * el directorio real de wizards, lo leído en disco se fusiona con ese catálogo en
+   * vez de sustituirlo, para no perder los wizards empaquetados al reindexar.
    */
   async initIndex(
     arg?: string | { customDir?: string; forceScanDisk?: boolean },
@@ -189,22 +266,16 @@ export class WizardService implements OnModuleInit {
     this.byNormalizedName.clear();
     this.byDllBase.clear();
 
-    const catalogPath = resolveCatalogJsonPath();
+    const catalogRecords = await this.loadCatalogRecords();
 
-    // Si no se fuerza escaneo de directorio y tenemos catálogo JSON precompilado
-    if (!customDir && !forceScan && catalogPath) {
-      try {
-        const raw = await fs.readFile(catalogPath, 'utf8');
-        const parsed = JSON.parse(raw) as WizardRecord[];
-        for (const record of parsed) {
-          this.indexRecord(record);
-        }
-        this.logger.log(`Cargados ${this.records.length} wizards desde catálogo JSON (${catalogPath})`);
-        this.initialized = true;
-        return this.records.length;
-      } catch (error) {
-        this.logger.warn(`Error al leer catálogo JSON (${catalogPath}), recurriendo a disco: ${error}`);
+    // Arranque normal: catálogo empaquetado sin tocar el disco (carga instantánea).
+    if (!customDir && !forceScan && catalogRecords) {
+      for (const record of catalogRecords) {
+        this.indexRecord(record);
       }
+      this.logger.log(`Cargados ${this.records.length} wizards desde catálogo JSON`);
+      this.initialized = true;
+      return this.records.length;
     }
 
     if (!existsSync(this.wizardsDir)) {
@@ -214,7 +285,20 @@ export class WizardService implements OnModuleInit {
     }
 
     try {
-      await this.scanDirectory(this.wizardsDir);
+      const scanned: WizardRecord[] = [];
+      await this.scanDirectory(this.wizardsDir, scanned);
+
+      // El catálogo describe este mismo directorio: al reindexar desde disco se
+      // fusiona con lo escaneado para que los wizards empaquetados no se pierdan.
+      // `forceScanDisk` es la sincronización del catálogo: ahí manda solo el disco.
+      const records =
+        catalogRecords && !forceScan && this.isWizardsRoot()
+          ? mergeWizardRecords(catalogRecords, scanned)
+          : scanned;
+
+      for (const record of records) {
+        this.indexRecord(record);
+      }
       this.logger.log(`Indexados ${this.records.length} wizards desde ${this.wizardsDir}`);
     } catch (error) {
       this.logger.error(`Error al indexar wizards desde ${this.wizardsDir}: ${error}`);
@@ -222,6 +306,33 @@ export class WizardService implements OnModuleInit {
 
     this.initialized = true;
     return this.records.length;
+  }
+
+  /** ¿Se está indexando el `_banks/wizards` real, el que describe el catálogo empaquetado? */
+  private isWizardsRoot(): boolean {
+    return sameDirectory(this.wizardsDir, resolveWizardsDir());
+  }
+
+  /** Lee el catálogo empaquetado; `null` si no hay fichero o no se puede parsear. */
+  private async loadCatalogRecords(): Promise<WizardRecord[] | null> {
+    const catalogPath = resolveCatalogJsonPath();
+    if (!catalogPath) return null;
+
+    try {
+      const raw = await fs.readFile(catalogPath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+
+      // Un JSON válido que no sea una lista reventaría el `for...of` del arranque.
+      if (!Array.isArray(parsed)) {
+        this.logger.warn(`El catálogo ${catalogPath} no es una lista de wizards; se ignora`);
+        return null;
+      }
+
+      return parsed as WizardRecord[];
+    } catch (error) {
+      this.logger.warn(`Error al leer catálogo JSON (${catalogPath}), recurriendo a disco: ${error}`);
+      return null;
+    }
   }
 
   /**
@@ -237,50 +348,65 @@ export class WizardService implements OnModuleInit {
     return target;
   }
 
-  private async scanDirectory(dir: string): Promise<void> {
+  private async scanDirectory(dir: string, out: WizardRecord[]): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
+    // Un `.vfxwizard` suelto en el propio directorio también es un wizard.
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        // Puede ser una carpeta de plugin o un subdirectorio como wizard_database_20101112
-        const subFiles = await fs.readdir(fullPath, { withFileTypes: true });
-
-        // Comprobar si hay un archivo wizard directamente aquí
-        const wizardFile = subFiles.find(
-          (f) => f.isFile() && (f.name.endsWith('.vfxwizard') || f.name.toLowerCase() === 'vfxinfo.txt'),
-        );
-
-        if (wizardFile) {
-          const readmeFile = subFiles.find(
-            (f) => f.isFile() && f.name.toLowerCase().startsWith('readme'),
-          );
-          let readmeText: string | null = null;
-          if (readmeFile) {
-            try {
-              readmeText = await fs.readFile(path.join(fullPath, readmeFile.name), 'utf8');
-            } catch {
-              // Si no se puede leer el readme, ignorar
-            }
-          }
-
-          try {
-            const content = await fs.readFile(path.join(fullPath, wizardFile.name), 'utf8');
-            const relativeSource = path.relative(this.wizardsDir, path.join(fullPath, wizardFile.name));
-            const record = parseWizardText(content, relativeSource, readmeText);
-
-            if (record.id || record.name) {
-              this.indexRecord(record);
-            }
-          } catch (err) {
-            this.logger.warn(`No se pudo leer el wizard ${path.join(fullPath, wizardFile.name)}: ${err}`);
-          }
-        } else {
-          // Si no tiene wizard directo, explorar recursivamente (ej. wizard_database_20101112 o carpetas anidadas)
-          await this.scanDirectory(fullPath);
-        }
+      if (entry.isFile() && isWizardFileName(entry.name)) {
+        await this.pushWizardFile(dir, entry.name, null, out);
       }
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const fullPath = path.join(dir, entry.name);
+      const subFiles = await fs.readdir(fullPath, { withFileTypes: true });
+      const wizardFiles = subFiles.filter((file) => file.isFile() && isWizardFileName(file.name));
+
+      // Una carpeta puede traer varios wizards del mismo plugin: se indexan todos.
+      if (wizardFiles.length > 0) {
+        const readmeText = await readReadme(fullPath, subFiles);
+        for (const file of wizardFiles) {
+          await this.pushWizardFile(fullPath, file.name, readmeText, out);
+        }
+        continue;
+      }
+
+      // `vfxinfo.txt` solo cuenta cuando la carpeta no trae ya un `.vfxwizard`.
+      const vfxinfo = subFiles.find((file) => file.isFile() && file.name.toLowerCase() === VFXINFO_FILENAME);
+      if (vfxinfo) {
+        await this.pushWizardFile(fullPath, vfxinfo.name, await readReadme(fullPath, subFiles), out);
+        continue;
+      }
+
+      // Sin wizard directo: puede ser `wizard_database_20101112` o carpetas anidadas.
+      await this.scanDirectory(fullPath, out);
+    }
+  }
+
+  /** Lee y parsea un wizard del disco; uno ilegible se avisa y no aborta el escaneo. */
+  private async pushWizardFile(
+    dir: string,
+    fileName: string,
+    readmeText: string | null,
+    out: WizardRecord[],
+  ): Promise<void> {
+    const fullPath = path.join(dir, fileName);
+
+    try {
+      // Los `.vfxwizard` y `vfxinfo.txt` de VFX2 vienen en latin1/cp1252 (acentos y
+      // comillas tipograficas): leerlos como UTF-8 los convertia en U+FFFD.
+      const content = (await fs.readFile(fullPath)).toString('latin1');
+      const relativeSource = path.relative(this.wizardsDir, fullPath);
+      const record = parseWizardText(content, relativeSource, readmeText);
+
+      if (record.id || record.name) {
+        out.push(record);
+      }
+    } catch (err) {
+      this.logger.warn(`No se pudo leer el wizard ${fullPath}: ${err}`);
     }
   }
 

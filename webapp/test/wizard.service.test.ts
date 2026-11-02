@@ -15,6 +15,7 @@ import {
 } from '../src/wizard/wizard-parser';
 import {
   extractDllBase,
+  mergeWizardRecords,
   normalizeName,
   resolveWizardsDir,
   WizardService,
@@ -652,5 +653,96 @@ describe('WizardService', () => {
         await fs.rm(tempLib, { recursive: true, force: true });
       }
     });
+  });
+});
+
+describe('WizardService · índice desde disco', () => {
+  it('indexa todos los .vfxwizard de una carpeta, no solo el primero', async () => {
+    const tempWizards = await fs.mkdtemp(path.join(tmpdir(), 'vfx-wizards-'));
+    const service = new WizardService(new PluginMetaService());
+
+    try {
+      // `SampleTank2.x` trae varios wizards en la misma carpeta del plugin.
+      const folder = path.join(tempWizards, 'SampleTank2.x_1936994865');
+      await fs.mkdir(folder, { recursive: true });
+      for (const suffix of ['a', 'b', 'c']) {
+        await fs.writeFile(
+          path.join(folder, `${suffix}.vfxwizard`),
+          `id: 111${suffix}\nname: SampleTank ${suffix}\ndll_name: SampleTank2.x/ST2.dll\n`,
+          'utf8',
+        );
+      }
+
+      // Un `.vfxwizard` suelto en la raíz del catálogo también cuenta.
+      await fs.writeFile(
+        path.join(tempWizards, 'suelto.vfxwizard'),
+        'id: 444\nname: Suelto\ndll_name: Suelto/Suelto.dll\n',
+        'utf8',
+      );
+
+      const count = await service.initIndex(tempWizards);
+
+      assert.equal(count, 4);
+      assert.deepEqual(
+        service.getAll().map((record) => record.id).sort(),
+        ['111a', '111b', '111c', '444'],
+      );
+    } finally {
+      await fs.rm(tempWizards, { recursive: true, force: true });
+    }
+  });
+
+  it('fusiona catálogo y disco por fichero y deja mandar al disco', () => {
+    const ruta = 'SuperWave P8\\SuperWave P8.vfxwizard';
+    const catalog = parseWizardText(SAMPLE_WIZARD_TEXT, ruta);
+    const disk = parseWizardText(SAMPLE_WIZARD_TEXT.replace('parameter_count: 89', 'parameter_count: 90'), ruta);
+    const nuevo = parseWizardText('id: 4242\nname: Nuevo\ndll_name: Nuevo/Nuevo.dll\n', 'Nuevo\\Nuevo.vfxwizard');
+
+    const merged = mergeWizardRecords([catalog], [disk, nuevo]);
+
+    assert.equal(merged.length, 2);
+    // Mismo fichero: la entrada de disco manda porque refleja lo que hay ahora.
+    assert.equal(merged[0]?.parameterCount, 90);
+    assert.equal(merged[0]?.sourcePath, ruta);
+    assert.equal(merged[1]?.name, 'Nuevo');
+  });
+
+  it('no funde versiones distintas que comparten id y nombre', () => {
+    // En `_banks/wizards` hay 43 ficheros así: misma identidad VST, versión distinta.
+    const demo = parseWizardText(
+      SAMPLE_WIZARD_TEXT.replace('version: 1', 'version: 1.2 Demo'),
+      'Broomstick Bass\\Broomstick Bass_Ver 1.00 Demo.vfxwizard',
+    );
+    const full = parseWizardText(
+      SAMPLE_WIZARD_TEXT.replace('version: 1', 'version: 1.2 Full'),
+      'Broomstick Bass\\Broomstick Bass_Ver 1.00 Full.vfxwizard',
+    );
+
+    const merged = mergeWizardRecords([demo], [full]);
+
+    assert.equal(merged.length, 2);
+    assert.deepEqual(merged.map((record) => record.version), ['1.2 Demo', '1.2 Full']);
+  });
+
+  it('lee el wizard en latin1 y no rompe acentos', async () => {
+    const tempWizards = await fs.mkdtemp(path.join(tmpdir(), 'vfx-wizards-'));
+    const service = new WizardService(new PluginMetaService());
+
+    try {
+      const folder = path.join(tempWizards, 'Melodie');
+      await fs.mkdir(folder, { recursive: true });
+      // `\u00e9` sale como 0xE9 al codificar en latin1, que es como lo escriben
+      // los `.vfxwizard` de VFX2 (y como los lee `createFromPlugin`).
+      await fs.writeFile(
+        path.join(folder, 'melodie.vfxwizard'),
+        Buffer.from('id: 555\nname: M\u00e9lodie\ndll_name: Melodie/Melodie.dll\n', 'latin1'),
+      );
+
+      await service.initIndex(tempWizards);
+
+      assert.equal(service.getAll()[0]?.name, 'M\u00e9lodie');
+    } finally {
+      await fs.rm(tempWizards, { recursive: true, force: true });
+    }
   });
 });
