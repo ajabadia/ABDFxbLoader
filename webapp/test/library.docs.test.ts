@@ -66,8 +66,22 @@ function keys(value: object): string[] {
   return Object.keys(value).sort();
 }
 
+/**
+ * Campos que el contrato documenta como opcionales: un error puede llevarlos o
+ * no (`code`/`params` solo existen cuando el servidor sabe qué traducir), así
+ * que la comparación no puede exigirlos, pero tampoco tolerar campos que el
+ * ejemplo no documente.
+ */
+const OPTIONAL_ERROR_KEYS = ['code', 'params'];
+
 function assertSameKeys(actual: object, expected: object, label: string): void {
-  assert.deepEqual(keys(actual), keys(expected), `${label}: campos documentados y reales distintos`);
+  const documented = keys(expected);
+  const undocumented = keys(actual).filter((key) => !documented.includes(key));
+  const missing = documented.filter(
+    (key) => !(key in actual) && !OPTIONAL_ERROR_KEYS.includes(key),
+  );
+  assert.deepEqual(undocumented, [], `${label}: campos sin documentar`);
+  assert.deepEqual(missing, [], `${label}: faltan campos documentados`);
 }
 
 function actionKinds(value: { actions: { kind: string }[] }): string[] {

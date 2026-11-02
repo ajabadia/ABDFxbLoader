@@ -829,6 +829,23 @@ export const appEn = {
     },
   },
   msg: {
+    apiError: {
+      libraryRootRequired: 'The library folder is missing.',
+      libraryRootRelative: 'The library path must be absolute: “{0}”.',
+      plugsMissing: 'The “plugs” folder is not in the library: {0}.',
+      packagePathMissing: 'The package path does not exist: {0}.',
+      vfxinfoMissing: 'There is no vfxinfo.txt in {0}.',
+      loaderMissing: '{0} does not have the loader installed.',
+      batchActionInvalid: 'Invalid batch action: {0}.',
+      batchPluginsEmpty: 'A batch needs at least one plugin.',
+      banksEmpty: 'Pick at least one .fxb bank.',
+      tooManyBanks: 'At most {0} banks per request.',
+      bankExtensionInvalid: 'The file must have a .fxb extension.',
+      fileEmpty: 'The file is empty.',
+      wizardCatalogUnavailable: 'The wizard catalogue is not available to confirm the selection.',
+      wizardNotFound: 'Wizard {0} is no longer in the catalogue.',
+    },
+
     recentsClearConfirm: 'The suggested paths on this page will be forgotten: library folders, DLLs and recent banks. What is typed in the fields does not change. Clear the history?',
     retryTitle: 'Retries the {0} plugin(s) that failed, in order, each with its action',
     metaPanelLabel: 'Catalog of {0}: {1}. Open the panel',

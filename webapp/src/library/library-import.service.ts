@@ -161,7 +161,7 @@ export class LibraryImportService {
   ): Promise<{ resolvedPath: string; kind: 'vfxlibrary' | 'plugin-folder' }> {
     const exists = await directoryExists(packagePath);
     if (!exists) {
-      throw new LibraryPathError(`La ruta del paquete no existe: "${packagePath}"`);
+      throw new LibraryPathError(`La ruta del paquete no existe: "${packagePath}"`, 'packagePathMissing', { 0: packagePath });
     }
 
     if (await directoryExists(path.join(packagePath, 'plugs'))) {
@@ -201,7 +201,7 @@ export class LibraryImportService {
   async inspect(input: InspectPackageInput): Promise<InspectPackageResult> {
     const exists = await directoryExists(input.packagePath);
     if (!exists) {
-      throw new LibraryPathError(`La ruta del paquete no existe: "${input.packagePath}"`);
+      throw new LibraryPathError(`La ruta del paquete no existe: "${input.packagePath}"`, 'packagePathMissing', { 0: input.packagePath });
     }
 
     const targetPlugs = path.join(input.targetLibraryRoot, 'plugs');
@@ -570,13 +570,13 @@ export class LibraryImportService {
       for (const plugin of inspection.plugins) {
         const selectedId = input.selectedWizards[plugin.sourceDir] ?? input.selectedWizards[plugin.name];
         if (selectedId === undefined) continue;
-        if (!this.wizardService) throw new LibraryOperationError('El catálogo de wizards no está disponible para confirmar la selección.');
+        if (!this.wizardService) throw new LibraryOperationError('El catálogo de wizards no está disponible para confirmar la selección.', 'wizardCatalogUnavailable');
         if (selectedId === '') {
           plugin.matchedWizard = null;
           continue;
         }
         const wizard = this.wizardService.getById(selectedId);
-        if (!wizard) throw new LibraryOperationError(`Wizard seleccionado no encontrado: ${selectedId}`);
+        if (!wizard) throw new LibraryOperationError(`Wizard seleccionado no encontrado: ${selectedId}`, 'wizardNotFound', { 0: selectedId });
         const offeredWizardIds = new Set([
           plugin.matchedWizard?.id,
           ...(plugin.wizardCandidates ?? []).map((candidate) => candidate.id),

@@ -1711,7 +1711,11 @@
                   "rutaRelativa": {
                     "summary": "Ruta relativa",
                     "value": {
-                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                      "code": "libraryRootRelative",
+                      "params": {
+                        "0": "plugs"
+                      }
                     }
                   },
                   "sinPlugs": {
@@ -1866,7 +1870,11 @@
                   "rutaRelativa": {
                     "summary": "Ruta relativa",
                     "value": {
-                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                      "code": "libraryRootRelative",
+                      "params": {
+                        "0": "plugs"
+                      }
                     }
                   },
                   "sinPlugs": {
@@ -1971,7 +1979,11 @@
                   "rutaRelativa": {
                     "summary": "Librería relativa",
                     "value": {
-                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                      "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                      "code": "libraryRootRelative",
+                      "params": {
+                        "0": "plugs"
+                      }
                     }
                   },
                   "pluginConRuta": {
@@ -2475,7 +2487,11 @@
                   "$ref": "#/components/schemas/LibraryErrorDto"
                 },
                 "example": {
-                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                  "code": "libraryRootRelative",
+                  "params": {
+                    "0": "plugs"
+                  }
                 }
               }
             }
@@ -3598,7 +3614,11 @@
                   "$ref": "#/components/schemas/LibraryErrorDto"
                 },
                 "example": {
-                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                  "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                  "code": "libraryRootRelative",
+                  "params": {
+                    "0": "plugs"
+                  }
                 }
               }
             }
@@ -7362,6 +7382,19 @@
             "type": "string",
             "description": "Explicación del error.",
             "example": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.",
+            "example": "libraryRootRelative"
+          },
+          "params": {
+            "type": "object",
+            "description": "Valores de `{0}`, `{1}`… del texto traducido.",
+            "additionalProperties": true,
+            "example": {
+              "0": "plugs"
+            }
           }
         },
         "required": [
@@ -7384,6 +7417,19 @@
                 "$ref": "#/components/schemas/FxbConfigSnapshotDto"
               }
             ]
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.",
+            "example": "libraryRootRelative"
+          },
+          "params": {
+            "type": "object",
+            "description": "Valores de `{0}`, `{1}`… del texto traducido.",
+            "additionalProperties": true,
+            "example": {
+              "0": "plugs"
+            }
           }
         },
         "required": [
@@ -7702,6 +7748,19 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BankImportResultDto"
+            }
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.",
+            "example": "libraryRootRelative"
+          },
+          "params": {
+            "type": "object",
+            "description": "Valores de `{0}`, `{1}`… del texto traducido.",
+            "additionalProperties": true,
+            "example": {
+              "0": "plugs"
             }
           }
         },

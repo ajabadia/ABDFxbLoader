@@ -80,3 +80,31 @@ test('describeError: errores que no vienen del API', () => {
   assert.equal(describeError(null), 'null');
   assert.equal(describeError(undefined), 'undefined');
 });
+
+
+const CODED = new FxbApiError(
+  400,
+  { message: 'no existe la carpeta plugs', code: 'plugsMissing', params: { 0: 'C:/lib/plugs' } },
+  'mensaje crudo',
+);
+
+test('describeError: el código del API se traduce al idioma activo', () => {
+  assert.equal(describeError(CODED), 'La carpeta «plugs» no está en la librería: C:/lib/plugs.');
+  setLocale('en');
+  try {
+    assert.equal(describeError(CODED), 'The “plugs” folder is not in the library: C:/lib/plugs.');
+  } finally {
+    setLocale('es');
+  }
+});
+
+test('describeError: un código sin traducción deja el mensaje del servidor', () => {
+  const error = new FxbApiError(400, { message: 'texto del servidor', code: 'inventado' }, 'texto del servidor');
+  assert.equal(describeError(error), 'texto del servidor');
+});
+
+test('describeError: el código no se traga las issues', () => {
+  const error = new FxbApiError(400, { message: 'x', code: 'fileEmpty', issues: ['una', 'otra'] }, 'x');
+  const lf = String.fromCharCode(10);
+  assert.equal(describeError(error), ['El archivo está vacío.', 'una', 'otra'].join(lf));
+});

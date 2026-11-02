@@ -125,6 +125,7 @@ import {
 import { MAX_PLUGINS_PER_BATCH } from '../client/batch-stream';
 import type { BankImportStreamEvent } from '../client/bank-import-stream';
 import { LibraryService } from './library.service';
+import { apiErrorDetails } from '../common/api-errors';
 import {
   DllPreferenceError,
   LibraryOperationError,
@@ -280,14 +281,28 @@ function readBatchInput(body: Record<string, unknown>): BatchInput {
   };
 }
 
+/**
+ * Cuerpo del error: el mensaje de siempre más el código estable, que es lo que
+ * la vista traduce. Conviven: un cliente antiguo sigue leyendo `message`.
+ */
+function domainBody(error: Error): Record<string, unknown> {
+  const body: Record<string, unknown> = { message: error.message };
+  const details = apiErrorDetails(error);
+  if (details !== null) {
+    body['code'] = details.code;
+    if (details.params !== undefined) body['params'] = details.params;
+  }
+  return body;
+}
+
 function mapDomainError(error: unknown): never {
   if (error instanceof DllPreferenceError) {
     // La preferencia inválida es un contenido rechazable del cliente: como
     // `vfxinfo.txt` sin `dll_name`, es 422 y no 400.
-    throw new UnprocessableEntityException({ message: error.message });
+    throw new UnprocessableEntityException(domainBody(error));
   }
   if (error instanceof PluginNotFoundError) {
-    throw new NotFoundException({ message: error.message });
+    throw new NotFoundException(domainBody(error));
   }
   if (error instanceof PluginStateError || error instanceof FxbConfigConflictError) {
     throw new ConflictException({
@@ -296,10 +311,10 @@ function mapDomainError(error: unknown): never {
     });
   }
   if (error instanceof LibraryOperationError) {
-    throw new UnprocessableEntityException({ message: error.message });
+    throw new UnprocessableEntityException(domainBody(error));
   }
   if (error instanceof LibraryPathError) {
-    throw new BadRequestException({ message: error.message });
+    throw new BadRequestException(domainBody(error));
   }
   if (error instanceof HttpException) throw error;
   throw error;

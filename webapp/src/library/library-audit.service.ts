@@ -126,16 +126,16 @@ export class LibraryAuditService {
 
   private async resolvePlugs(libraryRoot: string): Promise<{ root: string; plugsPath: string }> {
     const raw = typeof libraryRoot === 'string' ? libraryRoot.trim() : '';
-    if (raw === '') throw new LibraryPathError('libraryRoot es obligatorio');
+    if (raw === '') throw new LibraryPathError('libraryRoot es obligatorio', 'libraryRootRequired');
     if (!path.isAbsolute(raw)) {
-      throw new LibraryPathError(`libraryRoot debe ser una ruta absoluta: "${libraryRoot}"`);
+      throw new LibraryPathError(`libraryRoot debe ser una ruta absoluta: "${libraryRoot}"`, 'libraryRootRelative', { 0: libraryRoot });
     }
 
     const root = path.resolve(raw);
     const plugsPath = path.join(root, 'plugs');
     const stats = await fs.stat(plugsPath).catch(() => null);
     if (stats === null || !stats.isDirectory()) {
-      throw new LibraryPathError(`no existe la carpeta plugs\\ en la librería: ${plugsPath}`);
+      throw new LibraryPathError(`no existe la carpeta plugs\\ en la librería: ${plugsPath}`, 'plugsMissing', { 0: plugsPath });
     }
     return { root, plugsPath };
   }

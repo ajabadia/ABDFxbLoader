@@ -318,7 +318,7 @@ export class LibraryService {
 
     const raw = await readVfxinfo(vfxinfoPath);
     if (raw === null) {
-      throw new LibraryOperationError(`no existe ${VFXINFO_FILENAME} en ${pluginDir}`);
+      throw new LibraryOperationError(`no existe ${VFXINFO_FILENAME} en ${pluginDir}`, 'vfxinfoMissing', { 0: pluginDir });
     }
     const rawAnalysis = analyzeVfxinfo(raw);
     if (rawAnalysis === null) {
@@ -465,7 +465,7 @@ export class LibraryService {
     const disabledPath = path.join(pluginDir, VFXINFO_DISABLED_FILENAME);
 
     if (!(await exists(configPath))) {
-      throw new PluginStateError(`${input.plugin} no tiene el cargador`);
+      throw new PluginStateError(`${input.plugin} no tiene el cargador`, 'loaderMissing', { 0: input.plugin });
     }
     if (!(await exists(backupPath))) {
       throw new PluginStateError(
@@ -551,10 +551,10 @@ export class LibraryService {
     shouldStop: () => boolean = () => false,
   ): Promise<BatchResult> {
     if (input.action !== 'add' && input.action !== 'remove') {
-      throw new LibraryPathError(`acción de lote no válida: ${String(input.action)}`);
+      throw new LibraryPathError(`acción de lote no válida: ${String(input.action)}`, 'batchActionInvalid', { 0: String(input.action) });
     }
     if (input.plugins.length === 0) {
-      throw new LibraryPathError('plugins debe contener al menos un nombre');
+      throw new LibraryPathError('plugins debe contener al menos un nombre', 'batchPluginsEmpty');
     }
     // Se rechaza el lote entero antes de tocar el primer plugin: es 400, no un
     // fallo por plugin con el resto del lote ejecutado.
@@ -696,10 +696,10 @@ export class LibraryService {
     const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
 
     if (!Array.isArray(input.sourcePaths) || input.sourcePaths.length === 0) {
-      throw new LibraryPathError('sourcePaths debe contener al menos un archivo .fxb');
+      throw new LibraryPathError('sourcePaths debe contener al menos un archivo .fxb', 'banksEmpty');
     }
     if (input.sourcePaths.length > MAX_BANKS_PER_REQUEST) {
-      throw new LibraryPathError(`como máximo ${MAX_BANKS_PER_REQUEST} bancos por petición`);
+      throw new LibraryPathError(`como máximo ${MAX_BANKS_PER_REQUEST} bancos por petición`, 'tooManyBanks', { 0: MAX_BANKS_PER_REQUEST });
     }
     const sources = input.sourcePaths.map((source) => this.resolveBankSource(source));
 
@@ -1102,7 +1102,7 @@ export class LibraryService {
       throw new LibraryPathError(`fileName no puede contener separadores de ruta: "${fileName}"`);
     }
     if (!/\.fxb$/i.test(fileName)) {
-      throw new LibraryPathError('la extensión debe ser .fxb');
+      throw new LibraryPathError('la extensión debe ser .fxb', 'bankExtensionInvalid');
     }
 
     const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
@@ -1114,7 +1114,7 @@ export class LibraryService {
     if (stats === null || !stats.isFile()) {
       throw new LibraryPathError(`no existe el banco en la carpeta del plugin: ${sourcePath}`);
     }
-    if (stats.size === 0) throw new LibraryPathError('archivo vacío');
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío', 'fileEmpty');
     if (stats.size > FXB_MAX_BYTES) {
       throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
     }
@@ -1212,7 +1212,7 @@ export class LibraryService {
         `el banco por defecto "${fileName}" no está en la carpeta del plugin: ${sourcePath}`,
       );
     }
-    if (stats.size === 0) throw new LibraryPathError('archivo vacío');
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío', 'fileEmpty');
     if (stats.size > FXB_MAX_BYTES) {
       throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
     }
@@ -1513,14 +1513,14 @@ export class LibraryService {
     const source = this.resolveBankSource(input.sourcePath);
     const fileName = path.basename(source);
     if (!/\.fxb$/i.test(fileName)) {
-      throw new LibraryPathError('la extensión debe ser .fxb');
+      throw new LibraryPathError('la extensión debe ser .fxb', 'bankExtensionInvalid');
     }
 
     const stats = await statOrNull(source);
     if (stats === null || !stats.isFile()) {
       throw new LibraryPathError(`no existe el archivo: ${source}`);
     }
-    if (stats.size === 0) throw new LibraryPathError('archivo vacío');
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío', 'fileEmpty');
     if (stats.size > FXB_MAX_BYTES) {
       throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
     }
@@ -2046,7 +2046,11 @@ export class LibraryService {
       throw new LibraryPathError('libraryRoot es obligatorio');
     }
     if (!path.isAbsolute(libraryRoot)) {
-      throw new LibraryPathError(`libraryRoot debe ser una ruta absoluta: "${libraryRoot}"`);
+      throw new LibraryPathError(
+        `libraryRoot debe ser una ruta absoluta: "${libraryRoot}"`,
+        'libraryRootRelative',
+        { 0: libraryRoot },
+      );
     }
 
     const root = path.resolve(libraryRoot);

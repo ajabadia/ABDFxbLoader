@@ -458,24 +458,38 @@ export interface BankDiscardBackupResult {
   trash: TrashInfo;
 }
 
-export class LibraryPathError extends Error {
-  constructor(message: string) {
-    super(message);
+import { CodedError, type ApiErrorCode } from '../common/api-errors';
+
+export class LibraryPathError extends CodedError {
+  constructor(
+    message: string,
+    apiCode?: ApiErrorCode,
+    apiParams?: Record<string, string | number>,
+  ) {
+    super(message, apiCode, apiParams);
     this.name = 'LibraryPathError';
   }
 }
 
-export class PluginNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
+export class PluginNotFoundError extends CodedError {
+  constructor(
+    message: string,
+    apiCode?: ApiErrorCode,
+    apiParams?: Record<string, string | number>,
+  ) {
+    super(message, apiCode, apiParams);
     this.name = 'PluginNotFoundError';
   }
 }
 
 /** Conflicto de estado: ya instalado, no instalado, sin respaldo, etc. */
-export class PluginStateError extends Error {
-  constructor(message: string) {
-    super(message);
+export class PluginStateError extends CodedError {
+  constructor(
+    message: string,
+    apiCode?: ApiErrorCode,
+    apiParams?: Record<string, string | number>,
+  ) {
+    super(message, apiCode, apiParams);
     this.name = 'PluginStateError';
   }
 }
@@ -501,17 +515,25 @@ export interface DllPreferenceResult {
   actions: readonly LibraryAction[];
 }
 
-export class DllPreferenceError extends Error {
-  constructor(message: string) {
-    super(message);
+export class DllPreferenceError extends CodedError {
+  constructor(
+    message: string,
+    apiCode?: ApiErrorCode,
+    apiParams?: Record<string, string | number>,
+  ) {
+    super(message, apiCode, apiParams);
     this.name = 'DllPreferenceError';
   }
 }
 
 /** La operación no se puede completar con el contenido actual de los archivos. */
-export class LibraryOperationError extends Error {
-  constructor(message: string) {
-    super(message);
+export class LibraryOperationError extends CodedError {
+  constructor(
+    message: string,
+    apiCode?: ApiErrorCode,
+    apiParams?: Record<string, string | number>,
+  ) {
+    super(message, apiCode, apiParams);
     this.name = 'LibraryOperationError';
   }
 }

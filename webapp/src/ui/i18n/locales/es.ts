@@ -828,6 +828,23 @@ export const appEs = {
     },
   },
   msg: {
+    apiError: {
+      libraryRootRequired: 'Falta la carpeta de la librería.',
+      libraryRootRelative: 'La ruta de la librería debe ser absoluta: «{0}».',
+      plugsMissing: 'La carpeta «plugs» no está en la librería: {0}.',
+      packagePathMissing: 'La ruta del paquete no existe: {0}.',
+      vfxinfoMissing: 'No hay vfxinfo.txt en {0}.',
+      loaderMissing: '{0} no tiene el cargador instalado.',
+      batchActionInvalid: 'Acción de lote no válida: {0}.',
+      batchPluginsEmpty: 'El lote necesita al menos un plugin.',
+      banksEmpty: 'Elige al menos un banco .fxb.',
+      tooManyBanks: 'Como máximo {0} bancos por petición.',
+      bankExtensionInvalid: 'La extensión debe ser .fxb.',
+      fileEmpty: 'El archivo está vacío.',
+      wizardCatalogUnavailable: 'El catálogo de wizards no está disponible para confirmar la selección.',
+      wizardNotFound: 'El wizard {0} ya no está en el catálogo.',
+    },
+
     recentsClearConfirm: 'Se olvidarán las rutas sugeridas en esta página: carpetas de librería, DLL y bancos recientes. Lo escrito en los campos no cambia. ¿Vaciar el historial?',
     retryTitle: 'Reintenta en orden los {0} plugin(s) que fallaron, cada uno con su acción',
     metaPanelLabel: 'Catálogo de {0}: {1}. Abrir el panel',

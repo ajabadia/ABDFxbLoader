@@ -1379,6 +1379,21 @@ export class LibraryErrorDto {
     example: 'libraryRoot debe ser una ruta absoluta: "plugs"',
   })
   message!: string;
+  @ApiPropertyOptional({
+    description:
+      'Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.',
+    example: 'libraryRootRelative',
+  })
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Valores de `{0}`, `{1}`… del texto traducido.',
+    type: 'object',
+    additionalProperties: true,
+    example: { 0: 'plugs' },
+  })
+  params?: Record<string, string | number>;
+
 }
 
 export class LibraryConflictErrorDto {
@@ -1394,6 +1409,21 @@ export class LibraryConflictErrorDto {
     type: () => FxbConfigSnapshotDto,
   })
   current?: FxbConfigSnapshotDto;
+  @ApiPropertyOptional({
+    description:
+      'Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.',
+    example: 'libraryRootRelative',
+  })
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Valores de `{0}`, `{1}`… del texto traducido.',
+    type: 'object',
+    additionalProperties: true,
+    example: { 0: 'plugs' },
+  })
+  params?: Record<string, string | number>;
+
 }
 
 /** Cuerpo del 422 de `banks/import`: el resultado completo más el motivo global. */
@@ -1412,10 +1442,27 @@ export class LibraryBanksImportErrorDto {
 
   @ApiProperty({ type: () => BankImportResultDto, isArray: true })
   results!: BankImportResultDto[];
+  @ApiPropertyOptional({
+    description:
+      'Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.',
+    example: 'libraryRootRelative',
+  })
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Valores de `{0}`, `{1}`… del texto traducido.',
+    type: 'object',
+    additionalProperties: true,
+    example: { 0: 'plugs' },
+  })
+  params?: Record<string, string | number>;
+
 }
 
 export const LIBRARY_SCAN_PATH_ERROR_EXAMPLE = {
   message: 'libraryRoot debe ser una ruta absoluta: "plugs"',
+  code: 'libraryRootRelative',
+  params: { 0: 'plugs' },
 };
 
 export const LIBRARY_LIBRARY_MISSING_ERROR_EXAMPLE = {

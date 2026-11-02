@@ -1841,6 +1841,20 @@ export interface components {
              * @example libraryRoot debe ser una ruta absoluta: "plugs"
              */
             message: string;
+            /**
+             * @description Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.
+             * @example libraryRootRelative
+             */
+            code?: string;
+            /**
+             * @description Valores de `{0}`, `{1}`… del texto traducido.
+             * @example {
+             *       "0": "plugs"
+             *     }
+             */
+            params?: {
+                [key: string]: unknown;
+            };
         };
         LibraryConflictErrorDto: {
             /**
@@ -1850,6 +1864,20 @@ export interface components {
             message: string;
             /** @description Solo si `fxbLoader.config` cambió entre la lectura y la escritura: snapshot vigente. */
             current?: components["schemas"]["FxbConfigSnapshotDto"];
+            /**
+             * @description Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.
+             * @example libraryRootRelative
+             */
+            code?: string;
+            /**
+             * @description Valores de `{0}`, `{1}`… del texto traducido.
+             * @example {
+             *       "0": "plugs"
+             *     }
+             */
+            params?: {
+                [key: string]: unknown;
+            };
         };
         PluginEntryDto: {
             /**
@@ -2043,6 +2071,20 @@ export interface components {
             presetsDir: string;
             reference: components["schemas"]["BankReferenceDto"];
             results: components["schemas"]["BankImportResultDto"][];
+            /**
+             * @description Código estable que la vista traduce con `msg.apiError.<code>`. No todos los errores lo llevan.
+             * @example libraryRootRelative
+             */
+            code?: string;
+            /**
+             * @description Valores de `{0}`, `{1}`… del texto traducido.
+             * @example {
+             *       "0": "plugs"
+             *     }
+             */
+            params?: {
+                [key: string]: unknown;
+            };
         };
         LibraryScanRequestDto: {
             /**
@@ -6020,7 +6062,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                     *       "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                     *       "code": "libraryRootRelative",
+                     *       "params": {
+                     *         "0": "plugs"
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];
@@ -6779,7 +6825,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "message": "libraryRoot debe ser una ruta absoluta: \"plugs\""
+                     *       "message": "libraryRoot debe ser una ruta absoluta: \"plugs\"",
+                     *       "code": "libraryRootRelative",
+                     *       "params": {
+                     *         "0": "plugs"
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];

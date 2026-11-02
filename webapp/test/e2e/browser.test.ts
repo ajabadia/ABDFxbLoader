@@ -775,7 +775,7 @@ test(
       // comprobó: la vista enseña el mensaje del servidor, no un texto fijo.
       await page.fill('#library-root', 'plugs');
       await page.click('#scan-button');
-      await waitForText(page, '#status', 'libraryRoot debe ser una ruta absoluta: "plugs"');
+      await waitForText(page, '#status', 'La ruta de la librería debe ser absoluta: «plugs».');
       assert.equal(await page.locator('#root-warning').isVisible(), true);
       assert.deepEqual(pageErrors, [], `errores de JavaScript en la página: ${pageErrors.join(' | ')}`);
     } catch (error) {
