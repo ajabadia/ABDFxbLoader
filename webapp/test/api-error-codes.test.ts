@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { API_ERROR_CODES, apiErrorDetails } from '../src/common/api-errors';
+import { API_ERROR_CODES, apiErrorDetails, CodedError } from '../src/common/api-errors';
 import {
+  DllPreferenceError,
   LibraryOperationError,
   LibraryPathError,
+  PluginNotFoundError,
   PluginStateError,
 } from '../src/library/library.types';
 import { appEn } from '../src/ui/i18n/locales/en';
@@ -54,4 +56,24 @@ test('el código y sus parámetros viajan con la excepción', () => {
   assert.equal(apiErrorDetails(new LibraryPathError('sin código')), null);
   assert.equal(apiErrorDetails(new Error('ajeno')), null);
   assert.equal(apiErrorDetails(null), null);
+});
+
+/**
+ * `LibraryDomainError` toma el nombre de `new.target`: si esa herencia se
+ * rompe, los logs pierden la clase concreta y todos los fallos pasan a ser
+ * «Error», que es justo lo que distingue un conflicto de estado de una ruta
+ * inválida cuando se lee un `stderr`.
+ */
+test('cada error de biblioteca conserva el nombre de su clase', () => {
+  const casos: Array<[unknown, string]> = [
+    [new LibraryPathError('x'), 'LibraryPathError'],
+    [new PluginNotFoundError('x'), 'PluginNotFoundError'],
+    [new PluginStateError('x'), 'PluginStateError'],
+    [new DllPreferenceError('x'), 'DllPreferenceError'],
+    [new LibraryOperationError('x'), 'LibraryOperationError'],
+  ];
+  for (const [error, nombre] of casos) {
+    assert.ok(error instanceof CodedError);
+    assert.equal((error as Error).name, nombre);
+  }
 });

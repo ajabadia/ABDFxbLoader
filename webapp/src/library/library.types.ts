@@ -460,39 +460,28 @@ export interface BankDiscardBackupResult {
 
 import { CodedError, type ApiErrorCode } from '../common/api-errors';
 
-export class LibraryPathError extends CodedError {
+/**
+ * Base de los errores de dominio de la biblioteca. Comparte el constructor de
+ * `CodedError` y toma el nombre de la clase concreta (`new.target`) para que
+ * los logs sigan distinguiendo cada fallo sin repetir el constructor cinco veces.
+ */
+export abstract class LibraryDomainError extends CodedError {
   constructor(
     message: string,
     apiCode?: ApiErrorCode,
     apiParams?: Record<string, string | number>,
   ) {
     super(message, apiCode, apiParams);
-    this.name = 'LibraryPathError';
+    this.name = new.target.name;
   }
 }
 
-export class PluginNotFoundError extends CodedError {
-  constructor(
-    message: string,
-    apiCode?: ApiErrorCode,
-    apiParams?: Record<string, string | number>,
-  ) {
-    super(message, apiCode, apiParams);
-    this.name = 'PluginNotFoundError';
-  }
-}
+export class LibraryPathError extends LibraryDomainError {}
+
+export class PluginNotFoundError extends LibraryDomainError {}
 
 /** Conflicto de estado: ya instalado, no instalado, sin respaldo, etc. */
-export class PluginStateError extends CodedError {
-  constructor(
-    message: string,
-    apiCode?: ApiErrorCode,
-    apiParams?: Record<string, string | number>,
-  ) {
-    super(message, apiCode, apiParams);
-    this.name = 'PluginStateError';
-  }
-}
+export class PluginStateError extends LibraryDomainError {}
 
 /** Entrada para la preferencia local de DLL de un plugin. */
 export interface DllPreferenceInput {
@@ -515,28 +504,10 @@ export interface DllPreferenceResult {
   actions: readonly LibraryAction[];
 }
 
-export class DllPreferenceError extends CodedError {
-  constructor(
-    message: string,
-    apiCode?: ApiErrorCode,
-    apiParams?: Record<string, string | number>,
-  ) {
-    super(message, apiCode, apiParams);
-    this.name = 'DllPreferenceError';
-  }
-}
+export class DllPreferenceError extends LibraryDomainError {}
 
 /** La operación no se puede completar con el contenido actual de los archivos. */
-export class LibraryOperationError extends CodedError {
-  constructor(
-    message: string,
-    apiCode?: ApiErrorCode,
-    apiParams?: Record<string, string | number>,
-  ) {
-    super(message, apiCode, apiParams);
-    this.name = 'LibraryOperationError';
-  }
-}
+export class LibraryOperationError extends LibraryDomainError {}
 
 export interface LibraryInspectDllInput {
   dllPath: string;
