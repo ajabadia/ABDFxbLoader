@@ -7,6 +7,7 @@
  * clave que el resto de la suite (`abdsynths.locale`).
  */
 import { createSynthI18n } from '@abdsynths/shared/i18n';
+import { STORAGE_LOCALE } from '../storage-keys.js';
 import { appEn } from './locales/en.js';
 import { appEs } from './locales/es.js';
 
@@ -15,7 +16,7 @@ export type Locale = 'en' | 'es';
 const i18n = createSynthI18n<Locale>({
   locales: { en: appEn, es: appEs },
   defaultLocale: 'en',
-  storageKey: 'abdsynths.locale',
+  storageKey: STORAGE_LOCALE,
 });
 
 // El idioma guardado se resuelve al crear el módulo, no en el arranque de la

@@ -2128,6 +2128,128 @@ test(
 );
 
 /**
+ * El conmutador de la cabecera cambia el idioma de toda la vista, no solo su
+ * bandera: `html lang`, los textos con `data-i18n`, el radio de Ajustes y la
+ * clave compartida con la suite (`abdsynths.locale`). Al recargar sigue ahí.
+ */
+test(
+  'el conmutador de la cabecera cambia el idioma y se recupera al recargar',
+  {
+    skip: existsSync(SERVER_ENTRY)
+      ? false
+      : `falta ${path.relative(process.cwd(), SERVER_ENTRY)}; ejecuta npm run build`,
+  },
+  async (t) => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const logs: string[] = [];
+    const server = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: WEBAPP,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    server.stdout?.setEncoding('utf8');
+    server.stderr?.setEncoding('utf8');
+    server.stdout?.on('data', (chunk: string) => logs.push(chunk));
+    server.stderr?.on('data', (chunk: string) => logs.push(chunk));
+
+    let browser: Browser | null = null;
+
+    t.after(async () => {
+      await browser?.close();
+      if (server.exitCode === null && server.signalCode === null) {
+        server.kill();
+        await new Promise((resolve) => server.once('exit', resolve));
+      }
+    });
+
+    await waitForServer(server, url, logs);
+
+    browser = await chromium.launch();
+    const context = await browser.newContext({ colorScheme: 'light' });
+    // Solo el idioma de partida: el init script corre en cada carga, también al
+    // recargar, donde tiene que leerse lo que guardó el botón.
+    await context.addInitScript(() => {
+      if (localStorage.getItem('abdsynths.locale') === null) {
+        localStorage.setItem('abdsynths.locale', 'es');
+      }
+    });
+    const page = await context.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.goto(url);
+
+    interface LangState {
+      lang: string;
+      stored: string | null;
+      flag: 'es' | 'en' | 'none';
+      title: string;
+      aria: string;
+      wizardsTitle: string;
+      localeRadio: string | null;
+      themeRadio: string | null;
+    }
+
+    // El script va como texto para no necesitar el lib DOM del proyecto.
+    const readLang = async (): Promise<LangState> =>
+      (await page.evaluate(`
+        (() => {
+          const toggle = document.getElementById('lang-toggle');
+          const visible = (code) => {
+            const svg = document.querySelector('svg[data-icon="' + code + '"]');
+            return svg !== null && getComputedStyle(svg).display !== 'none';
+          };
+          const checked = (name) => {
+            const input = document.querySelector('input[name="' + name + '"]:checked');
+            return input === null ? null : input.value;
+          };
+          return {
+            lang: document.documentElement.lang,
+            stored: localStorage.getItem('abdsynths.locale'),
+            flag: visible('en') ? 'en' : visible('es') ? 'es' : 'none',
+            title: toggle.title,
+            aria: toggle.getAttribute('aria-label'),
+            wizardsTitle: document.getElementById('wizards-title').textContent,
+            localeRadio: checked('ui-locale'),
+            themeRadio: checked('theme-mode'),
+          };
+        })()
+      `)) as LangState;
+
+    const spanish = await readLang();
+    assert.equal(spanish.lang, 'es', 'arranca en el idioma guardado');
+    assert.equal(spanish.stored, 'es');
+    assert.equal(spanish.flag, 'es', 'la bandera es la del idioma activo');
+    assert.equal(spanish.localeRadio, 'es', 'Ajustes enseña el idioma vigente');
+    assert.equal(spanish.wizardsTitle, 'Repositorio de Wizards');
+    assert.equal(spanish.aria, spanish.title, 'el rótulo accesible dice lo mismo que el título');
+    assert.notEqual(spanish.themeRadio, null, 'el tema arranca con un modo marcado');
+
+    await page.click('#lang-toggle');
+
+    const english = await readLang();
+    assert.equal(english.lang, 'en', 'html lang sigue al idioma');
+    assert.equal(english.stored, 'en', 'se guarda en la clave de la suite');
+    assert.equal(english.flag, 'en', 'la bandera cambia con el idioma');
+    assert.equal(english.localeRadio, 'en', 'el radio de Ajustes se sincroniza');
+    assert.equal(english.wizardsTitle, 'Wizard repository', 'los textos se re-renderizan');
+    assert.equal(english.aria, english.title);
+    assert.notEqual(english.title, spanish.title, 'el título anuncia el idioma al que se cambia');
+    assert.equal(english.themeRadio, spanish.themeRadio, 'cambiar de idioma no toca el tema');
+
+    await page.reload();
+    await page.waitForSelector('#lang-toggle');
+
+    const reloaded = await readLang();
+    assert.equal(reloaded.lang, 'en', 'la elección sobrevive a la recarga');
+    assert.equal(reloaded.flag, 'en');
+    assert.equal(reloaded.wizardsTitle, 'Wizard repository');
+
+    assert.deepEqual(pageErrors, [], `errores de JavaScript en la página: ${pageErrors.join(' | ')}`);
+  },
+);
+
+/**
  * El conmutador de tema cicla Sistema → Oscuro → Claro. La elección se guarda
  * en `localStorage` (`fxbLoader.theme`), también «Sistema», que se escribe como
  * `auto` en vez de borrar la clave; al recargar, el modo y su dibujo (sol o

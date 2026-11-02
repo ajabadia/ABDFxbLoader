@@ -289,11 +289,6 @@ export const appEs = {
     dllDraftContinue: 'Continuar sin cambios',
     dllDraftText: 'El catálogo tiene una preferencia de DLL modificada que todavía no está guardada. «Continuar sin cambios» la descarta y usa la preferencia guardada; «Cancelar» conserva el borrador. Desde aquí no se guarda: vuelve al catálogo y usa Guardar preferencia.',
   },
-  header: {
-    langLabel: 'Cambiar idioma',
-    themeTitle: 'Tema: Sistema (clic para cambiar a Oscuro)',
-    themeLabel: 'Cambiar tema de color',
-  },
   title: {
     langToEs: 'Idioma: inglés (clic para cambiar a español)',
     langToEn: 'Idioma: español (clic para cambiar a inglés)',

@@ -13,6 +13,9 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
+    // Sin esto, un build con errores deja `dist/` a medias y parece válido:
+    // el `node dist/main.js` de después arranca con piezas viejas.
+    "noEmitOnError": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,

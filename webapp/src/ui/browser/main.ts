@@ -99,12 +99,17 @@ import {
 } from './views.js';
 
 
-const STORAGE_ROOT = 'fxbLoader.libraryRoot';
-const STORAGE_DLL = 'fxbLoader.dllSource';
-const STORAGE_RECENT_ROOTS = 'fxbLoader.recentLibraryRoots';
-const STORAGE_RECENT_DLLS = 'fxbLoader.recentDlls';
-const STORAGE_RECENT_BANKS = 'fxbLoader.recentBanks';
-const STORAGE_CAPTURE_TASK = 'fxbLoader.captureTask';
+// Las claves de `localStorage` viven en `src/ui/storage-keys.ts`, con el porqué
+// de los dos prefijos (`abdsynths.locale` es de la suite; el resto es propio).
+import {
+  STORAGE_CAPTURE_TASK,
+  STORAGE_DLL,
+  STORAGE_RECENT_BANKS,
+  STORAGE_RECENT_DLLS,
+  STORAGE_RECENT_ROOTS,
+  STORAGE_ROOT,
+  STORAGE_THEME,
+} from '../storage-keys.js';
 
 type ScanPlugin = LibraryScanResponse['plugins'][number];
 type ImportResults = LibraryBanksImportResponse['results'];
@@ -4126,7 +4131,6 @@ syncCreateMode();
 
 
 
-const STORAGE_THEME = 'fxbLoader.theme';
 type ThemeMode = 'auto' | 'dark' | 'light';
 
 const themeIcons = [...els.themeToggle.querySelectorAll<SVGElement>('[data-icon]')];
@@ -4145,6 +4149,10 @@ function applyTheme(mode: ThemeMode): void {
     document.documentElement.removeAttribute('data-theme');
     els.themeToggle.title = t('title.themeAuto');
   }
+
+  // El `title` no se ve en táctil y el motor i18n no aplica `data-i18n-label`:
+  // el rótulo accesible repite lo mismo que el título, con el destino incluido.
+  els.themeToggle.setAttribute('aria-label', els.themeToggle.title);
 
   // Sol y luna son excluyentes. En «Sistema» se enseña el dibujo del tema que
   // esté aplicando el SO, para que el botón diga siempre lo que se ve.
@@ -4199,7 +4207,9 @@ const langIcons = [...els.langToggle.querySelectorAll<SVGElement>('[data-icon]')
 function applyLanguage(): void {
   const locale = getLocale();
   els.langToggle.title = locale === 'es' ? t('title.langToEn') : t('title.langToEs');
-  els.langToggle.setAttribute('aria-label', t('header.langLabel'));
+  // Igual que el tema: el rótulo accesible lleva el idioma actual y el destino,
+  // porque en táctil no hay `title` que leer.
+  els.langToggle.setAttribute('aria-label', els.langToggle.title);
   // El motor i18n no aplica `data-i18n-label`, así que los dos radiogrupos de
   // Ajustes se quedaban con su `aria-label` en inglés.
   document
