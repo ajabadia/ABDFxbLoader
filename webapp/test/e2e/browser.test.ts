@@ -56,6 +56,32 @@ async function openTestPage(browser: Browser): Promise<Page> {
   return page;
 }
 
+/**
+ * Estas pruebas comprueban el contrato de la vista con `POST /system/pick`, que
+ * es el camino de Windows. El servidor de CI corre en Linux, donde
+ * `/system/capabilities` responde `canNativePick: false` y la vista se va a
+ * `showDirectoryPicker`: en Chromium headless esa API existe pero rechaza la
+ * petición, así que el diálogo del servidor no se llega a pedir nunca y la
+ * prueba falla por un motivo que no es el suyo. Declarar la capacidad deja a la
+ * vista en el camino nativo, que es lo que aquí se quiere ejercitar.
+ */
+async function stubNativePick(page: Page): Promise<void> {
+  await page.route('**/system/capabilities', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'web-local',
+        canCaptureRegistry: true,
+        canTrash: true,
+        canRevealInExplorer: true,
+        canNativePick: true,
+        canFileSystemAccess: false,
+      }),
+    }),
+  );
+}
+
 const skip = existsSync(REPO_DLL)
   ? false
   : `no está ${path.relative(process.cwd(), REPO_DLL)}; la prueba necesita la DLL real`;
@@ -1918,6 +1944,8 @@ test(
       scans.push(request.postDataJSON() as Record<string, unknown>);
     });
 
+    await stubNativePick(page);
+
     await page.route('**/system/pick', async (route) => {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       pickBodies.push(body);
@@ -2815,6 +2843,8 @@ test('menú «···» de wizards: «Instalar…» instala el plugin y «Histori
   let pickMode: 'cancel' | 'dll' = 'cancel';
   /** Cuerpos que la vista manda al diálogo, en orden. */
   const pickBodies: Record<string, unknown>[] = [];
+  await stubNativePick(page);
+
   await page.route('**/system/pick', async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     pickBodies.push(body);
