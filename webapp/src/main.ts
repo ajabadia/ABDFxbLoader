@@ -3,7 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { configureCors, configureSecurityHeaders, configureStaticAssets } from './app.setup';
+import {
+  configureCors,
+  configureSecurityHeaders,
+  configureStaticAssets,
+  resolveAllowedOrigins,
+} from './app.setup';
 import { buildOpenApiDocument } from './swagger';
 
 async function bootstrap(): Promise<void> {
@@ -23,6 +28,7 @@ async function bootstrap(): Promise<void> {
   await app.listen(port, '127.0.0.1');
 
   console.log(`fxbLoader web en http://127.0.0.1:${port}`);
+  console.log(`CORS permitido solo a: ${resolveAllowedOrigins().join(', ')}`);
   console.log(`OpenAPI en http://127.0.0.1:${port}/docs (JSON: /docs-json)`);
 }
 

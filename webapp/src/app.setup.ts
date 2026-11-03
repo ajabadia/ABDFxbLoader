@@ -53,18 +53,68 @@ export function configureStaticAssets(app: NestExpressApplication): void {
   }
 }
 
-export function configureCors(app: NestExpressApplication): void {
-  app.enableCors({
-    origin: [
-      /^http:\/\/localhost(:\d+)?$/,
-      /^http:\/\/127\.0\.0\.1(:\d+)?$/,
-      /^https:\/\/.*\.vercel\.app$/,
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    credentials: true,
-  });
+/**
+ * Orígenes remotos con permiso explícito para hablar con el agente local. Antes
+ * aquí había `/^https:\/\/.*\.vercel\.app$/`: cualquier despliegue de Vercel
+ * —gratis y sin verificación— podía leer las respuestas de esta API desde el
+ * navegador de la persona, con su mismo acceso al disco. La lista es exacta y se
+ * amplía con `FXB_ALLOWED_ORIGINS` (separados por comas).
+ */
+const DEFAULT_REMOTE_ORIGINS = ['https://abd-vfx-manager.vercel.app'];
+
+/** Loopback en cualquier puerto: la vista local, las pruebas y el .exe. */
+const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+/** `Host` aceptados: solo loopback, para cortar el DNS rebinding. */
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+export function resolveAllowedOrigins(env: NodeJS.ProcessEnv = process.env): string[] {
+  const configured = (env['FXB_ALLOWED_ORIGINS'] ?? '')
+    .split(',')
+    .map((value) => value.trim().replace(/\/+$/, ''))
+    .filter((value) => value !== '');
+  return [...new Set([...DEFAULT_REMOTE_ORIGINS, ...configured])];
 }
 
+/** Sin `Origin` (curl, el .exe, el propio servidor) siempre; si no, la lista. */
+export function isAllowedOrigin(
+  origin: string | undefined,
+  allowed: readonly string[] = resolveAllowedOrigins(),
+): boolean {
+  if (origin === undefined || origin === '') return true;
+  return LOOPBACK_ORIGIN.test(origin) || allowed.includes(origin);
+}
+
+export function isLoopbackHost(host: string | undefined): boolean {
+  return host !== undefined && LOOPBACK_HOST.test(host);
+}
+
+export function isMutating(method: string): boolean {
+  return MUTATING_METHODS.has(method.toUpperCase());
+}
+
+export function configureCors(app: NestExpressApplication): void {
+  const allowed = resolveAllowedOrigins();
+  app.enableCors({
+    origin: (
+      origin: string | undefined,
+      callback: (
+        error: Error | null,
+        permitir?: boolean | string | RegExp | Array<string | RegExp>,
+      ) => void,
+    ) => {
+      // Sin `Access-Control-Allow-Origin` el navegador no deja leer la respuesta,
+      // y un preflight fallido impide que la petición llegue a ejecutarse.
+      callback(null, isAllowedOrigin(origin, allowed));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    // La API no usa cookies: con credenciales, un origen permitido heredaría
+    // además las del sitio.
+    credentials: false,
+  });
+}
 /**
  * Hashes de los `<script>` en línea de `index.html`: hoy es el import map que
  * resuelve `@abdsynths/shared` en el navegador. Se calculan al arrancar para que
@@ -119,6 +169,19 @@ export function configureSecurityHeaders(app: NestExpressApplication): void {
   ].join('; ');
 
   app.use((req: Request, res: Response, next: NextFunction) => {
+    // El servidor escucha en loopback: un `Host` que no lo sea significa que
+    // alguien resolvió su dominio a 127.0.0.1 (DNS rebinding) para esquivar CORS.
+    if (!isLoopbackHost(req.headers.host)) {
+      res.status(403).json({ message: 'Host no permitido: el agente solo atiende en loopback.' });
+      return;
+    }
+    // CORS impide *leer* desde un origen ajeno, pero la petición se enviaría
+    // igual: las que escriben se rechazan aquí.
+    if (isMutating(req.method) && !isAllowedOrigin(req.headers.origin)) {
+      res.status(403).json({ message: 'Origen no permitido para modificar archivos.' });
+      return;
+    }
+
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
