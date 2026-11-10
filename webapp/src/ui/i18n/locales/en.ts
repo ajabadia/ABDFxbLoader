@@ -258,6 +258,7 @@ export const appEn = {
     compare: 'Compared with the library',
     tableEmpty: 'No plugins found in the active library to compare.',
     version: 'Drive version',
+    inventoryEmpty: 'No plugins found in the drive libraries.',
     copy: 'Copy what is missing',
     eject: 'When it finishes, eject the drive safely from Windows before unplugging it: a pending write leaves the library half-written and the machine loads a broken plugin.',
   },

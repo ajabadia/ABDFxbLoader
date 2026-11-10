@@ -202,6 +202,7 @@ let logDetailOpener: HTMLButtonElement | null = null;
 let metaBusy = false;
 let wizardsTableController: TableController<WizardListResponse['items'][number]> | null = null;
 let vmSyncTableController: TableController<VmSyncEntry> | null = null;
+let vmInventoryTableController: TableController<StickPlugin> | null = null;
 
 /** Orden actual del repositorio de wizards: el servidor ordena, la tabla lo replica. */
 let wizardsSort: { columnId: string; direction: 'asc' | 'desc' } = { columnId: 'name', direction: 'asc' };
@@ -5524,6 +5525,26 @@ function stickStatusText(plugin: StickPlugin): string {
 }
 
 function renderStickInventory(target: HTMLElement, inventory: StickInventory | null): void {
+  if (target === els.vmachineInventory) {
+    if (inventory === null || inventory.libraries.length === 0) {
+      target.replaceChildren();
+      vmInventoryTableController = null;
+      return;
+    }
+    const allPlugins: StickPlugin[] = [];
+    for (const lib of inventory.libraries) {
+      for (const p of lib.plugins) {
+        allPlugins.push(p);
+      }
+    }
+    if (vmInventoryTableController === null) {
+      vmInventoryTableController = mountTable(target, vmInventoryTableView, allPlugins);
+    } else {
+      vmInventoryTableController.setRows(allPlugins);
+    }
+    return;
+  }
+
   target.replaceChildren();
   if (inventory === null) return;
 
@@ -5789,6 +5810,68 @@ const vmSyncTableView: TableView<VmSyncEntry> = {
   emptyText: () => t('vmachine.tableEmpty'),
 };
 
+const vmInventoryTableView: TableView<StickPlugin> = {
+  columns: [
+    {
+      id: 'name',
+      get label() { return t('ui.common.plugin'); },
+      sortType: 'text',
+      getValue: (plugin) => plugin.name ?? plugin.folder,
+      renderNode: (plugin) => {
+        const span = document.createElement('span');
+        span.style.fontWeight = '600';
+        span.textContent = plugin.name ?? plugin.folder;
+        if (plugin.name !== null && plugin.name !== plugin.folder) {
+          span.title = plugin.folder;
+        }
+        return span;
+      },
+    },
+    {
+      id: 'library',
+      get label() { return t('nav.library'); },
+      sortType: 'text',
+      getValue: (plugin) => plugin.library,
+      renderNode: (plugin) => {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = plugin.library;
+        return note;
+      },
+    },
+    {
+      id: 'status',
+      get label() { return t('ui.common.state'); },
+      sortType: 'text',
+      getValue: (plugin) => stickStatusText(plugin),
+      renderNode: (plugin) => {
+        const badge = document.createElement('span');
+        badge.className = `badge ${plugin.status === 'match' ? 'on' : plugin.status === 'differs' ? 'bad' : 'off'}`;
+        badge.textContent = stickStatusText(plugin);
+        return badge;
+      },
+    },
+    {
+      id: 'files',
+      get label() { return t('ui.common.files'); },
+      sortType: 'number',
+      getValue: (plugin) => plugin.files,
+      renderNode: (plugin) => {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = t('ui.capture.stickPluginFiles', {
+          0: plugin.files,
+          1: formatBytes(plugin.bytes),
+        });
+        return note;
+      },
+    },
+  ],
+  getRowId: (plugin) => `${plugin.library}:${plugin.folder}`,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  emptyText: () => t('vmachine.inventoryEmpty'),
+};
+
 type VmSync = {
   drive: string;
   library: string;
@@ -5854,6 +5937,7 @@ async function loadVmachineDrives(): Promise<void> {
       els.vmachineDrive.replaceChildren();
       els.vmachineSummary.textContent = '';
       els.vmachineInventory.replaceChildren();
+      vmInventoryTableController = null;
       els.vmachineSync.replaceChildren();
       vmSyncTableController = null;
       els.vmachineSyncNote.textContent = '';
@@ -5895,6 +5979,7 @@ async function loadVmachineSelection(): Promise<void> {
   vmInventory = null;
   vmSync = null;
   els.vmachineInventory.replaceChildren();
+  vmInventoryTableController = null;
   els.vmachineSync.replaceChildren();
   vmSyncTableController = null;
   els.vmachineSyncNote.textContent = '';

@@ -257,6 +257,7 @@ export const appEs = {
     compare: 'Comparación con la librería',
     tableEmpty: 'No hay plugins en la librería activa para comparar.',
     version: 'Versión en medio',
+    inventoryEmpty: 'No hay plugins en las bibliotecas de la unidad.',
     copy: 'Copiar lo que falta',
     eject: 'Cuando termine, expulsa la unidad de forma segura desde Windows antes de desconectarla: una escritura pendiente deja la biblioteca a medias y la máquina carga el plugin roto.',
   },
