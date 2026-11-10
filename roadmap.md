@@ -514,11 +514,11 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
 - [x] **Ergonomía de navegación en la cabecera y Ajustes:**
   - Colocado el botón **"Unidad"** como la primera opción a la izquierda en la cabecera principal (`#vmachine-nav-btn` antes de Librería y Wizards).
   - En el cajón de **Ajustes**, priorizada la configuración de la **Unidad / Drive** situándola en primer lugar antes de la ruta de librería.
-- [ ] **Ergonomía de presentación en la vista de Unidad:**
-  - Transformar el inventario de la unidad en una **tabla estándar unificada** (`#vmachine-inventory-table`) en lugar de lista `<ul>`, con los mismos principios de ordenación, columnas claras (nombre, estado, archivos/tamaño) e integración de diseño del resto de la app.
-  - Asegurar que la tabla de comparación con la librería (`#vmachine-sync`) mantenga paridad y acciones claras de copia individual y en lote.
-- [ ] **Modal de instalación de Wizards con zona Drag & Drop:**
-  - Dotar al modal de instalación asistida de una zona dropzone interactiva para arrastrar el archivo `.dll` o seleccionarlo con clic, complementando el selector de archivos.
+- [x] **Ergonomía de presentación en la vista de Unidad:**
+  - Transformado el inventario de la unidad en una **tabla estándar unificada** (`vmInventoryTableView` montada sobre `#vmachine-inventory`) con los mismos principios de ordenación, columnas claras (nombre, librería, estado, archivos/tamaño) e integración de diseño del resto de la app.
+  - Asegurado que la tabla de comparación con la librería (`#vmachine-sync`) mantenga paridad y acciones de copia.
+- [x] **Modal de instalación de Wizards con zona Drag & Drop:**
+  - Dotado el modal de instalación asistida de una zona dropzone interactiva para arrastrar el archivo `.dll` o seleccionarlo con clic, complementando el selector de archivos.
 - [ ] **Sincronización de `banks/` (`.vfxbank` / `.vfxpreset`) a la unidad USB:**
   - Extender `VMachineService` para inventariar y sincronizar no solo `<Drive>/<Library>.vfxlibrary/plugs/` sino también `<Drive>/<Library>.vfxlibrary/banks/`.
   - Comparar estados (`missing`, `differs`, `same`) para carpetas `.vfxbank` y sus ficheros (`bank.vfx`, `preset.vfx`, `.chunk`).
