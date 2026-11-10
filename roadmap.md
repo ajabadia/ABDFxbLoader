@@ -37,8 +37,9 @@
 
 - **Fase III.C: Adquisición / Alta de Instrumentos desde Wizards Certificados [COMPLETO]**
 - **Fase III.D: Asistente para Plugins Nuevos sin Wizard con Análisis de Binario [COMPLETO]**
-- **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [EN MARCHA]**
-- **Fase V: Distribución Híbrida — Standalone .exe, Web Local y Web Remota Zero-Fork [PLANIFICADA]**
+- **Fase IV: Creación y Gestión Avanzada de Bancos (.fxb / .fxp) [COMPLETO]**
+- **Fase V: Distribución Híbrida — Standalone .exe, Web Local y Web Remota Zero-Fork [COMPLETO]**
+- **Fase VI: Experiencia del Músico, Gestión Total V-Machine y Robustez [EN MARCHA]**
 
 ## Objetivos Arquitectónicos
 
@@ -510,10 +511,12 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
 - [x] **Guardas preventivas y guiado asistido a Ajustes:**
   - Bloqueo de creación de plugin sin wizard (`openCustomPluginDrawer`) e importación de paquete (`openImportPackageDrawer`) si `libraryRoot` está vacío, abriendo de inmediato Ajustes con foco en el selector de carpeta.
   - Bloqueo de instalación desde Wizards (`promptAndInstallFromWizard`) si `libraryRoot` está vacío con redirección y foco asistido directo en Ajustes.
-- [ ] **Ergonomía de navegación y diseño en la vista de Unidad:**
-  - Colocar **"Unidad"** como la primera opción a la izquierda en la cabecera principal (`#header-nav`).
-  - En el cajón de **Ajustes**, priorizar la configuración de la **Unidad / Drive** situándola en primer lugar antes de la librería.
-  - Transformar la lista suelta de comparación con la librería en una **tabla estándar unificada** (`#vmachine-comparison-table`) con los mismos principios de ordenación, columnas claras (nombre de plugin, estado en el medio, tamaño, acciones de copia individual y en lote) e integración de diseño del resto de la app.
+- [x] **Ergonomía de navegación en la cabecera y Ajustes:**
+  - Colocado el botón **"Unidad"** como la primera opción a la izquierda en la cabecera principal (`#vmachine-nav-btn` antes de Librería y Wizards).
+  - En el cajón de **Ajustes**, priorizada la configuración de la **Unidad / Drive** situándola en primer lugar antes de la ruta de librería.
+- [ ] **Ergonomía de presentación en la vista de Unidad:**
+  - Transformar el inventario de la unidad en una **tabla estándar unificada** (`#vmachine-inventory-table`) en lugar de lista `<ul>`, con los mismos principios de ordenación, columnas claras (nombre, estado, archivos/tamaño) e integración de diseño del resto de la app.
+  - Asegurar que la tabla de comparación con la librería (`#vmachine-sync`) mantenga paridad y acciones claras de copia individual y en lote.
 - [ ] **Modal de instalación de Wizards con zona Drag & Drop:**
   - Dotar al modal de instalación asistida de una zona dropzone interactiva para arrastrar el archivo `.dll` o seleccionarlo con clic, complementando el selector de archivos.
 - [ ] **Sincronización de `banks/` (`.vfxbank` / `.vfxpreset`) a la unidad USB:**
