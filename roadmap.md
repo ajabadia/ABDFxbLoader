@@ -519,15 +519,361 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
   - Asegurado que la tabla de comparación con la librería (`#vmachine-sync`) mantenga paridad y acciones de copia.
 - [x] **Modal de instalación de Wizards con zona Drag & Drop:**
   - Dotado el modal de instalación asistida de una zona dropzone interactiva para arrastrar el archivo `.dll` o seleccionarlo con clic, complementando el selector de archivos.
-- [ ] **Sincronización de `banks/` (`.vfxbank` / `.vfxpreset`) a la unidad USB:**
-  - Extender `VMachineService` para inventariar y sincronizar no solo `<Drive>/<Library>.vfxlibrary/plugs/` sino también `<Drive>/<Library>.vfxlibrary/banks/`.
-  - Comparar estados (`missing`, `differs`, `same`) para carpetas `.vfxbank` y sus ficheros (`bank.vfx`, `preset.vfx`, `.chunk`).
-  - Extender la acción de copia en la pestaña `Unidad` para sincronizar bancos y presets al pendrive con verificación de integridad.
-- [ ] **Generador de preset nativo V-Machine al instalar un plugin:**
-  - Cuando un usuario instala un plugin nuevo (vía Wizard o manual), ofrecer la creación automática de un `.vfxbank` y `.vfxpreset` básico (Channel 1, Slot 1 apuntando al ID del plugin).
-  - De esta forma, el plugin aparece inmediatamente en el menú LCD físico de la V-Machine sin requerir el software legacy VFX Host.
-- [ ] **Inspector y editor básico de `preset.vfx`:**
-  - Visualizar la asignación de plugins por slot en un preset nativo y el mapeo básico de controles.
+
+---
+
+#### Especificación de Implementación Detallada — Fase VI.B (Bancos Nativos `.vfxbank`, Escenas Multi-Plugin de 4 Canales y Sincronización USB)
+
+> **Propósito de esta sección:** Guía técnica, funcional y de interfaz **autocontenida y verificada contra el binario oficial `vfx.exe`** (`C:\Program Files (x86)\VFX\VFX\vfx.exe`, SHA-256 `5d48a6cb9dc2d8818dcb8caf372b6789338f60d5cfbf83f844d9808ad60873b1`) y bancos reales de `_banks/`, redactada para que cualquier modelo o desarrollador la implemente de extremo a extremo sin ambigüedades ni regresiones en las auditorías del repositorio.
+
+##### 0. Verdad de Terreno del Hardware V-Machine y Formatos Nativos (Ingeniería Inversa de `vfx.exe`)
+
+1. **Jerarquía en disco (`banks/`) — Librería local y Pendrive USB:**
+   - **Librería local:** `<libraryRoot>/banks/`
+   - **Pendrive USB:** `<Drive>:\<LibraryName>.vfxlibrary\banks\` (hermana de `plugs\`).
+   - **Carpetas de banco (dos variantes reales a soportar en lectura/escaneo/sync):**
+     1. **Canónica (usar siempre al crear nuevos bancos):** `NNN_<BankName>.vfxbank` (ej. `000_Novation V-Station demo.vfxbank`), donde `NNN` es un índice decimal de 3 dígitos (`000`..`127`).
+     2. **Stock / Legacy SM Pro Audio (reconocer en lectura/sync):** `NNN_<BankName>` sin sufijo `.vfxbank` siempre que contenga al menos un subdirectorio `*.vfxpreset` (ej. `004_Demo Synths`, `005_Demo Drums & Effects`).
+   - **Inexistencia de `bank.vfx`:** En el formato nativo de V-Machine **NO existe ningún archivo `bank.vfx`**. El índice y nombre del banco vienen determinados exclusivamente por el nombre de la carpeta del banco.
+   - **Límites estrictos impuestos por `vfx.exe`:**
+     - Máximo **128 bancos** numerados (`000_`..`127_`) y máximo **128 presets por banco** (`000_`..`127_`).
+     - Longitud máxima de `<BankName>` (sin `NNN_` ni `.vfxbank`): **30 caracteres** (`strlen < 31`).
+     - Longitud máxima de `<PresetName>` (sin `NNN_` ni `.vfxpreset`): **30 caracteres** recomendados para LCD/FAT32, caracteres inválidos de sistema de archivos Windows/FAT32 (`<>:"/\|?*` y controles `0x00..0x1F`) prohibidos o saneados.
+     - Cada línea de `preset.vfx` debe medir **`< 80` caracteres** antes del salto de línea (aserción `n < 80` en `vfx_configuration_controller.c:493`), codificación **`latin1`** y saltos de línea **`CRLF` (`\r\n`)**.
+
+2. **Arquitectura Multi-Plugin de 4 Canales + Aux + Master en `preset.vfx` (`0x41d4a0` y `0x41a600`):**
+   - Un preset nativo `.vfxpreset` es una **escena completa de directo** compuesta por **7 buses de mezcla** (`channel_index < 4 + 2 + 1`) y **3 slots de plugin en serie por bus** (`slot_index < 3`, posiciones `slot_a`, `slot_b`, `slot_c`; máximo 21 slots direccionables):
+     - **`channel: 0` .. `channel: 3` (Canales 1 a 4 en la UI):** Los **4 canales principales de instrumento/audio** de la V-Machine.
+       - Permiten cargar hasta **4 sintetizadores simultáneos** (uno en el `Slot A` de cada canal) más **2 efectos de inserción en cadena por canal** (`Slot B` y `Slot C`, ej. `Bass Module` en Slot A + `E-Phonic LOFI` en Slot B).
+       - Modos musicales que habilitan los 4 canales:
+         - **Single:** 1 instrumento en `Canal 1` (`channel: 0`), canales 2–4 vacíos (`volume: 0`).
+         - **Layer (Capas):** 2 a 4 instrumentos en canales distintos recibiendo el mismo `midi_channel` (ej. `0` = Omni) y rango completo (`midi_note_min: 0`, `midi_note_max: 0` o `0..127`), mezclados con `volume` y `pan` independientes.
+         - **Split (División de teclado):** Zonas de teclado separadas con `midi_note_min` / `midi_note_max` (ej. Canal 1 Bajo `0..59` + Canal 2 Piano/Lead `60..127`) y `midi_transpose` independiente (`-48..+48` semitonos). *Nota de formato:* en `preset.vfx`, `midi_note_min: 0` + `midi_note_max: 0` significa «rango completo sin restricción» (`0..127`), mientras que para un split inferior real que acabe en Si2 se escribe `midi_note_min: 0` y `midi_note_max: 59`.
+         - **Multitímbrico (Multi 4 partes):** 4 instrumentos asignados a `midi_channel: 1`, `2`, `3` y `4` respectivamente.
+     - **`aux: 0` y `aux: 1` (Aux 1 y Aux 2 en la UI):** 2 buses estéreo de envío/retorno (3 slots de efecto cada uno, ej. Reverb compartida en `Aux 1` y Delay en `Aux 2`), alimentados desde `send: 0` y `send: 1` de cada canal.
+     - **`master:` (Bus Master en la UI):** 1 bus estéreo maestro con 3 slots de inserción global (ej. EQ / Compresor / Limitador) y nivel maestro (`volume: 206` ≈ `0 dB` nominal; rango entero `0..255`, centro de `pan` = `128`).
+   - **Estructura exacta e indentación posicional de `preset.vfx` (`version: 3`):**
+     - **Importante:** En `preset.vfx` **NO existen etiquetas `slot_a:`/`slot_b:`/`slot_c:`**. Dentro de cada bloque `channel: N`, `aux: N` o `master:`, aparecen **exactamente 3 bloques `        plugin:` consecutivos** (8 espacios de sangría) que corresponden por orden posicional a `slot_a` (1º), `slot_b` (2º) y `slot_c` (3º). Si un slot está vacío, se escribe `        plugin:` sin valor seguido de línea en blanco.
+     - Ejemplo canónico real (`version: 3`, sangrías exactas de `0`, `4`, `8` y `12` espacios):
+       ```text
+       preset: Bass + Lead Split
+           version: 3
+           tempo_bpm: 120
+           time_signature_num: 4
+           time_signature_den: 4
+           tempo_bpm_midi: 0
+           mixer_midi_channel: 0
+           audio_buffer_size: 0
+
+           channel: 0
+               plugin: 1316377392
+                   name: V-Station Demo
+                   short_name: VStat
+                   midi_channel: 0
+                   midi_note_min: 0
+                   midi_note_max: 59
+                   midi_transpose: 0
+                   midi_from_computer: 1
+                   chained_midi: 0
+                   midi_thru: 0
+                   program_midi: 0
+                   parameter_count: 160
+                   selected_program: 0
+                   midi_map: 74: 12
+                   priority_parameter: 12
+
+               plugin:
+
+               plugin:
+
+               volume: 206
+               pan: 128
+               left_in: 0
+               right_in: 0
+               mute: 0
+               solo: 0
+               mute_others_midi: 0
+               toggle_mute_midi: 0
+               toggle_solo_midi: 0
+               volume_midi: 0
+               pan_midi: 0
+               mute_midi: 0
+               solo_midi: 0
+
+               send: 0
+                   gain: 0
+                   is_pre: 0
+                   gain_midi: 0
+                   is_pre_midi: 0
+
+               send: 1
+                   gain: 0
+                   is_pre: 0
+                   gain_midi: 0
+                   is_pre_midi: 0
+       ```
+       *(Seguido de `channel: 1`, `channel: 2`, `channel: 3`, `aux: 0`, `aux: 1` y `master:` con idéntica estructura de 3 bloques `plugin:`, mezcla y 2 bloques `send:`).*
+     - **Compatibilidad de lectura v2 y preservación round-trip:** Los presets antiguos (v2) omiten `version: 3`, `mixer_midi_channel`, `mute_others_midi`, `toggle_mute_midi` y `toggle_solo_midi`. El parser debe aceptarlos con valores `0` por defecto y escribir siempre en `version: 3`, **preservando intactas** las líneas opcionales `midi_map: <cc>: <param>` (`cc` `1..127`) y `priority_parameter: <param>` de cada slot cuando se edite un preset existente.
+     - **Restricción de `short_name`:** Máximo **6 caracteres ASCII** (`strlen < 7` en `vfx.exe`) para el display LCD físico de la V-Machine (autogenerable desde `name_abbreviation` del Wizard o las primeras 6 letras/dígitos del nombre).
+
+3. **Nomenclatura Exacta de Archivos `.chunk` por Bus y Slot (`FUN_0041d2b0` en `0x41d2b0`):**
+   - Mientras que en `preset.vfx` los índices de `channel:` (`0..3`) y `aux:` (`0..1`) empiezan en `0`, **en el nombre del archivo `.chunk` v3 empiezan en `1` (`1-based`)**:
+     - `channel: 0..3`, slot `0..2` (`a`/`b`/`c`): `channel_${channelIndex + 1}_slot_${'a'|'b'|'c'}_${pluginId}.chunk` (ej. `channel_1_slot_a_1316377392.chunk` .. `channel_4_slot_c_1280263753.chunk`).
+     - `aux: 0..1`, slot `0..2` (`a`/`b`/`c`): `aux_${auxIndex + 1}_slot_${'a'|'b'|'c'}_${pluginId}.chunk` (ej. `aux_1_slot_a_...chunk`, `aux_2_slot_b_...chunk`).
+     - `master:`, slot `0..2` (`a`/`b`/`c`): `master_slot_${'a'|'b'|'c'}_${pluginId}.chunk`.
+     - *Compatibilidad solo lectura (v1/v2 legacy):* `channel${0..3}_${'a'|'b'|'c'}.chunk`, `aux${0..1}_${'a'|'b'|'c'}.chunk`, `master_${'a'|'b'|'c'}.chunk`.
+   - **Plugins sin estado («chunkless»):** Cuando un plugin tiene `parameter_count === 0` y no expone chunk opaco VST (`vstChunkSize === 0 && parameterDumpSize === 0`, ej. `4Front Piano Module` o `Bass Module`), `vfx.exe` emite `"Plugin has no chunkiness to save"` y **NO crea archivo `.chunk`**. La ausencia de `.chunk` en ese caso es **100% válida** y no debe marcarse como `MISSING_CHUNK`.
+
+4. **Layout Binario Real de `.chunk` (100 bytes de cabecera v4 + CRC-16) y Corrección de Bug Actual:**
+   - **ALERTA DE BUG EXISTENTE A CORREGIR:** Actualmente [`webapp/src/library/vfx-bank-validator.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/library/vfx-bank-validator.ts) (`buildVfxChunkBuffer` / `repairVfxBank`) construye una cabecera errónea de 52 bytes con un timestamp en `+16` y parchea el `pluginId` en el offset `0x28` **sin recalcular los checksums CRC-16 en `0x10` y `0x12`**, lo que provoca que `vfx.exe` y la V-Machine rechacen el archivo con `"Bad header checksum in v%d chunk file"`.
+   - **Mapa binario exacto (`vfx_vst_host_save_chunk_file` `0x4adff0` / `vfx_vst_host_read_chunk_file` `0x4aec50`, Little-Endian):**
+
+     | Offset | Tamaño | Tipo | Campo | Descripción / Valor |
+     | :--- | :--- | :--- | :--- | :--- |
+     | `0x00` | 16 B | `ascii` | `magic` | `"!VFXCHUNKMAGIC!\0"` (`21 56 46 58 43 48 55 4E 4B 4D 41 47 49 43 21 00`) |
+     | `0x10` | 2 B | `uint16le` | `headerChecksum` | CRC-16 de los **80 bytes** `buf[0x14 .. 0x64]` |
+     | `0x12` | 2 B | `uint16le` | `overallChecksum` | Continuación del mismo estado CRC-16 alimentado con el payload `buf[0x64 .. totalBytes]` y finalizado |
+     | `0x14` | 4 B | `uint32le` | `version` | `4` en escritura (en lectura aceptar `1..4`; validar CRC si `version >= 3`) |
+     | `0x18` | 4 B | `uint32le` | `totalBytes` | `100 + parameterDumpSize + vstChunkSize` (máx. `0xA00000` = 10 MiB) |
+     | `0x1C` | 4 B | `uint32le` | `vstChunkSize` | Tamaño en bytes de `vstChunk` (va **después** de `parameterDump`) |
+     | `0x20` | 4 B | `uint32le` | `parameterDumpSize` | `parameterCount * 4` bytes (`float32le[]`, va **primero** en `0x64`) |
+     | `0x24` | 4 B | `uint32le` | `flags` | `1` |
+     | `0x28` | 4 B | `int32le` | `pluginId` | ID VST de 32 bits coincidente con `id:` de `vfxinfo.txt` |
+     | `0x2C` | 4 B | `uint32le` | `pluginVersion` | `dll_version` de `vfxinfo.txt` (o `1000` / `0` si no consta) |
+     | `0x30` | 4 B | `uint32le` | `numPrograms` | `program_count` de `vfxinfo.txt` (`AEffect.numPrograms`) |
+     | `0x34` | 48 B | `uint8[48]` | `reserved` | Relleno de ceros (`0x00`) hasta completar exactamente **100 bytes** (`0x64`) |
+     | `0x64` | `parameterDumpSize` | `float32le[]` | `parameterDump` | Array de `parameterCount` floats IEEE-754 LE (`0.0 .. 1.0`) |
+     | `0x64 + P` | `vstChunkSize` | `uint8[]` | `vstChunk` | Estado opaco del VST (p. ej. extraído de un banco `FBCh` o programa `FPCh`) |
+
+   - **Algoritmo CRC-16 exacto de `vfx.exe` (`0x438ef0`, `0x438fa0`, `0x439020` — verificado bit a bit contra `.chunk` reales):**
+     ```typescript
+     export function vfxCrc16Update(crc: number, data: Uint8Array): number {
+       let reg = crc & 0xffff;
+       for (let i = 0; i < data.length; i++) {
+         const byte = data[i]!;
+         for (let bit = 0; bit < 8; bit++) {
+           const msb = (reg & 0x8000) !== 0;
+           reg = ((reg << 1) & 0xffff) | ((byte & (0x80 >> bit)) !== 0 ? 1 : 0);
+           if (msb) reg = (reg ^ 0x1021) & 0xffff;
+         }
+       }
+       return reg;
+     }
+
+     export function vfxCrc16Finalize(crc: number): number {
+       let reg = crc & 0xffff;
+       for (let bit = 0; bit < 16; bit++) {
+         const msb = (reg & 0x8000) !== 0;
+         reg = (reg << 1) & 0xffff;
+         if (msb) reg = (reg ^ 0x1021) & 0xffff;
+       }
+       return reg;
+     }
+
+     // Cálculo al construir o reparar un buffer `buf` de longitud >= 100:
+     // const headerState = vfxCrc16Update(0xffff, buf.subarray(0x14, 0x64));
+     // view.setUint16(0x10, vfxCrc16Finalize(headerState), true);
+     // const overallState = vfxCrc16Update(headerState, buf.subarray(0x64));
+     // view.setUint16(0x12, vfxCrc16Finalize(overallState), true);
+     ```
+
+---
+
+##### 1. Subbloque VI.B.1 — Núcleo Puro de Formatos Nativos y Reparación (`Uint8Array` / Zero-Fork)
+
+> **Regla de arquitectura (Fase V Zero-Fork):** Toda la lógica de parseo y serialización de `.chunk` y `preset.vfx` debe escribirse usando exclusivamente **`Uint8Array`, `DataView` y `TextDecoder('latin1')` / codificador `latin1` puro**, sin importar `node:fs` ni `Buffer` exclusivo de Node, para que funcione tanto en el backend NestJS como en el futuro `BrowserFxbClient` (Web Remota).
+
+- [ ] **Crear [`webapp/src/library/vfx-chunk.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/library/vfx-chunk.ts):**
+  - Implementar `vfxCrc16Update`, `vfxCrc16Finalize`, `parseVfxChunk(data: Uint8Array)`, `buildVfxChunk(input: VfxChunkBuildInput): Uint8Array` y `patchVfxChunkPluginId(data: Uint8Array, newPluginId: number): Uint8Array` (actualizando `0x28` y recalculando `0x10` y `0x12`).
+  - Implementar puente `.fxb` → `.chunk` (`buildVfxChunkFromFxb(fxbBytes: Uint8Array, options: { programIndex?: number; pluginId: number; pluginVersion?: number; numPrograms?: number; parameterCount?: number }): Uint8Array | null`):
+    - Si el `.fxb` es `FxBk` (programas regulares `FxCk`): extrae los `numParams` floats del `programIndex` seleccionado (convirtiendo de Big-Endian o Little-Endian según el `.fxb` a `float32le` en `parameterDump`) y deja `vstChunkSize = 0`.
+    - Si el `.fxb` es `FBCh` (chunk opaco): extrae el payload opaco como `vstChunk` y, si `parameterCount > 0`, inicializa `parameterDump` a `0.0` (o conserva un `parameterDump` previo de plantilla si se proporciona).
+    - Si `parameterCount === 0` y no hay `vstChunk`, devuelve `null` (plugin chunkless: no se escribe archivo `.chunk`).
+- [ ] **Crear [`webapp/src/library/vfx-preset.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/library/vfx-preset.ts):**
+  - Tipos completos: `VfxPresetDescriptor`, `VfxMixerStrip` (`kind: 'channel' | 'aux' | 'master'`, `index: number`, `slots: [VfxPluginSlot | null, VfxPluginSlot | null, VfxPluginSlot | null]`, `volume`, `pan`, `leftIn`, `rightIn`, `mute`, `solo`, `muteOthersMidi`, `toggleMuteMidi`, `toggleSoloMidi`, `volumeMidi`, `panMidi`, `muteMidi`, `soloMidi`, `sends: [VfxSendConfig, VfxSendConfig]`), `VfxPluginSlot` (incluyendo `midiMaps: { cc: number; param: number }[]`, `priorityParameters: number[]`, `extraLines: string[]`).
+  - Funciones `parsePresetVfx(content: string): VfxPresetDescriptor`, `serializePresetVfx(preset: VfxPresetDescriptor): string` (garantizando `CRLF`, sangrías `0/4/8/12`, `short_name <= 6` y líneas `< 80` chars), `createEmptyPresetDescriptor(name: string): VfxPresetDescriptor`, `formatVfxChunkFilename(stripKind, stripIndex, slotIndex, pluginId): string`, `parseVfxBankFolderName(folder: string)` y `formatVfxBankFolderName(index: number, name: string): string`.
+- [ ] **Actualizar [`webapp/src/library/vfx-bank-validator.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/library/vfx-bank-validator.ts):**
+  - Delegar `readVfxChunkHeader` y `buildVfxChunkBuffer` en `vfx-chunk.ts` (cabecera real de 100 bytes + verificación de `headerChecksum` y `overallChecksum` con nuevo código de incidencia `CHUNK_CHECKSUM_INVALID` reparable automáticamente).
+  - Soportar presets multi-plugin de **4 canales × 3 slots + Aux 1/2 + Master** sin sobrescribir ni perder los canales `1..3`, `aux` ni `master` al reparar un banco (`repairVfxBank`), y no reportar `MISSING_CHUNK` cuando el slot tenga `parameter_count: 0` y el plugin sea chunkless.
+  - Reconocer carpetas de banco tanto con sufijo `.vfxbank` como carpetas `NNN_<Name>` que contengan subcarpetas `.vfxpreset`.
+
+---
+
+##### 2. Subbloque VI.B.2 — Servicios Backend, Endpoints OpenAPI y Sincronización USB
+
+- [ ] **Ampliar [`webapp/src/common/api-errors.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/common/api-errors.ts) con nuevos `API_ERROR_CODES`:**
+  - Añadir: `'bankFolderMissing'`, `'bankAlreadyExists'`, `'bankNameInvalid'`, `'bankLimitExceeded'`, `'presetFolderMissing'`, `'presetLimitExceeded'`, `'presetInvalid'`, `'chunkInvalid'`, `'pluginNotInstalled'`.
+  - Registrar el mapeo HTTP (`404`, `409`, `400`, `422`) en los controladores y añadir las traducciones correspondientes bajo `msg.apiError.<code>` tanto en `locales/es.ts` como en `locales/en.ts`.
+- [ ] **Crear `VfxBanksService`, `VfxBanksController` y `vfx-banks.dto.ts` en `webapp/src/library/` (registrados en `LibraryModule`):**
+  - Todos los DTOs deben usar `@ApiProperty` / `@ApiPropertyOptional` con `example` explícito, tipos primitivos explícitos en propiedades anulables (`nullable: true`) y esquemas cerrados compatibles con `openapi.test.ts` y `openapi.examples.test.ts`.
+  - **Endpoints REST bajo `/library/vfx-banks`:**
+    1. `POST /library/vfx-banks/list` (`{ libraryRoot }`): Escanea `<libraryRoot>/banks/`, devuelve la lista ordenada de bancos con `{ folder, index, name, isCanonicalSuffix, presetCount, totalBytes, mtimeMs, referencedPlugins: [{ id, name, installedFolder, isSynth }], missingPluginIds, health: 'valid' | 'repairable' | 'broken', issuesCount }`.
+    2. `POST /library/vfx-banks/inspect` (`{ libraryRoot, bankFolder }`): Devuelve metadatos del banco y la lista ordenada de presets (`000..127`), incluyendo para cada preset el resumen visual de los **4 canales** (`channelsSummary`: slots activos A/B/C, rango MIDI `noteMin..noteMax`, `midiChannel`, `transpose`, `volume`), `auxSummary`, `masterSummary`, `tempoBpm` e incidencias del validador.
+    3. `POST /library/vfx-banks/create` (`{ libraryRoot, name, index? }`): Crea atómicamente `<libraryRoot>/banks/NNN_<name>.vfxbank` (calculando el primer índice libre `000..127` si `index` se omite; valida `name.length <= 30` y `< 128` bancos). Registra evento en `AssociationAuditService`.
+    4. `POST /library/vfx-banks/rename` (`{ libraryRoot, bankFolder, newName, newIndex? }`) y `POST /library/vfx-banks/reorder` (`{ libraryRoot, orderedBankFolders }`): Renombrado y reindexación atómica (`000_..NNN_`) usando directorio temporal intermedio en la misma partición para evitar colisiones de nombres.
+    5. `POST /library/vfx-banks/delete` (`{ libraryRoot, bankFolder }`): Envía la carpeta del banco a la papelera de reciclaje en Windows (`trash.ts`) o elimina de forma segura, registrando auditoría.
+    6. `POST /library/vfx-banks/repair` (`{ libraryRoot, bankFolder }`): Ejecuta `repairVfxBank` recalculando CRC-16, corrigiendo nombres `.chunk` o alineando IDs contra los plugins instalados en `plugs/`.
+    7. `POST /library/vfx-banks/preset/read` (`{ libraryRoot, bankFolder, presetFolder }`): Devuelve el `VfxPresetDescriptor` completo (los 4 canales × 3 slots + Aux 1/2 + Master) junto con metadatos de los `.chunk` presentes en disco y los bancos `.fxb` disponibles de cada plugin instalado para alimentar los selectores de la UI.
+    8. `POST /library/vfx-banks/preset/save` (`{ libraryRoot, bankFolder, presetFolder?, index?, preset, slotSoundSources? }`):
+       - Crea (si `presetFolder` se omite) o actualiza atómicamente `NNN_<preset.name>.vfxpreset`.
+       - Para cada uno de los **7 buses × 3 slots**:
+         - Si el slot está vacío, elimina cualquier `.chunk` residual de esa posición `(bus, slot)`.
+         - Si el slot asigna un plugin instalado y `slotSoundSources` indica `{ mode: 'fxb', fxbName, programIndex }`, genera el `.chunk` real de 100 bytes + CRC-16 desde `plugs/<Plugin>/presets/<fxbName>`.
+         - Si `mode: 'keep'` y ya existía un `.chunk` válido para ese mismo `pluginId`, lo conserva intacto.
+         - Si `mode: 'default'` (o no se especifica y no había `.chunk` previo), intenta clonar un `.chunk` base del plugin si existe o genera un `.chunk` inicial válido con `parameterCount` parámetros a `0.0` (u omite `.chunk` si `parameter_count === 0`).
+       - Escribe `preset.vfx` mediante `writeFileAtomic` y registra traza en `PluginLogService` de los plugins implicados.
+    9. `POST /library/vfx-banks/preset/clone`, `POST /library/vfx-banks/preset/delete` y `POST /library/vfx-banks/preset/reorder`: Operaciones atómicas sobre carpetas `.vfxpreset` manteniendo numeración consecutiva `000_..127_` y respetando el tope hardware de 128 presets por banco (`presetLimitExceeded`).
+    10. `POST /library/vfx-banks/generate-from-plugin` (`{ libraryRoot, pluginFolder, bankFolder?, fxbName?, maxPresets? }`):
+        - Utilidad directa para el músico: dado un plugin instalado en `plugs/<pluginFolder>` (con o sin `fxbLoader`), crea un banco `.vfxbank` (o añade presets a uno existente) generando automáticamente un `.vfxpreset` inicial (Canal 1 / Slot A apuntando al plugin) o convirtiendo hasta 128 programas de un `.fxb` del plugin en `.vfxpreset` individuales seleccionables desde la rueda física de la V-Machine.
+- [ ] **Integrar opción de banco inicial al dar de alta plugins (`WizardController` / `LibraryController`):**
+  - Añadir flag opcional `createInitialVfxBank?: boolean` (por defecto `false` en API por retrocompatibilidad de tests existentes, activable por checkbox en UI) en `POST /wizards/install` y `POST /library/create-custom-plugin`, invocando `VfxBanksService.generateFromPlugin`.
+- [ ] **Extender [`webapp/src/vmachine/vmachine.service.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/vmachine/vmachine.service.ts), `vmachine.controller.ts` y `vmachine.dto.ts` para `banks/`:**
+  - `GET /vmachine/inventory`: añadir `banks: VMachineStickBankDto[]` dentro de cada entrada de `libraries[]` (con `folder`, `name`, `presetCount`, `files`, `bytes`, `referencedPluginIds`, `missingPluginIdsOnStick`: IDs de plugins usados por algún preset del banco que **no** están presentes en `plugs\` de esa misma `.vfxlibrary` del pendrive).
+  - `GET /vmachine/sync`: añadir `banks: VMachineBankSyncEntryDto[]` y `bankCounts: { total, same, differs, missing }` en `VMachineSyncResponseDto`.
+    - Estado `missing` (la carpeta del banco no está en `<Drive>:\<Lib>.vfxlibrary\banks\`), `differs` (difiere el conjunto de archivos relativos, tamaños o contenido de `preset.vfx`/`.chunk`), `same` (idéntico).
+    - Incluir `requiredPluginFolders: string[]` y `missingOnStickPluginFolders: string[]` cruzando los `pluginId` de todos los slots de los 4 canales/Aux/Master del banco con los plugins de `<libraryRoot>/plugs/` y del USB.
+  - `POST /vmachine/copy`:
+    - Hacer `folders?: string[]` opcional si se envía `bankFolders?: string[]` (exigir que `folders.length + bankFolders.length > 0`, manteniendo compatibilidad 100% con peticiones actuales que solo envían `folders`).
+    - Añadir `includeRequiredPlugins?: boolean`: cuando es `true`, resuelve e incluye automáticamente en la copia las carpetas de `plugs/` requeridas por los `bankFolders` seleccionados que aún falten en el pendrive.
+    - Verificar espacio libre combinado (`plugs` + `banks`) antes de escribir (`notEnoughSpace`) y copiar cada archivo con la misma verificación SHA-256 (`<= 32 MiB`) / tamaño (`> 32 MiB`) y reporte unificado (`copied`, `replaced`, `bytes`, `verified`, `copiedPlugins`, `copiedBanks`).
+- [ ] **Regenerar artefactos OpenAPI y Cliente Tipado:**
+  - Añadir `client.vfxBanks.*` y ampliar `client.vmachine.*` en [`webapp/src/client/fxb-client.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/client/fxb-client.ts).
+  - Ejecutar `npm --prefix webapp run client` para actualizar `webapp/openapi.json` y `webapp/src/client/api-types.ts`.
+
+---
+
+##### 3. Subbloque VI.B.3 — Diseño Funcional, Interfaz de Usuario (UI/UX) y Flujo del Músico
+
+1. **Navegación Principal en Cabecera (`.top-actions` en [`webapp/public/index.html`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/public/index.html)):**
+   - Añadir el botón `#vfx-banks-nav-btn` (`class="nav-btn"`, icono `#icon-banks`) inmediatamente después de `#library-nav-btn` (`Librería`) y antes de `#wizards-nav-btn` (`Wizards`), estableciendo el orden natural de trabajo:
+     `Unidad` → `Librería` (Plugins) → `Bancos V-Machine` (Escenas de 4 canales) → `Wizards` → `Añadir` → `Auditoría` → `Ajustes`.
+
+2. **Nueva Vista Principal `#vfx-banks-view` (`class="view" hidden aria-labelledby="vfx-banks-title"`):**
+   - ** Guardas de `libraryRoot`:** Si `libraryRoot` está vacío, mostrar aviso con `renderStatusWithAction` (`[Configurar en Ajustes]` → abre `#settings-drawer` y enfoca `#library-root`), exactamente igual que en Librería y Unidad, y bloquear botones de creación.
+   - **Tarjeta superior — Listado de Bancos Nativos (`#vfx-banks-table` sobre `mountTable`):**
+     - Barra de acciones con botón primario `#vfx-bank-create-btn` (`+ Nuevo banco V-Machine`) y botón `#vfx-banks-refresh-btn` (`Actualizar`).
+     - Columnas de `mountTable`:
+       1. `index`: Nº LCD (`000`..`127`, monoespacio).
+       2. `name`: Nombre del banco + carpeta pequeña debajo.
+       3. `presetCount`: Nº de escenas/presets (`X / 128`).
+       4. `plugins`: Badges compactos con los plugins usados en sus presets (y `.badge.warn` si algún plugin referenciado no está instalado en `plugs/`).
+       5. `health`: Badge de integridad (`Válido` verde / `Reparable` ámbar / `Incompleto` rojo).
+       6. `rowActions` (`···`): `Ver escenas / presets`, `Nueva escena (4 canales)`, `Renombrar banco`, `Reparar banco` (si es reparable), `Copiar a la Unidad` (atajo directo si hay unidad configurada) y `Eliminar banco`.
+     - Filtros chip en la tabla: Salud (`Todos` / `Con avisos` / `Válidos`) y Tipo (`Todos` / `Multi-plugin` / `Un solo plugin`).
+   - **Tarjeta inferior contextual — Escenas / Presets del Banco Seleccionado (`#vfx-bank-detail-card`, visible al elegir un banco):**
+     - Cabecera con nombre del banco activo, contador `N / 128 presets`, botón primario `#vfx-preset-create-btn` (`+ Nueva escena / preset`) y selector rápido de reordenación (`Subir` / `Bajar`).
+     - Tabla `#vfx-presets-table` montada con `mountTable`:
+       1. `index`: Programa LCD (`000`..`127`).
+       2. `name`: Nombre del preset.
+       3. `channels`: **Resumen visual de los 4 canales** mediante 4 píldoras `.vfx-ch-pill` (`Ch1`, `Ch2`, `Ch3`, `Ch4`): muestra nombre corto/plugin en Slot A, indicador `+FX` si Slot B o C tienen efectos de inserción, y etiqueta de zona MIDI si hay split o canal dedicado (ej. `Ch1: VStat [C-2..B2]`, `Ch2: Piano +LOFI [C3..G8]`, `Ch3: —`, `Ch4: —`).
+       4. `buses`: Indicador compacto si `Aux 1`, `Aux 2` o `Master` tienen efectos cargados.
+       5. `tempoBpm`: Tempo (`120 BPM`).
+       6. `rowActions` (`···`): `Editar escena (4 canales)`, `Clonar escena`, `Mover arriba`, `Mover abajo`, `Eliminar escena`.
+
+3. **Cajón / Compositor Visual de Escena Multi-Plugin de 4 Canales (`#vfx-preset-drawer`):**
+   - Estructura HTML: `<section id="vfx-preset-drawer" class="card drawer vfx-preset-drawer" role="dialog" aria-modal="true" aria-labelledby="vfx-preset-drawer-title" tabindex="-1" hidden>`. Ancho ampliado en escritorio (`max-width: 1080px; width: 95vw`) para alojar cómodamente el rack de 4 canales.
+   - **Bloque 1 — Cabecera global y Visor LCD Hardware:**
+     - Campos en fila `.row`: Nombre de escena (`#vfx-preset-name`, máx. 30 chars), Tempo BPM (`#vfx-preset-tempo`, `number` `20..300`), Compás (`#vfx-preset-timesig-num` / `#vfx-preset-timesig-den`, por defecto `4/4`).
+     - **Simulador LCD V-Machine (`.vfx-lcd-preview`):** Recuadro compacto con tipografía monoespaciada que previsualiza `BNK 000:000 <PresetName>` en la línea 1 y los `short_name` de 6 caracteres de los 4 canales (`1:VStat 2:4FPN 3:---- 4:----`) en la línea 2.
+   - **Bloque 2 — Plantillas Musicales de 1 Clic (`.vfx-layout-presets`):**
+     - Botones secundarios rápidos para configurar el enrutado MIDI/mezcla sin cálculos manuales:
+       - `Simple (Canal 1)`: Activa Ch 1 en rango completo Omni, silencia Ch 2–4.
+       - `Layer Doble (Ch 1 + Ch 2)`: Activa Ch 1 y Ch 2 en rango completo Omni a volumen equilibrado (`185`) para apilar dos sintetizadores.
+       - `Split Teclado Bajo / Teclas (C3)`: Configura Ch 1 en notas `0..59` (`C-2..B2`) y Ch 2 en notas `60..127` (`C3..G8`).
+       - `Multi 4 Partes (MIDI 1–4)`: Asigna `Ch 1 → MIDI 1`, `Ch 2 → MIDI 2`, `Ch 3 → MIDI 3`, `Ch 4 → MIDI 4`.
+   - **Bloque 3 — Visualizador Unificado de Zonas de Teclado MIDI (`.vfx-keyboard-map`):**
+     - Barra horizontal ligera en HTML/CSS puro (0 dependencias externas) que representa las 128 notas MIDI (`0..127`, marcando referencias `C1 (36)`, `C2 (48)`, `C3 (60)`, `C4 (72)`) con 4 carriles superpuestos que pintan en tiempo real el rango `midi_note_min .. midi_note_max` de cada canal activo. Permite detectar de un vistazo cualquier solapamiento o hueco en un *split*.
+   - **Bloque 4 — Rack de los 4 Canales (`#vfx-channels-grid`, `.vfx-channels-grid`):**
+     - Grid responsivo de 4 tarjetas (`.vfx-channel-card`, 4 columnas en pantallas anchas `>= 1100px`, 2×2 en medianas, 1 columna en móvil), correspondientes a `Canal 1`..`Canal 4` (`channel: 0..3`):
+       - **Encabezado del canal:** Etiqueta `Canal N`, conmutadores compactos `Mute` y `Solo` (`button[aria-pressed]`) y botón `Limpiar canal`.
+       - **Slot A (Instrumento Principal / Fuente):**
+         - `<select>` con los plugins instalados en `<libraryRoot>/plugs/`, agrupados en `<optgroup>` *Instrumentos / Sintetizadores* (`is_synth: 1`) y *Efectos* (`is_synth: 0`), más `— Vacío —`. Si el preset cargado referencia un `pluginId` que no está en `plugs/`, mostrar opción de advertencia `ID <id> (No instalado en librería)` sin perderlo salvo que el usuario lo cambie.
+         - Input `short_name` (`maxlength="6"`, etiqueta «Texto LCD (6 máx.)», rellenado automáticamente al elegir plugin).
+         - Selector de **Sonido / Programa (`.fxb`)**: desplegable con `(Mantener actual)` / `(Por defecto / fxbLoader)` + los bancos `.fxb` del plugin elegido y selector de programa (`001..128`) cuando el `.fxb` es de programas `FxBk`.
+       - **Slots B y C (Efectos de Inserción en Serie del Canal):**
+         - Presentados de forma limpia (visibles directamente si tienen plugin asignado, o desplegables mediante botón `+ Añadir efecto de inserción (Slot B / C)` cuando están vacíos para no abrumar visualmente). Mismo selector de plugins (priorizando `<optgroup>` de *Efectos*), `short_name` y programa inicial.
+       - **Controles MIDI del Canal:**
+         - `Canal MIDI`: `<select>` (`Omni (Todos)` = `0`, `Canal 1`..`Canal 16`).
+         - `Nota mín.` y `Nota máx.`: inputs/selectores `0..127` mostrando nombre musical junto al número (`60 · C3`), sincronizados con `.vfx-keyboard-map`.
+         - `Transposición`: `-48` a `+48` semitonos (con botones rápidos `-12` / `0` / `+12`).
+       - **Mezcla del Canal:**
+         - `Volumen` (`input[type="range"]` `0..255`, valor numérico legible en `%`; al asignar el primer plugin a un canal vacío sube automáticamente de `0` a `206` y al vaciar los 3 slots baja a `0`).
+         - `Panorama` (`input[type="range"]` `0..255`, `128` = `C`, etiqueta `L..C..R`).
+         - Envíos `Aux 1` y `Aux 2` (`0..255` + check compacto `Pre` dentro de opciones de envío).
+   - **Bloque 5 — Buses Globales Colapsables (`<details id="vfx-global-buses">`: `Aux 1`, `Aux 2` y `Master`):**
+     - Tres tarjetas horizontales compactas para `Aux 1` (`aux: 0`), `Aux 2` (`aux: 1`) y `Master` (`master:`), cada una con sus 3 slots de efecto (`Slot A`, `Slot B`, `Slot C`) y control de nivel de retorno / nivel maestro (`volume: 206` por defecto en Master).
+     - Nota informativa si algún slot conserva asignaciones avanzadas de hardware (`N mapeos MIDI CC y M parámetros prioritarios conservados`).
+   - **Pie del cajón:** Estado `#vfx-preset-status` (`role="status" aria-live="polite"`), botón primario `#vfx-preset-save-btn` (`Guardar escena`) y `#vfx-preset-cancel-btn` (`Cancelar`).
+
+4. **Ampliación de la Vista «Unidad» (`#vmachine-view`) y Atajos desde Plugins:**
+   - En `#vmachine-view`:
+     - Mostrar tanto los **Plugins (`plugs/`)** como los **Bancos Nativos (`banks/`)** tanto en el inventario de lo que ya tiene el pendrive como en la sección «Comparado con la librería».
+     - Usar pestañas accesibles o dos bloques claros con `mountTable` (`#vmachine-inventory` + `#vmachine-banks-inventory`, y `#vmachine-sync` + `#vmachine-banks-sync`).
+     - En `#vmachine-banks-sync`, mostrar en cada fila: Banco, Escenas/Presets, Plugins requeridos (marcando con badge ámbar si alguno de los plugins de sus 4 canales aún no está en el pendrive), Estado (`Falta en la unidad` / `Distinto` / `Al día`) y Tamaño.
+     - Checkbox `#vmachine-include-bank-deps` (marcado por defecto): *«Incluir automáticamente los plugins que necesiten los bancos copiados si faltan en la unidad»*.
+     - El botón primario `#vmachine-copy` sincroniza en una sola operación verificada los plugins y bancos pendientes/seleccionados.
+   - En el cajón `#banks` de un plugin individual y en `#dialog-wizard-install` / `#custom-plugin-drawer`:
+     - Botón `#banks-generate-vfxbank-btn` en `#banks`: *«Crear banco nativo V-Machine desde este plugin / .fxb»* (abre miniformulario o ejecuta `generate-from-plugin` y ofrece ir al banco creado).
+     - Checkbox `#wizard-install-create-bank` y `#custom-plugin-create-bank`: *«Crear banco V-Machine inicial para que aparezca directamente en la pantalla de la unidad»*.
+
+---
+
+##### 4. Subbloque VI.B.4 — Reglas Estrictas de Integración: Estilos CSS, HTML/ARIA e Internacionalización (i18n)
+
+> **CRÍTICO PARA EL MODELO IMPLEMENTADOR:** El repositorio cuenta con auditorías estáticas automatizadas muy estrictas que hacen fallar `npm test` ante el menor descuido de CSS, DOM o traducciones. Deben cumplirse **todas** estas reglas:
+
+1. **Estilos Generales y Sistema de Diseño ([`webapp/public/styles.css`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/public/styles.css) + [`webapp/test/ui.styles.test.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/test/ui.styles.test.ts)):**
+   - **Prohibido usar colores literales (`#hex`, `rgb(...)`) fuera de `:root`:** Utilizar **exclusivamente** las variables CSS semánticas del sistema (`var(--bg)`, `var(--surface)`, `var(--border)`, `var(--text)`, `var(--muted)`, `var(--accent)`, `var(--accent-text)`, `var(--ok-bg)`, `var(--ok-text)`, `var(--off-bg)`, `var(--off-text)`, `var(--danger)`, `var(--danger-bg)`, `var(--warn-bg)`, `var(--warn-border)`, `var(--warn-text)`, `var(--shadow)`). Esto garantiza soporte automático en tema **Claro, Oscuro y Automático**.
+   - **Altura unificada de controles (`auditControlHeight`):** Todo `<input>` textual/numérico, `<select>` y `<button>` estándar en filas `.row` debe respetar `var(--control-height)` (`42px`). Para botones diminutos dentro de cabeceras de canal (ej. `Mute`/`Solo` o píldoras), usar clases específicas con sus propias reglas bien acotadas sin alterar `button` global.
+   - **Scroll de tablas paginadas dentro de cajones (`auditPaginatedTableScroll`):** Si se monta una tabla `mountTable` dentro de un `.drawer`, añadir siempre el override explícito en `styles.css` **después** de `.drawer .table-wrap`:
+     ```css
+     .mi-contenedor-tabla .table-wrap {
+       max-height: none;
+       overflow-y: visible;
+     }
+     ```
+   - **Cero selectores CSS muertos (`auditCss`):** `ui.styles.test.ts` parsea cada selector de `styles.css` y verifica que coincida con la jerarquía real de `public/index.html` o con clases creadas dinámicamente en `src/ui/**/*.ts`. **No escribir ni una sola regla CSS «por si acaso»** que no tenga su elemento real en HTML o TS, y evitar combinadores hermanos (`+`, `~`) innecesarios.
+   - **Reutilizar componentes visuales existentes:** `.card`, `.drawer`, `.summary`, `.row`, `.field`, `.note`, `.status`, `.badge` (`.badge.on`, `.badge.off`, `.badge.warn`, `.badge.danger`), `.icon` con `<svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-..."></use></svg>`. Si hace falta un icono nuevo (p. ej. `#icon-sliders` para el mezclador de 4 canales), declararlo como `<symbol viewBox="0 0 24 24">` dentro del `<svg class="icon-sprite">` al inicio de `public/index.html` usando solo trazo `currentColor` sin `fill`.
+
+2. **Marcado HTML, Accesibilidad ARIA y Ciclo de Cajones ([`webapp/public/index.html`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/public/index.html) + [`webapp/test/ui.markup.test.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/test/ui.markup.test.ts)):**
+   - **Cero marcado huérfano (`auditMarkup`):** Todo `id="..."`, `class="..."`, `data-*="..."` y atributo de estado `aria-*` (`aria-expanded`, `aria-pressed`, `aria-selected`, `aria-checked`) declarado en `public/index.html` **debe** ser leído/usado en `styles.css`, en `src/ui/**/*.ts` (mediante `byId`, `query`, `classList`, `dataset`, `getAttribute`/`setAttribute`) o por otro atributo HTML (`for`, `aria-labelledby`, `aria-describedby`, `aria-controls`).
+   - **Regla de oro de `data-i18n` con elementos hijos:** `applyI18n()` asigna `el.textContent = t(key)`. **NUNCA** colocar `data-i18n` en un elemento (`<button>`, `<label>`, `<h2>`, `<h3>`, `<summary>`) que contenga `<input>`, `<svg>` o `<span id="...">` hijos; envolver siempre el texto literal dentro de un `<span data-i18n="...">Texto en inglés</span>` dedicado.
+   - **Gestión de Drawers y Modales:** Registrar `#vfx-preset-drawer` (y cualquier diálogo auxiliar `<dialog>`) en `elements.ts`, incluir su cierre en `closeAllDrawers()`, soportar cierre con tecla `Escape` y clic en `#drawer-backdrop`, gestionar `aria-modal="true"` y devolver el foco al elemento disparador al cerrar.
+   - **Modularidad en TypeScript del navegador (`webapp/src/ui/browser/`):** Para mantener limpio `main.ts`, implementar la vista de bancos y el compositor de 4 canales en módulos dedicados (`webapp/src/ui/browser/vfx-banks-view.ts` y `webapp/src/ui/browser/vfx-preset-drawer.ts`) e importarlos con extensión `.js` (`import { ... } from './vfx-banks-view.js'`), cumpliendo `tsconfig.ui.json` (cero dependencias runtime de terceros).
+
+3. **Internacionalización Completa ES / EN ([`webapp/test/i18n-keys.test.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/test/i18n-keys.test.ts)):**
+   - **Paridad estricta 100%:** Toda clave pasada a `t('...')` debe ser un **literal de cadena estático** (nunca interpolar `t(\`vfx.\${kind}\`)` porque el escáner estático no la vería o usar un mapa explícito de literales `{ channel: t('vfxPreset.stripChannel'), aux: t('vfxPreset.stripAux'), master: t('vfxPreset.stripMaster') }`).
+   - Toda clave añadida debe existir con valor no vacío en **ambos** diccionarios:
+     - [`webapp/src/ui/i18n/locales/es.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/ui/i18n/locales/es.ts)
+     - [`webapp/src/ui/i18n/locales/en.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/ui/i18n/locales/en.ts)
+   - **Idioma base del HTML estático:** En `public/index.html`, los textos iniciales de fallback, `title`, `placeholder` y `aria-label` se escriben en **inglés** junto con sus atributos `data-i18n`, `data-i18n-title`, `data-i18n-placeholder` y `data-i18n-label`.
+   - **Estructura de namespaces recomendada en `es.ts` y `en.ts`:**
+     - `nav.vfxBanks`, `nav.vfxBanksTitle`
+     - `vfxBanks.*` (`title`, `note`, `createBank`, `bankName`, `presetCount`, `healthValid`, `healthRepairable`, `healthBroken`, `emptyBanks`, `emptyPresets`, `generateFromPlugin`, `missingPluginWarn`, `confirmDeleteBank`, etc.)
+     - `vfxPreset.*` (`drawerTitle`, `sceneName`, `tempo`, `timeSignature`, `lcdPreview`, `layoutSingle`, `layoutLayer`, `layoutSplit`, `layoutMulti4`, `channelTitle`, `slotInstrument`, `slotInsertB`, `slotInsertC`, `addInsertFx`, `emptySlot`, `shortName`, `soundSource`, `soundKeep`, `soundDefault`, `midiChannel`, `midiOmni`, `noteMin`, `noteMax`, `transpose`, `volume`, `pan`, `sendAux1`, `sendAux2`, `globalBuses`, `aux1`, `aux2`, `master`, `preservedMidiMaps`, `saveScene`, `savedOk`, etc.)
+     - `vmachine.*` (`tabPlugins`, `tabBanks`, `banksInventoryEmpty`, `banksSyncEmpty`, `includeBankDeps`, `missingPluginsBadge`, etc.)
+     - `msg.apiError.*` (todos los nuevos códigos añadidos en `API_ERROR_CODES`).
+
+---
+
+##### 5. Subbloque VI.B.5 — Plan de Pruebas y Criterios de Aceptación Verificables
+
+- [ ] **1. Tests unitarios binarios y de formato (`webapp/test/vfx-chunk.test.ts`, `webapp/test/vfx-preset.test.ts` y ampliación de `vfx-bank-validator.test.ts`):**
+  - Verificar que `vfxCrc16Update` + `vfxCrc16Finalize` sobre archivos `.chunk` reales de `_banks/` reproduce exactamente los `uint16le` almacenados en `0x10` y `0x12` (p. ej. `0x460e` y `0xfc2d` en `channel_1_slot_b_1280263753.chunk`).
+  - Verificar creación desde cero de `.chunk` de 100 bytes desde programas `FxBk` y chunks `FBCh`, reparación de `pluginId` recalculando CRC-16, y ausencia legítima de `.chunk` en plugins con `parameter_count: 0`.
+  - Verificar round-trip sin pérdidas (`parsePresetVfx` → `serializePresetVfx`) de escenas reales con **4 canales**, splits MIDI (`0..59` / `60..127`), efectos insertados en `Slot B`/`Slot C`, envíos `Aux 1/2`, `Master`, `midi_map` y `priority_parameter`, comprobando `CRLF` y longitud `< 80` chars por línea.
+- [ ] **2. Tests de servicio, controlador, OpenAPI y sincronización USB (`webapp/test/vfx-banks.service.test.ts`, `vmachine.service.test.ts`, `openapi.test.ts`, `openapi.examples.test.ts`):**
+  - Ciclo completo CRUD sobre directorios temporales: crear banco `.vfxbank`, guardar escena con 4 canales poblando `.chunk` desde `.fxb` reales, clonar, reordenar, reparar e inspeccionar.
+  - Verificar en `VMachineService` el inventario de `banks/` en unidad simulada, detección de `missing` / `differs` / `same`, detección de dependencias de plugins faltantes en el stick y copia atómica verificada con `includeRequiredPlugins: true`.
+  - Pasar al 100% `openapi.test.ts`, `openapi.examples.test.ts` y `error-bodies.test.ts`.
+- [ ] **3. Auditorías estáticas obligatorias de UI, CSS, HTML e i18n:**
+  - `ui.styles.test.ts`: 0 reglas CSS muertas, altura de controles uniforme y sin doble scroll en cajones.
+  - `ui.markup.test.ts` y `ui.dom.test.ts`: 0 IDs, clases, `data-*` o `aria-*` huérfanos o inexistentes.
+  - `i18n-keys.test.ts`: 100% de claves literales resueltas en `es` y `en`.
+- [ ] **4. Test E2E en navegador real con Playwright (`webapp/test/browser.test.ts` o suite dedicada):**
+  - Crear un banco V-Machine desde la vista `Bancos V-Machine`, abrir el compositor de escena, configurar **2+ canales simultáneos** (p. ej. Split o Layer con sintetizador en Slot A + efecto en Slot B), guardar, comprobar en el disco real del servidor que `preset.vfx` y `channel_1_slot_a_<id>.chunk` / `channel_2_slot_a_<id>.chunk` existen con cabecera de 100 bytes y CRC-16 válido, y sincronizar el banco hacia una carpeta de unidad V-Machine simulada desde la vista `Unidad`.
+  - Ejecutar `npm --prefix webapp run build` y `npm --prefix webapp test` con **0 fallos**.
+
 
 ### 3. Fase VI.C: Usabilidad y Lenguaje para el Músico No Técnico
 - [ ] **Traducción de jerga técnica a lenguaje musical comprensible:**
