@@ -18,6 +18,8 @@ export interface TableColumn<T> {
   cellTitle?: (row: T, value: unknown) => string | undefined;
   cellHref?: (row: T, value: unknown) => string | undefined;
   cellDataset?: (row: T, value: unknown) => Record<string, string>;
+  /** Nodo en la cabecera en lugar de la etiqueta (una casilla de «todos», por ejemplo). */
+  renderHeader?: () => Node | null | undefined;
 }
 
 export interface TableFilterOption<T> {
@@ -366,7 +368,9 @@ export function mountTable<T>(root: HTMLElement, view: TableView<T>, initialRows
   const table = document.createElement('table'); const thead = document.createElement('thead'); const header = document.createElement('tr');
   for (const column of view.columns) {
     const th = document.createElement('th'); th.scope = 'col';
-    if (column.sortable === false) th.textContent = column.label;
+    const headerNode = column.renderHeader?.();
+    if (headerNode) th.append(headerNode);
+    else if (column.sortable === false) th.textContent = column.label;
     else {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'table-sort'; button.textContent = column.label;
       button.setAttribute('aria-label', t('ui.table.sortBy', { 0: column.label }));

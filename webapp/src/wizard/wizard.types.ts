@@ -132,6 +132,8 @@ export interface WizardInstallPluginInput {
   sourceFilesRoot?: string;
   /** Importar automáticamente el .reg generado en el Registro de Windows (solo HKCU). */
   autoImportRegistry?: boolean;
+  /** Forzar instalación ignorando si el nombre base del DLL no coincide con el del wizard. */
+  force?: boolean;
 }
 
 export interface WizardInstallPluginResult {

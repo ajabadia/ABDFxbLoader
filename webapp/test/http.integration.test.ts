@@ -459,12 +459,14 @@ test('POST /library/create-custom-plugin crea el plugin desde un DLL externo', a
   // `vfxinfo.txt` con la identidad declarada, en el formato del cargador.
   assert.equal(
     (await readFile(path.join(pluginDir, 'vfxinfo.txt'))).toString('latin1'),
-    'dll_name: NewSynth/NewSynth.dll\r\n' +
-      'id: 12345678\r\n' +
+    'id: 12345678\r\n' +
       'name: New Synth Pro\r\n' +
-      'is_synth: 1\r\n' +
+      'version: 1\r\n' +
+      'name_abbreviation: New \r\n' +
+      'dll_name: NewSynth/NewSynth.dll\r\n' +
       'parameter_count: 32\r\n' +
       'program_count: 16\r\n' +
+      'is_synth: 1\r\n' +
       'has_editor: 1\r\n' +
       'editor_width: 800\r\n' +
       'editor_height: 600\r\n',
@@ -479,7 +481,7 @@ test('POST /library/create-custom-plugin crea el plugin desde un DLL externo', a
   assert.equal(meta.common['name'], 'New Synth Pro');
   assert.equal(meta.common['vendor'], 'Custom Audio');
   assert.equal(meta.common['genre'], 'Synth');
-  assert.equal(meta.common['name_abbreviation'], 'New Synt');
+  assert.equal(meta.common['name_abbreviation'], 'New ');
   assert.match(meta.common['created'] ?? '', /^\d{4}-\d{2}-\d{2}$/);
 
   // El alta se ve en el escaneo y nace sin cargador.

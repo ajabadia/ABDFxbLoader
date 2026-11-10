@@ -36,3 +36,6 @@ export const STORAGE_CAPTURE_TASK = 'fxbLoader.captureTask';
 
 /** Modo de tema (`auto` | `dark` | `light`). */
 export const STORAGE_THEME = 'fxbLoader.theme';
+
+/** Unidad de la V-Machine elegida en Ajustes como destino. */
+export const STORAGE_VM_DRIVE = 'fxbLoader.vmachineDrive';

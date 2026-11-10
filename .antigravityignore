@@ -1,0 +1,48 @@
+# Dependencias y módulos externos
+node_modules/
+**/node_modules/
+
+# Compilados y artefactos generados
+dist/
+dist-test/
+dist-desktop/
+coverage/
+**/dist/
+**/dist-test/
+**/dist-desktop/
+**/coverage/
+webapp/public/js/
+webapp/public/vendor/
+*.tsbuildinfo
+
+# Datos masivos, bancos y respaldos locales
+_banks/
+_backup-*/
+_encoding-backup-*/
+tmp/
+.tmp/
+.tmp-*/
+
+# Resultados de tests, capturas y logs
+test-results/
+**/test-results/
+*.log
+npm-debug.log*
+
+# Estado de herramientas locales
+.freebuff/
+.codebase-memory/
+
+# Artefactos autogenerados pesados (OpenAPI / catálogos compilados / lockfiles)
+webapp/package-lock.json
+webapp/openapi.json
+webapp/src/client/api-types.ts
+webapp/src/wizard/wizards-catalog.json
+
+# Binarios
+*.exe
+*.dll
+*.pdb
+*.obj
+*.lib
+*.exp

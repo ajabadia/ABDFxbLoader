@@ -10,6 +10,7 @@ import { inspectPeExports } from '../library/pe-exports';
 import { PluginLogService } from '../plugin-log/plugin-log.service';
 import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
 import type { PluginMetaSnapshot } from '../plugin-meta/plugin-meta.types';
+import { ensureDefaultVfxPreset } from '../library/vfx-bank-validator';
 import { parseWizardText, serializeWizardToVfxinfo, toWizardSummary } from './wizard-parser';
 import type {
   WizardApplyMetaInput,
@@ -835,6 +836,15 @@ export class WizardService implements OnModuleInit {
       throw new Error(`El archivo DLL de origen no existe: ${dllSource}`);
     }
 
+    // Comprobar coincidencia del nombre del archivo DLL con el esperado por el wizard
+    const expectedBase = extractDllBase(wizard.dllName);
+    const actualBase = extractDllBase(dllSource);
+    if (!input.force && expectedBase && actualBase && expectedBase !== actualBase) {
+      throw new Error(
+        `El archivo DLL seleccionado ("${path.basename(dllSource)}") no coincide con el DLL esperado por el wizard ("${path.basename(wizard.dllName)}")`,
+      );
+    }
+
     // Inspección de arquitectura PE del DLL de origen
     const pe = await inspectPeFile(dllSource);
     const warnings: string[] = [];
@@ -844,6 +854,18 @@ export class WizardService implements OnModuleInit {
       warnings.push(
         `El DLL es de ${pe.bitness || '64'} bits (${pe.machineName || 'AMD64'}). El hardware VFX y fxbLoader requieren binarios de 32 bits (i386).`,
       );
+    }
+
+    // Comprobar si el binario exporta puntos de entrada VST (VSTPluginMain o main)
+    try {
+      const exports = await inspectPeExports(dllSource);
+      if (exports.validPe && exports.vstEntrypoint === null) {
+        warnings.push(
+          `El archivo DLL no exporta los puntos de entrada VST estándar ("VSTPluginMain" o "main"). Podría no ser un plugin VST2 compatible.`,
+        );
+      }
+    } catch {
+      // Ignorar fallo de inspección de exports si inspectPeFile ya cubrió el análisis básico
     }
 
     // Determinar nombre de la carpeta de plugin
@@ -1047,6 +1069,21 @@ export class WizardService implements OnModuleInit {
       const presetsDir = path.join(targetPluginDir, 'presets');
       if (!existsSync(presetsDir)) {
         await fs.mkdir(presetsDir, { recursive: true });
+      }
+
+      // Asegurar que existe al menos un banco/preset nativo .vfxbank para V-Machine en <libraryRoot>/banks/
+      const numericPluginId = Number.parseInt(wizard.id, 10);
+      if (!Number.isNaN(numericPluginId) && numericPluginId > 0) {
+        try {
+          await ensureDefaultVfxPreset({
+            libraryRoot,
+            pluginId: numericPluginId,
+            pluginName: wizard.name,
+            shortName: wizard.nameAbbreviation || undefined,
+          });
+        } catch (presetErr) {
+          warnings.push(`No se pudo generar preset nativo V-Machine: ${(presetErr as Error).message}`);
+        }
       }
     }
 

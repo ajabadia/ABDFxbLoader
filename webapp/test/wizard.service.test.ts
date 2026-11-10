@@ -420,7 +420,7 @@ describe('WizardService', () => {
     it('advierte y marca isCompatible32Bit: false si la DLL no es PE32 (32-bit)', async () => {
       await serviceWithLog.initIndex();
       const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-install-arch-'));
-      const fakeDll64 = path.join(tempLib, 'p8_64.dll');
+      const fakeDll64 = path.join(tempLib, 'P8.dll');
       await fs.writeFile(fakeDll64, pe64Dll());
       try {
         const res = await serviceWithLog.installPlugin({
@@ -439,7 +439,7 @@ describe('WizardService', () => {
     it('instala el plugin correctamente creando árbol, vfxinfo, meta, presets y log', async () => {
       await serviceWithLog.initIndex();
       const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-lib-install-'));
-      const sourceDll = path.join(tempLib, 'original.dll');
+      const sourceDll = path.join(tempLib, 'P8.dll');
       await fs.writeFile(sourceDll, pe32Dll());
 
       try {
@@ -506,7 +506,7 @@ describe('WizardService', () => {
     it('vuelca registry_keys.reg si el wizard contiene claves del registro', async () => {
       await serviceWithLog.initIndex();
       const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-lib-reg-'));
-      const sourceDll = path.join(tempLib, 'minimoog.dll');
+      const sourceDll = path.join(tempLib, 'minimoog V Original.dll');
       await fs.writeFile(sourceDll, pe32Dll());
 
       try {
@@ -521,6 +521,39 @@ describe('WizardService', () => {
         const regContent = await fs.readFile(res.registryFilePath!, 'utf8');
         assert.match(regContent, /REGEDIT4/);
         assert.match(regContent, /Arturia\\minimoog V/);
+      } finally {
+        await fs.rm(tempLib, { recursive: true, force: true });
+      }
+    });
+
+    it('rechaza si el nombre del DLL no coincide con el esperado por el wizard a menos que se use force', async () => {
+      await serviceWithLog.initIndex();
+      const tempLib = await fs.mkdtemp(path.join(tmpdir(), 'vfx-lib-mismatch-'));
+      const wrongDll = path.join(tempLib, 'wrong_synth.dll');
+      await fs.writeFile(wrongDll, pe32Dll());
+
+      try {
+        await assert.rejects(
+          async () => {
+            await serviceWithLog.installPlugin({
+              libraryRoot: tempLib,
+              wizardId: '1398231096', // SuperWave P8 (espera P8.dll)
+              dllSourcePath: wrongDll,
+            });
+          },
+          (err: Error) =>
+            err.message.includes('no coincide con el DLL esperado por el wizard') &&
+            err.message.includes('wrong_synth.dll'),
+        );
+
+        // Con force: true sí debe permitir instalarlo
+        const forceRes = await serviceWithLog.installPlugin({
+          libraryRoot: tempLib,
+          wizardId: '1398231096',
+          dllSourcePath: wrongDll,
+          force: true,
+        });
+        assert.equal(forceRes.pluginName, 'SuperWave P8');
       } finally {
         await fs.rm(tempLib, { recursive: true, force: true });
       }

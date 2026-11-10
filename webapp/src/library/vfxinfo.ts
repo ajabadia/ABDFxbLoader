@@ -213,3 +213,22 @@ export async function readVfxinfo(file: string): Promise<string | null> {
     throw error;
   }
 }
+
+/**
+ * Deriva la abreviatura de 4 caracteres igual que el host
+ * (`vfx_vmachine/vfx_plugin_info.c`, `FUN_00450d70` de la v2): los cuatro bytes
+ * del id en big-endian cuando todos son ASCII imprimibles (`NAS2` = 0x4E415332)
+ * y, si no lo son, los cuatro primeros caracteres del nombre.
+ *
+ * La abreviatura explícita de un wizard (`name_abbreviation`, hasta 7
+ * caracteres) siempre manda sobre esta derivación.
+ */
+export function deriveNameAbbreviation(id: number, name: string): string {
+  if (Number.isInteger(id) && id > 0) {
+    const bytes = [24, 16, 8, 0].map((shift) => (id >>> shift) & 0xff);
+    if (bytes.every((byte) => byte >= 0x20 && byte <= 0x7e)) {
+      return String.fromCharCode(...bytes);
+    }
+  }
+  return name.slice(0, 4);
+}

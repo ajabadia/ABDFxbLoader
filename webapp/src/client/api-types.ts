@@ -573,6 +573,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/banks/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renombra un banco del plugin
+         * @description Renombra un `.fxb` de `<plugin>\<programDirName>\` sin tocar su contenido. El respaldo `<banco>.orig` se renombra con él y, si el banco era el `defaultFxbName` del plugin, `fxbLoader.config` se actualiza para que la DLL lo siga cargando. Nunca se pisa un archivo existente: para reemplazarlo hay que borrarlo primero.
+         */
+        post: operations["LibraryController_renameBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/banks/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Vacía un banco de programas
+         * @description Reescribe el `.fxb` en su sitio con cero programas, conservando `uniqueID`, versión y orden de bytes, para dejar el banco vacío sin perder su identidad. Antes guarda una copia byte a byte como `<banco>.orig` —la misma que usa «Restaurar original»— y no pisa un respaldo que ya exista.
+         */
+        post: operations["LibraryController_clearBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/banks/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Envía un banco a la papelera
+         * @description Mueve un `.fxb` de la carpeta de presets a la papelera del sistema (o lo borra del todo con `FXB_TRASH_MODE=direct`), igual que el resto de borrados del proyecto, y devuelve cuántos bancos quedan y si era el banco por defecto. El respaldo `<banco>.orig`, si existe, no se toca.
+         */
+        post: operations["LibraryController_deleteBank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/banks/convert": {
         parameters: {
             query?: never;
@@ -2887,6 +2947,144 @@ export interface components {
              */
             chunks: number;
         };
+        LibraryBankRenameRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Banco actual en `<plugin>\<programDirName>\`.
+             * @example Legacy.fxb
+             */
+            fileName: string;
+            /**
+             * @description Nombre nuevo, con extensión `.fxb` y sin separadores de ruta. No se pisa un archivo existente.
+             * @example Rhodes.fxb
+             */
+            newName: string;
+        };
+        LibraryBankRenameResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /** @description El banco antes de renombrarlo, con su hash y su cabecera. */
+            previous: components["schemas"]["BankExportFileDto"];
+            /** @description El mismo contenido, ya con el nombre nuevo. */
+            renamed: components["schemas"]["BankExportFileDto"];
+            /**
+             * @description `true` si el banco era el `defaultFxbName` del plugin y `fxbLoader.config` se actualizó para que la DLL lo siga cargando.
+             * @example true
+             */
+            defaultUpdated: boolean;
+            /**
+             * @description Respaldo `<banco>.orig` renombrado junto al banco; `null` si no había.
+             * @example Rhodes.fxb.orig
+             */
+            backupRenamed: string | null;
+        };
+        LibraryBankClearRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Banco a vaciar.
+             * @example Legacy.fxb
+             */
+            fileName: string;
+        };
+        LibraryBankClearResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /** @description El banco tal como estaba, antes de vaciarlo. */
+            previous: components["schemas"]["BankExportFileDto"];
+            /** @description El banco ya vacío: mismo nombre, ruta, `uniqueID`, versión y orden de bytes, con cero programas. */
+            cleared: components["schemas"]["BankExportFileDto"];
+            /**
+             * @description Programas que tenía antes de vaciarlo.
+             * @example 2
+             */
+            programs: number;
+            /**
+             * @description Copia byte a byte del original en `<banco>.orig`; `null` si no se creó.
+             * @example {
+             *       "fileName": "Legacy.fxb.orig",
+             *       "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb.orig",
+             *       "size": 216,
+             *       "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+             *     }
+             */
+            backup: Record<string, never> | null;
+            /**
+             * @description `true` si el respaldo se creó ahora; el primero que exista se conserva.
+             * @example true
+             */
+            backupCreated: boolean;
+        };
+        LibraryBankDeleteRequestDto: {
+            /**
+             * @description Raíz absoluta de la librería.
+             * @example C:\VFX\Library
+             */
+            libraryRoot: string;
+            /**
+             * @description Nombre de la carpeta del plugin dentro de `plugs\`.
+             * @example MySynth
+             */
+            plugin: string;
+            /**
+             * @description Banco a enviar a la papelera.
+             * @example Legacy.fxb
+             */
+            fileName: string;
+        };
+        LibraryBankDeleteResponseDto: {
+            plugin: components["schemas"]["PluginEntryDto"];
+            /** @example C:\VFX\Library\plugs\MySynth\presets */
+            presetsDir: string;
+            /**
+             * @description Banco enviado a la papelera, con el tamaño y el hash que tenía.
+             * @example {
+             *       "fileName": "Legacy.fxb",
+             *       "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+             *       "size": 216,
+             *       "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+             *     }
+             */
+            deleted: Record<string, never>;
+            /**
+             * @description Papelera donde quedó y cómo recuperarlo.
+             * @example {
+             *       "label": "Papelera de reciclaje de Windows",
+             *       "path": null,
+             *       "hint": "Restaura el archivo desde la papelera del sistema."
+             *     }
+             */
+            trash: Record<string, never>;
+            /**
+             * @description Bancos que quedan en la carpeta del plugin.
+             * @example 1
+             */
+            remaining: number;
+            /**
+             * @description `true` si el banco borrado era el `defaultFxbName` del plugin.
+             * @example false
+             */
+            wasDefault: boolean;
+        };
         LibraryBankConvertRequestDto: {
             /**
              * @description Raíz absoluta de la librería.
@@ -4278,6 +4476,12 @@ export interface components {
              * @default false
              */
             autoImportRegistry: boolean;
+            /**
+             * @description Si es true, permite instalar aunque el nombre del archivo DLL no coincida con el esperado por el wizard
+             * @default false
+             * @example false
+             */
+            force: boolean;
         };
         WizardInstallPluginResponseDto: {
             /**
@@ -4507,6 +4711,11 @@ export interface components {
              * @enum {string}
              */
             mode: "desktop" | "web-local" | "web-remote";
+            /**
+             * @description Carpeta de libreria encontrada en el disco cuando aun no hay ninguna configurada (`null` si ninguna de las carpetas de siempre contiene `plugs\`).
+             * @example D:\_banks\storage
+             */
+            defaultLibraryRoot?: string | null;
             /**
              * @description Indica si puede tomar instantáneas y diffs del Registro de Windows
              * @example true
@@ -7150,6 +7359,367 @@ export interface operations {
             };
         };
     };
+    LibraryController_renameBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankRenameRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Banco renombrado, con el hash de origen y destino, y si la configuración del banco por defecto se actualizó. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "hasLoader": true,
+                     *         "hasVfxinfo": true,
+                     *         "hasWizard": true,
+                     *         "wizardId": "MySynth",
+                     *         "hasMeta": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "previous": {
+                     *         "fileName": "Legacy.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "renamed": {
+                     *         "fileName": "Rhodes.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "defaultUpdated": true,
+                     *       "backupRenamed": "Rhodes.fxb.orig"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankRenameResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` inválido, `fileName`/`newName` con separadores o sin `.fxb`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "fileName no puede contener separadores de ruta: \"..\\Legacy.fxb\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\` o el banco no está en su carpeta de presets. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description Ya existe un archivo con el nombre nuevo. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "ya existe C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy-le.fxb; marca overwrite para reemplazarlo"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El archivo no es un banco VST2 válido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "el banco no es un .fxb válido: archivo de 12 bytes; un .fxb necesita al menos 156"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_clearBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankClearRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Banco vaciado, con el número de programas que tenía y el respaldo creado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "hasLoader": true,
+                     *         "hasVfxinfo": true,
+                     *         "hasWizard": true,
+                     *         "wizardId": "MySynth",
+                     *         "hasMeta": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "previous": {
+                     *         "fileName": "Legacy.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 208,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 1,
+                     *           "currentProgram": null,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "cleared": {
+                     *         "fileName": "Legacy.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+                     *         "size": 32,
+                     *         "sha256": "1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071",
+                     *         "bank": {
+                     *           "kind": "FxBk",
+                     *           "endianness": "little",
+                     *           "byteSize": 24,
+                     *           "version": 1,
+                     *           "uniqueId": "MySy",
+                     *           "uniqueIdValue": 1299796857,
+                     *           "fxVersion": 1000,
+                     *           "numPrograms": 0,
+                     *           "currentProgram": 0,
+                     *           "chunkSize": null
+                     *         }
+                     *       },
+                     *       "programs": 2,
+                     *       "backup": {
+                     *         "fileName": "Legacy.fxb.orig",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb.orig",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+                     *       },
+                     *       "backupCreated": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankClearResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` inválido, `fileName` con separadores o sin `.fxb`, archivo vacío. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "fileName no puede contener separadores de ruta: \"..\\Legacy.fxb\""
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\` o el banco no está en su carpeta de presets. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El archivo no es un banco VST2 válido, o es un `FBCh` (no tiene programas). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "un banco de chunk (FBCh) no tiene programas que vaciar"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    LibraryController_deleteBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryBankDeleteRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Banco enviado a la papelera, con su hash, la papelera y los bancos restantes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plugin": {
+                     *         "name": "MySynth",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth",
+                     *         "hasLoader": true,
+                     *         "hasVfxinfo": true,
+                     *         "hasWizard": true,
+                     *         "wizardId": "MySynth",
+                     *         "hasMeta": true,
+                     *         "pluginName": "MySynth.dll",
+                     *         "warnings": [],
+                     *         "compatible": true,
+                     *         "compatibilityIssues": []
+                     *       },
+                     *       "presetsDir": "C:\\VFX\\Library\\plugs\\MySynth\\presets",
+                     *       "deleted": {
+                     *         "fileName": "Legacy.fxb",
+                     *         "path": "C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb",
+                     *         "size": 216,
+                     *         "sha256": "9f2c1d6e4b0a8c7d5e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
+                     *       },
+                     *       "trash": {
+                     *         "label": "Papelera de reciclaje de Windows",
+                     *         "path": null,
+                     *         "hint": "Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su carpeta."
+                     *       },
+                     *       "remaining": 1,
+                     *       "wasDefault": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryBankDeleteResponseDto"];
+                };
+            };
+            /** @description `libraryRoot` inválido, `fileName` con separadores o sin `.fxb`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "la extensión debe ser .fxb"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description El plugin no existe en `plugs\` o el banco no está en su carpeta de presets. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no existe el plugin \"NoExiste\" en C:\\VFX\\Library\\plugs"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+            /** @description La papelera del sistema no aceptó el archivo. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "no se pudo enviar Warm Rhodes.fxb.orig a la papelera: la Papelera de reciclaje terminó con 1"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
     LibraryController_convertDefaultBank: {
         parameters: {
             query?: never;
@@ -8797,7 +9367,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Capacidades activas del sistema */
+            /** @description Capacidades activas del sistema y la carpeta de libreria detectada, si la hay. */
             200: {
                 headers: {
                     [name: string]: unknown;

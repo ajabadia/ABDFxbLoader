@@ -6,6 +6,7 @@
  * que pintan su contenido.
  */
 import { els } from './elements.js';
+import { hidePanel } from './drawers.js';
 import {
   closeBanks,
   closeMeta,
@@ -73,6 +74,7 @@ function closeAllDrawers(): void {
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  hidePanel(els.settingsDrawer);
 }
 
 export function applyView(view: ViewId): void {

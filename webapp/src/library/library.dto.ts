@@ -1088,6 +1088,162 @@ export class LibraryBankExportResponseDto {
   chunks!: number;
 }
 
+export class LibraryBankRenameRequestDto {
+  @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
+  libraryRoot!: string;
+
+  @ApiProperty({
+    description: 'Nombre de la carpeta del plugin dentro de `plugs\\`.',
+    example: 'MySynth',
+  })
+  plugin!: string;
+
+  @ApiProperty({
+    description: 'Banco actual en `<plugin>\\<programDirName>\\`.',
+    example: 'Legacy.fxb',
+  })
+  fileName!: string;
+
+  @ApiProperty({
+    description:
+      'Nombre nuevo, con extensión `.fxb` y sin separadores de ruta. No se pisa un archivo existente.',
+    example: 'Rhodes.fxb',
+  })
+  newName!: string;
+}
+
+export class LibraryBankRenameResponseDto {
+  @ApiProperty({ type: () => PluginEntryDto })
+  plugin!: PluginEntryDto;
+
+  @ApiProperty({ example: PRESETS_DIR })
+  presetsDir!: string;
+
+  @ApiProperty({
+    description: 'El banco antes de renombrarlo, con su hash y su cabecera.',
+    type: () => BankExportFileDto,
+  })
+  previous!: BankExportFileDto;
+
+  @ApiProperty({
+    description: 'El mismo contenido, ya con el nombre nuevo.',
+    type: () => BankExportFileDto,
+  })
+  renamed!: BankExportFileDto;
+
+  @ApiProperty({
+    description:
+      '`true` si el banco era el `defaultFxbName` del plugin y `fxbLoader.config` se actualizó ' +
+      'para que la DLL lo siga cargando.',
+    example: true,
+  })
+  defaultUpdated!: boolean;
+
+  @ApiProperty({
+    description: 'Respaldo `<banco>.orig` renombrado junto al banco; `null` si no había.',
+    example: 'Rhodes.fxb.orig',
+    type: String,
+    nullable: true,
+  })
+  backupRenamed!: string | null;
+}
+
+export class LibraryBankClearRequestDto {
+  @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
+  libraryRoot!: string;
+
+  @ApiProperty({
+    description: 'Nombre de la carpeta del plugin dentro de `plugs\\`.',
+    example: 'MySynth',
+  })
+  plugin!: string;
+
+  @ApiProperty({ description: 'Banco a vaciar.', example: 'Legacy.fxb' })
+  fileName!: string;
+}
+
+export class LibraryBankClearResponseDto {
+  @ApiProperty({ type: () => PluginEntryDto })
+  plugin!: PluginEntryDto;
+
+  @ApiProperty({ example: PRESETS_DIR })
+  presetsDir!: string;
+
+  @ApiProperty({
+    description: 'El banco tal como estaba, antes de vaciarlo.',
+    type: () => BankExportFileDto,
+  })
+  previous!: BankExportFileDto;
+
+  @ApiProperty({
+    description:
+      'El banco ya vacío: mismo nombre, ruta, `uniqueID`, versión y orden de bytes, con cero programas.',
+    type: () => BankExportFileDto,
+  })
+  cleared!: BankExportFileDto;
+
+  @ApiProperty({ description: 'Programas que tenía antes de vaciarlo.', example: 2 })
+  programs!: number;
+
+  @ApiProperty({
+    description: 'Copia byte a byte del original en `<banco>.orig`; `null` si no se creó.',
+    type: Object,
+    example: { fileName: 'Legacy.fxb.orig', path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb.orig', size: 216, sha256: LIBRARY_INSPECT_SHA256 },
+    nullable: true,
+  })
+  backup!: { fileName: string; path: string; size: number; sha256: string } | null;
+
+  @ApiProperty({
+    description: '`true` si el respaldo se creó ahora; el primero que exista se conserva.',
+    example: true,
+  })
+  backupCreated!: boolean;
+}
+
+export class LibraryBankDeleteRequestDto {
+  @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
+  libraryRoot!: string;
+
+  @ApiProperty({
+    description: 'Nombre de la carpeta del plugin dentro de `plugs\\`.',
+    example: 'MySynth',
+  })
+  plugin!: string;
+
+  @ApiProperty({ description: 'Banco a enviar a la papelera.', example: 'Legacy.fxb' })
+  fileName!: string;
+}
+
+export class LibraryBankDeleteResponseDto {
+  @ApiProperty({ type: () => PluginEntryDto })
+  plugin!: PluginEntryDto;
+
+  @ApiProperty({ example: PRESETS_DIR })
+  presetsDir!: string;
+
+  @ApiProperty({
+    description: 'Banco enviado a la papelera, con el tamaño y el hash que tenía.',
+    example: { fileName: 'Legacy.fxb', path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb', size: 216, sha256: LIBRARY_INSPECT_SHA256 },
+  })
+  deleted!: { fileName: string; path: string; size: number; sha256: string };
+
+  @ApiProperty({
+    description: 'Papelera donde quedó y cómo recuperarlo.',
+    type: Object,
+    example: { label: 'Papelera de reciclaje de Windows', path: null, hint: 'Restaura el archivo desde la papelera del sistema.' },
+  })
+  trash!: Record<string, unknown>;
+
+  @ApiProperty({ description: 'Bancos que quedan en la carpeta del plugin.', example: 1 })
+  remaining!: number;
+
+  @ApiProperty({
+    description: '`true` si el banco borrado era el `defaultFxbName` del plugin.',
+    example: false,
+  })
+  wasDefault!: boolean;
+}
+
 export class LibraryBankConvertRequestDto {
   @ApiProperty({ description: 'Raíz absoluta de la librería.', example: LIBRARY_ROOT })
   libraryRoot!: string;
@@ -2293,3 +2449,73 @@ export const LIBRARY_CREATE_CUSTOM_PLUGIN_RESPONSE_EXAMPLE: LibraryCreateCustomP
   warnings: [],
 };
 
+/** Renombrar un banco: mismo contenido, otro nombre y el banco por defecto al día. */
+export const LIBRARY_RENAME_BANK_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+  presetsDir: PRESETS_DIR,
+  previous: {
+    fileName: 'Legacy.fxb',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+    bank: LIBRARY_BANK_EXAMPLE,
+  },
+  renamed: {
+    fileName: 'Rhodes.fxb',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Rhodes.fxb',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+    bank: LIBRARY_BANK_EXAMPLE,
+  },
+  defaultUpdated: true,
+  backupRenamed: 'Rhodes.fxb.orig',
+};
+
+/** Vaciar un banco: cero programas, misma identidad y el original guardado en `.orig`. */
+export const LIBRARY_CLEAR_BANK_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+  presetsDir: PRESETS_DIR,
+  previous: {
+    fileName: 'Legacy.fxb',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+    bank: LIBRARY_BANK_EXAMPLE,
+  },
+  cleared: {
+    fileName: 'Legacy.fxb',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb',
+    size: 32,
+    sha256: '1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071',
+    bank: { ...LIBRARY_BANK_EXAMPLE, byteSize: 24, numPrograms: 0, currentProgram: 0 },
+  },
+  programs: 2,
+  backup: {
+    fileName: 'Legacy.fxb.orig',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb.orig',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+  },
+  backupCreated: true,
+};
+
+/** Banco a la papelera: sale de la carpeta del plugin y sigue siendo recuperable. */
+export const LIBRARY_DELETE_BANK_EXAMPLE = {
+  plugin: LIBRARY_PLUGIN_WITH_LOADER_EXAMPLE,
+  presetsDir: PRESETS_DIR,
+  deleted: {
+    fileName: 'Legacy.fxb',
+    path: 'C:\\VFX\\Library\\plugs\\MySynth\\presets\\Legacy.fxb',
+    size: 216,
+    sha256: LIBRARY_INSPECT_SHA256,
+  },
+  trash: {
+    label: 'Papelera de reciclaje de Windows',
+    path: null,
+    hint:
+      'Abre la Papelera de reciclaje de Windows y pulsa «Restaurar» para devolverlo a su ' +
+      'carpeta.',
+  },
+  remaining: 1,
+  wasDefault: true,
+};

@@ -58,6 +58,25 @@ import {
   rememberRecentPaths,
 } from '../recents.js';
 import {
+  libraryRoot,
+  rootRemembered,
+  scanData,
+  setLibraryRoot,
+  setScanData,
+} from './features/library/state.js';
+
+import {
+  batchClock,
+  batchProgress,
+  setButtonLabel,
+  hideBatchProgress,
+  showBatchProgress,
+  startBatchClock,
+  stopBatchClock,
+  renderBatchClock,
+} from './features/batch/index.js';
+export { scanData } from './features/library/state.js';
+import {
   classifyStagingFiles,
   formatPreExistingSummary,
   formatRemovePreExistingResult,
@@ -170,29 +189,6 @@ function writeRecentList(key: string, values: readonly string[]): void {
   writeStorage(key, values.length === 0 ? '' : JSON.stringify(values));
 }
 
-let libraryRoot = readStorage(STORAGE_ROOT);
-// Una ruta que viene de la sesión anterior no es una elección de ahora: si ya no
-// existe, la vista lo cuenta sin gritar (ver `scan`).
-let rootRemembered = libraryRoot !== '';
-const lastDll = readStorage(STORAGE_DLL);
-let recentRoots = readRecentList(STORAGE_RECENT_ROOTS);
-let recentDlls = readRecentList(STORAGE_RECENT_DLLS);
-let recentBanks = readRecentList(STORAGE_RECENT_BANKS);
-// Migración: las versiones anteriores solo guardaban el último valor. Si aún
-// no hay historial, ese valor pasa a ser la primera sugerencia.
-if (recentRoots.length === 0 && libraryRoot !== '') {
-  recentRoots = [libraryRoot];
-  writeRecentList(STORAGE_RECENT_ROOTS, recentRoots);
-}
-if (recentDlls.length === 0 && lastDll !== '') {
-  recentDlls = [lastDll];
-  writeRecentList(STORAGE_RECENT_DLLS, recentDlls);
-}
-let busy = false;
-let banksBusy = false;
-/** Último resultado de `/library/scan`, o `null` si aún no hay lista. */
-
-export let scanData: LibraryScanResponse | null = null;
 /** Corta la importación de bancos en curso; `null` cuando no hay ninguna. */
 let importController: AbortController | null = null;
 /** Panel de bancos abierto, o `null`. */
@@ -205,6 +201,7 @@ let logTableController: TableController<PluginLogSnapshotResponse['entries'][num
 let logDetailOpener: HTMLButtonElement | null = null;
 let metaBusy = false;
 let wizardsTableController: TableController<WizardListResponse['items'][number]> | null = null;
+let vmSyncTableController: TableController<VmSyncEntry> | null = null;
 
 /** Orden actual del repositorio de wizards: el servidor ordena, la tabla lo replica. */
 let wizardsSort: { columnId: string; direction: 'asc' | 'desc' } = { columnId: 'name', direction: 'asc' };
@@ -250,8 +247,12 @@ let captureRestorablePreExisting = 0;
 /** Rutas de esos previos quitados, para poder devolver uno solo desde su fila. */
 let captureRestorableFiles: string[] = [];
 
+let recentRoots = readRecentList(STORAGE_RECENT_ROOTS);
+let recentDlls = readRecentList(STORAGE_RECENT_DLLS);
+let recentBanks = readRecentList(STORAGE_RECENT_BANKS);
+
 els.root.value = libraryRoot;
-els.dll.value = lastDll;
+els.dll.value = readStorage(STORAGE_DLL);
 renderRecents();
 setRootWarning(libraryRoot === '');
 
@@ -272,9 +273,7 @@ function openSettingsForLibraryRootAction(): StatusAction {
     get label() { return t('ui.app.chooseRoot'); },
     title: t('ui.app.chooseRootTitle'),
     onClick: () => {
-      navigateTo('libreria');
-      els.root.focus({ preventScroll: false });
-      els.root.select();
+      openSettingsAndFocus('library-root');
     },
   };
 }
@@ -545,6 +544,10 @@ async function pruneRecents(): Promise<void> {
   }
 }
 
+/** Estado operativo del formulario de biblioteca: lo maneja este archivo. */
+let busy = false;
+let banksBusy = false;
+
 function setBusy(value: boolean): void {
   busy = value;
   els.scanButton.disabled = value;
@@ -621,64 +624,17 @@ function updateBatchControls(): void {
 }
 
 /** Oculta la barra de progreso del lote, su reloj y el paso en curso. */
-function hideBatchProgress(): void {
-  els.batchProgress.hidden = true;
-  els.batchProgress.value = 0;
-  els.batchProgress.max = 1;
-  els.batchStep.hidden = true;
-  els.batchStep.textContent = '';
-  stopBatchClock();
-  els.batchClock.hidden = true;
-  els.batchClock.textContent = '';
-}
 
 /** Barra, texto, paso interno y reloj del progreso en caliente. */
-function showBatchProgress(progress: BatchProgress): void {
-  els.batchProgress.hidden = false;
-  els.batchProgress.max = Math.max(progress.total, 1);
-  els.batchProgress.value = progress.done;
-
-  const step = stepLabel(progress);
-  els.batchStep.hidden = step === null;
-  els.batchStep.textContent = step ?? '';
-
-  batchProgress = progress;
-  els.batchClock.hidden = false;
-  renderBatchClock();
-
-  if (!progress.finished) setBatchStatus(progressLabel(progress), 'busy');
-}
 
 /**
  * Arranca el reloj del lote y su refresco. El tiempo se mide en la vista, así
  * que corre aunque el servidor tarde en mandar el siguiente evento; el reloj
  * se para y se oculta al terminar, con la barra.
  */
-function startBatchClock(): BatchClock {
-  stopBatchClock();
-  const clock = new BatchClock();
-  batchClock = clock;
-  batchProgress = null;
-  els.batchClock.hidden = false;
-  els.batchClock.textContent = '';
-  batchTicker = setInterval(renderBatchClock, 250);
-  return clock;
-}
 
-function stopBatchClock(): void {
-  if (batchTicker !== null) {
-    clearInterval(batchTicker);
-    batchTicker = null;
-  }
-  batchClock = null;
-  batchProgress = null;
-}
 
 /** Tiempo transcurrido, estimación de lo que falta y tiempo del paso actual. */
-function renderBatchClock(): void {
-  if (batchClock === null || batchProgress === null) return;
-  els.batchClock.textContent = timingLabel(batchClock.snapshot(batchProgress), batchProgress);
-}
 
 /** Icono del sprite para un botón que la vista crea sobre la marcha. */
 
@@ -686,14 +642,6 @@ function renderBatchClock(): void {
  * Cambia el texto de un botón sin borrar su icono: el marcado pone el texto en
  * `.label`; un botón sin icono sigue aceptando `textContent` tal cual.
  */
-function setButtonLabel(button: HTMLButtonElement, text: string): void {
-  const label = button.querySelector<HTMLElement>('.label');
-  if (label === null) {
-    button.textContent = text;
-    return;
-  }
-  label.textContent = text;
-}
 
 function captureLog(message: string, kind: 'info' | 'ok' | 'error' | 'busy' = 'info'): void {
   const entry = document.createElement('div');
@@ -1266,7 +1214,7 @@ function fieldCell(row: HTMLTableRowElement, field: string): HTMLElement | undef
 }
 
 function render(data: LibraryScanResponse, options?: { resetPage?: boolean }): void {
-  scanData = data;
+  setScanData(data);
   for (const plugin of data.plugins) {
     if (!plugin.banks) {
       plugin.banks = { count: 0, names: [] };
@@ -1333,7 +1281,7 @@ async function scan(): Promise<boolean> {
   closeBanks();
   closeMeta();
   clearBatchErrors();
-  scanData = null;
+  setScanData(null);
   updateBatchControls();
   try {
     const data = await fetchPlugins();
@@ -1352,7 +1300,7 @@ async function scan(): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    scanData = null;
+    setScanData(null);
     updateBatchControls();
     syncLibraryView();
     renderLoader(null);
@@ -1511,8 +1459,8 @@ async function chooseLibraryRoot(): Promise<void> {
     }
 
     els.root.value = chosen;
-    libraryRoot = chosen;
-    rootRemembered = false;
+    setLibraryRoot(chosen);
+
     writeStorage(STORAGE_ROOT, chosen);
     rememberRoot(chosen);
     await scanFromSettings();
@@ -1670,11 +1618,8 @@ async function runAction(plugin: ScanPlugin, isInstalled: boolean): Promise<void
 
 /* Estado del lote: solo lo usan las funciones de este archivo. */
 /** Refresco periódico del reloj para que los segundos corran sin eventos. */
-let batchTicker: ReturnType<typeof setInterval> | null = null;
 /** Último progreso pintado: el reloj lo necesita para estimar entre eventos. */
-let batchProgress: BatchProgress | null = null;
 /** Reloj del lote en curso, o `null` si no hay ninguno. */
-let batchClock: BatchClock | null = null;
 /** Corta el lote en curso; `null` cuando no hay ninguno. */
 let batchController: AbortController | null = null;
 /**
@@ -2202,6 +2147,39 @@ const banksTableView: TableView<LibraryBanksListResponse['banks'][number]> = {
       },
     },
   ],
+  rowActions: {
+    actions: (entry) => [
+      {
+        id: 'use',
+        get label() { return t('ui.banks.use'); },
+        icon: 'check',
+        onSelect: () => {
+          els.defaultBank.value = entry.fileName;
+          void saveDefault(entry.fileName);
+        },
+      },
+      {
+        id: 'rename',
+        get label() { return t('ui.banks.rename'); },
+        icon: 'edit',
+        onSelect: () => void renameBankPrompt(entry.fileName),
+      },
+      {
+        id: 'clear',
+        get label() { return t('ui.banks.clear'); },
+        icon: 'refresh',
+        disabled: () => entry.bank.kind === 'FBCh',
+        onSelect: () => void clearBankPrompt(entry.fileName),
+      },
+      {
+        id: 'delete',
+        get label() { return t('ui.banks.delete'); },
+        icon: 'trash',
+        tone: 'danger',
+        onSelect: () => void deleteBankPrompt(entry.fileName),
+      },
+    ],
+  },
   getRowId: (entry) => entry.fileName,
   initialSort: { columnId: 'fileName', direction: 'asc' },
   searchColumns: ['fileName', 'kind', 'uniqueId'],
@@ -2490,6 +2468,76 @@ async function restoreDefaultBank(): Promise<void> {
         : t('ui.banks.alreadyBackup', { 0: result.fileName }),
       'ok',
     );
+  } catch (error) {
+    setBanksStatus(describeError(error), 'error');
+  } finally {
+    setBanksBusy(false);
+  }
+}
+
+async function renameBankPrompt(fileName: string): Promise<void> {
+  if (banks === null || banksBusy) return;
+  const { pluginName } = banks;
+  const newName = window.prompt(t('msg.bankRenamePrompt'), fileName);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (trimmed === '' || trimmed.toLowerCase() === fileName.toLowerCase()) return;
+
+  setBanksBusy(true);
+  setBanksStatus(t('ui.banks.reading'), 'busy');
+  try {
+    const result = await client.library.renameBank({
+      libraryRoot,
+      plugin: pluginName,
+      fileName,
+      newName: trimmed.endsWith('.fxb') ? trimmed : `${trimmed}.fxb`,
+    });
+    await fetchBanks(pluginName, { keepSelection: true });
+    setBanksStatus(t('ui.banks.renamed', { 0: result.previous.fileName, 1: result.renamed.fileName }), 'ok');
+  } catch (error) {
+    setBanksStatus(describeError(error), 'error');
+  } finally {
+    setBanksBusy(false);
+  }
+}
+
+async function clearBankPrompt(fileName: string): Promise<void> {
+  if (banks === null || banksBusy) return;
+  const { pluginName } = banks;
+  if (!window.confirm(t('msg.bankClearConfirm', { 0: fileName }))) return;
+
+  setBanksBusy(true);
+  setBanksStatus(t('ui.banks.reading'), 'busy');
+  try {
+    const result = await client.library.clearBank({
+      libraryRoot,
+      plugin: pluginName,
+      fileName,
+    });
+    await fetchBanks(pluginName, { keepSelection: true });
+    setBanksStatus(t('ui.banks.cleared', { 0: result.previous.fileName, 1: result.programs }), 'ok');
+  } catch (error) {
+    setBanksStatus(describeError(error), 'error');
+  } finally {
+    setBanksBusy(false);
+  }
+}
+
+async function deleteBankPrompt(fileName: string): Promise<void> {
+  if (banks === null || banksBusy) return;
+  const { pluginName } = banks;
+  if (!window.confirm(t('msg.bankDeleteConfirm', { 0: fileName }))) return;
+
+  setBanksBusy(true);
+  setBanksStatus(t('ui.banks.reading'), 'busy');
+  try {
+    const result = await client.library.deleteBank({
+      libraryRoot,
+      plugin: pluginName,
+      fileName,
+    });
+    await fetchBanks(pluginName, { keepSelection: true });
+    setBanksStatus(t('ui.banks.deleted', { 0: fileName }), 'ok');
   } catch (error) {
     setBanksStatus(describeError(error), 'error');
   } finally {
@@ -3529,10 +3577,140 @@ async function loadWizards(query: string): Promise<void> {
   }
 }
 
+function cleanDllBase(value: string): string {
+  if (!value) return '';
+  const clean = value.replace(/\\/g, '/');
+  const filename = clean.split('/').pop() || '';
+  return filename.replace(/\.dll$/i, '').toLowerCase().trim();
+}
+
+let activeWizardInstall: {
+  wizardId: string;
+  wizardName: string;
+  expectedDllName: string;
+  folderName?: string;
+  selectedDllPath: string | null;
+} | null = null;
+
+function closeWizardInstallModal(): void {
+  activeWizardInstall = null;
+  els.wizardInstallDialog.close();
+}
+
+function updateWizardInstallSelected(path: string | null): void {
+  if (!activeWizardInstall) return;
+  activeWizardInstall.selectedDllPath = path;
+
+  if (path) {
+    const filename = path.replace(/^.*[/\\]/, '');
+    els.wizardInstallFilename.textContent = filename;
+    els.wizardInstallFilepath.textContent = path;
+    els.wizardInstallSelected.hidden = false;
+
+    // Validación de coincidencia de DLL con el wizard esperado
+    const expectedBase = cleanDllBase(activeWizardInstall.expectedDllName);
+    const actualBase = cleanDllBase(filename);
+
+    if (expectedBase && actualBase && expectedBase !== actualBase) {
+      const expectedFile = activeWizardInstall.expectedDllName.replace(/^.*[/\\]/, '');
+      els.wizardInstallStatus.textContent = t('ui.wizard.dllMismatchBlock', {
+        0: filename,
+        1: expectedFile,
+      });
+      els.wizardInstallStatus.className = 'status error';
+      els.wizardInstallSubmitBtn.disabled = true;
+    } else {
+      els.wizardInstallSubmitBtn.disabled = false;
+      els.wizardInstallStatus.textContent = '';
+      els.wizardInstallStatus.className = 'status';
+    }
+  } else {
+    els.wizardInstallFilename.textContent = '';
+    els.wizardInstallFilepath.textContent = '';
+    els.wizardInstallSelected.hidden = true;
+    els.wizardInstallSubmitBtn.disabled = true;
+  }
+}
+
+async function browseDllForWizardInstall(): Promise<void> {
+  if (!activeWizardInstall) return;
+  els.wizardInstallStatus.textContent = t('ui.wizard.choosingDll');
+  els.wizardInstallStatus.className = 'status busy';
+
+  const body: RequestBody<'/system/pick', 'post'> = {
+    kind: 'file',
+    title: t('ui.wizard.chooseDllFor', { 0: activeWizardInstall.wizardName }),
+    extensions: ['dll'],
+  };
+  const start = parentDir(currentDll() || recentDlls[0] || '');
+  if (start !== null) body.initialDir = start;
+
+  const picked = await pickPaths(body, 'library');
+  if (picked === null) {
+    els.wizardInstallStatus.textContent = '';
+    els.wizardInstallStatus.className = 'status';
+    return;
+  }
+  const chosenDll = picked[0];
+  if (!chosenDll) {
+    els.wizardInstallStatus.textContent = t('ui.wizard.installCancelled');
+    els.wizardInstallStatus.className = 'status';
+    return;
+  }
+
+  updateWizardInstallSelected(chosenDll);
+}
+
+async function executeWizardInstall(): Promise<void> {
+  if (!activeWizardInstall || !activeWizardInstall.selectedDllPath) {
+    els.wizardInstallStatus.textContent = t('ui.wizard.fileRequired');
+    els.wizardInstallStatus.className = 'status error';
+    return;
+  }
+
+  const { wizardId, wizardName, folderName, selectedDllPath } = activeWizardInstall;
+  els.wizardInstallSubmitBtn.disabled = true;
+  els.wizardInstallBrowseBtn.disabled = true;
+  els.wizardInstallStatus.textContent = t('ui.wizard.installing', { 0: wizardName });
+  els.wizardInstallStatus.className = 'status busy';
+
+  try {
+    const res = await client.wizards.install({
+      wizardId,
+      libraryRoot,
+      dllSourcePath: selectedDllPath,
+      pluginFolderName: folderName,
+      overwrite: true,
+      initializeBank: true,
+      autoImportRegistry: false,
+      force: false,
+    });
+
+    const warnText = res.warnings.length > 0 ? t('msg.batchWarning', { 0: res.warnings.join('; ') }) : '';
+    const regText = res.registryFileCreated ? t('ui.wizard.registrySaved') : '';
+    const successMsg = t('ui.wizard.installed', { 0: res.pluginName, 1: warnText, 2: regText });
+
+    closeWizardInstallModal();
+
+    // Redirigir a la vista de Librería y refrescar catálogo con feedback inmediato visible
+    navigateTo('libreria');
+    setStatus(successMsg, 'ok');
+
+    const plugins = await fetchPlugins();
+    render(plugins);
+  } catch (error) {
+    els.wizardInstallSubmitBtn.disabled = false;
+    els.wizardInstallBrowseBtn.disabled = false;
+    els.wizardInstallStatus.textContent = t('ui.wizard.installError', { 0: describeError(error) });
+    els.wizardInstallStatus.className = 'status error';
+  }
+}
+
 async function promptAndInstallFromWizard(
   wizardId: string,
   wizardName: string,
   folderName?: string,
+  expectedDllName = '',
 ): Promise<void> {
   if (!libraryRoot) {
     const msg = t('ui.wizard.needLibrary');
@@ -3547,62 +3725,37 @@ async function promptAndInstallFromWizard(
     return;
   }
 
-  const setTargetStatus = (msg: string, cls: string) => {
-    if (activeView === 'wizards') {
-      els.wizardsStatus.textContent = msg;
-      els.wizardsStatus.className = cls;
+  // Si no tenemos expectedDllName de antemano, lo consultamos del endpoint getById
+  let resolvedExpectedDll = expectedDllName;
+  if (!resolvedExpectedDll) {
+    try {
+      const record = await client.wizards.getById(wizardId);
+      resolvedExpectedDll = record.dllName || '';
+    } catch {
+      // Ignorar error de red si falla la consulta preliminar
     }
-    if (!els.pluginWizard.hidden) {
-      els.pluginWizardStatus.textContent = msg;
-      els.pluginWizardStatus.className = cls;
-    }
-  };
-
-  setTargetStatus(t('ui.wizard.choosingDll'), 'status busy');
-
-  const body: RequestBody<'/system/pick', 'post'> = {
-    kind: 'file',
-    title: t('ui.wizard.chooseDllFor', { 0: wizardName }),
-    extensions: ['dll'],
-  };
-  const start = parentDir(currentDll() || recentDlls[0] || '');
-  if (start !== null) body.initialDir = start;
-
-  const picked = await pickPaths(body, 'library');
-  if (picked === null) return;
-  const chosenDll = picked[0];
-  if (!chosenDll) {
-    setTargetStatus(t('ui.wizard.installCancelled'), 'status');
-    return;
   }
 
-  setTargetStatus(t('ui.wizard.installing', { 0: wizardName }), 'status busy');
+  activeWizardInstall = {
+    wizardId,
+    wizardName,
+    expectedDllName: resolvedExpectedDll,
+    folderName,
+    selectedDllPath: null,
+  };
 
-  try {
-    const res = await client.wizards.install({
-      wizardId,
-      libraryRoot,
-      dllSourcePath: chosenDll,
-      pluginFolderName: folderName,
-      overwrite: true,
-      initializeBank: true,
-      // El alta desde el catálogo no toca el registro de Windows: importar el
-      // .reg es una acción explícita de la pestaña de Ajustes.
-      autoImportRegistry: false,
-    });
+  els.wizardInstallName.textContent = wizardName;
+  const expectedFile = resolvedExpectedDll ? resolvedExpectedDll.replace(/^.*[/\\]/, '') : '';
+  const expectedLine = expectedFile ? ` · ${t('ui.wizard.expectedDll', { 0: expectedFile })}` : '';
+  els.wizardInstallInfo.textContent = folderName
+    ? `${folderName} (ID: ${wizardId})${expectedLine}`
+    : `ID: ${wizardId}${expectedLine}`;
+  updateWizardInstallSelected(null);
+  els.wizardInstallStatus.textContent = '';
+  els.wizardInstallStatus.className = 'status';
+  els.wizardInstallBrowseBtn.disabled = false;
 
-    const warnText = res.warnings.length > 0 ? t('msg.batchWarning', { 0: res.warnings.join('; ') }) : '';
-    const regText = res.registryFileCreated ? t('ui.wizard.registrySaved') : '';
-    const successMsg = t('ui.wizard.installed', { 0: res.pluginName, 1: warnText, 2: regText });
-
-    setTargetStatus(successMsg, 'status ok');
-
-    // Refrescar el escaneo para ver el plugin en la tabla
-    const plugins = await fetchPlugins();
-    render(plugins);
-  } catch (error) {
-    setTargetStatus(t('ui.wizard.installError', { 0: describeError(error) }), 'status error');
-  }
+  els.wizardInstallDialog.showModal();
 }
 
 /**
@@ -3686,7 +3839,7 @@ const wizardsTableView: TableView<WizardListResponse['items'][number]> = {
         get label() { return t('ui.wizard.installNow'); },
         icon: 'download',
         tone: 'primary',
-        onSelect: () => void promptAndInstallFromWizard(w.id, w.name),
+        onSelect: () => void promptAndInstallFromWizard(w.id, w.name, undefined, w.dllName),
       },
       {
         // Misma «Historial» que el catálogo: id `log` con icono `list` y el
@@ -3895,8 +4048,7 @@ els.pluginWizardCreateBtn.addEventListener('click', () => {
 
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
-  libraryRoot = els.root.value.trim();
-  rootRemembered = false;
+  setLibraryRoot(els.root.value.trim());
   writeStorage(STORAGE_ROOT, libraryRoot);
   rememberRoot(libraryRoot);
   const dll = currentDll();
@@ -3932,8 +4084,7 @@ els.rootRecentSelect.addEventListener('change', () => {
   const chosen = els.rootRecentSelect.value;
   if (chosen === '') return;
   els.root.value = chosen;
-  libraryRoot = chosen;
-  rootRemembered = false;
+  setLibraryRoot(chosen);
   writeStorage(STORAGE_ROOT, chosen);
   rememberRoot(chosen);
   void scanFromSettings();
@@ -4107,6 +4258,7 @@ els.pluginWizardInstallBtn.addEventListener('click', () => {
     pluginWizardState.wizard.id,
     pluginWizardState.wizard.name,
     pluginWizardState.plugin.name,
+    pluginWizardState.wizard.dllName,
   );
 });
 
@@ -4123,6 +4275,58 @@ els.wizardsFilter.addEventListener('input', () => {
     wizardsQuery = els.wizardsFilter.value.trim();
     void loadWizards(wizardsQuery);
   }, 200);
+});
+
+els.wizardInstallClose.addEventListener('click', closeWizardInstallModal);
+els.wizardInstallCancelBtn.addEventListener('click', closeWizardInstallModal);
+els.wizardInstallBrowseBtn.addEventListener('click', () => {
+  void browseDllForWizardInstall();
+});
+els.wizardInstallSubmitBtn.addEventListener('click', () => {
+  void executeWizardInstall();
+});
+
+els.wizardInstallDropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  els.wizardInstallDropzone.classList.add('dragover');
+});
+
+els.wizardInstallDropzone.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  els.wizardInstallDropzone.classList.remove('dragover');
+});
+
+els.wizardInstallDropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  els.wizardInstallDropzone.classList.remove('dragover');
+
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.dll')) {
+    els.wizardInstallStatus.textContent = t('ui.wizard.fileRequired');
+    els.wizardInstallStatus.className = 'status error';
+    return;
+  }
+
+  // Si estamos en entorno con ruta de archivo (ej. Electron o API de archivo con .path)
+  const electronFile = file as unknown as { path?: string };
+  if (electronFile.path) {
+    updateWizardInstallSelected(electronFile.path);
+  } else {
+    // Si el navegador web nativo no expone .path completo por seguridad, abrimos el selector nativo
+    // con el nombre pre-buscado o informamos para confirmar la ubicación en disco
+    updateWizardInstallSelected(file.name);
+  }
+});
+
+els.wizardInstallDropzone.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('#wizard-install-browse-btn')) return;
+  void browseDllForWizardInstall();
 });
 
 els.defaultSave.addEventListener('click', () => {
@@ -5512,6 +5716,75 @@ type VmSyncEntry = {
   state: 'missing' | 'differs' | 'same';
 };
 
+const vmSyncTableView: TableView<VmSyncEntry> = {
+  columns: [
+    {
+      id: 'name',
+      get label() { return t('ui.common.plugin'); },
+      sortType: 'text',
+      getValue: (entry) => entry.name ?? entry.folder,
+      renderNode: (entry) => {
+        const span = document.createElement('span');
+        span.style.fontWeight = '600';
+        span.textContent = entry.name ?? entry.folder;
+        if (entry.name !== null && entry.name !== entry.folder) {
+          span.title = entry.folder;
+        }
+        return span;
+      },
+    },
+    {
+      id: 'state',
+      get label() { return t('ui.common.state'); },
+      sortType: 'text',
+      getValue: (entry) =>
+        entry.state === 'missing'
+          ? t('ui.vmachine.missing')
+          : entry.state === 'same'
+            ? t('ui.vmachine.same')
+            : t('ui.vmachine.differs', { 0: entry.stickVersion ?? '—' }),
+      renderNode: (entry) => {
+        const badge = document.createElement('span');
+        badge.className = `badge ${entry.state === 'same' ? 'on' : 'bad'}`;
+        badge.textContent =
+          entry.state === 'missing'
+            ? t('ui.vmachine.missing')
+            : entry.state === 'same'
+              ? t('ui.vmachine.same')
+              : t('ui.vmachine.differs', { 0: entry.stickVersion ?? '—' });
+        return badge;
+      },
+    },
+    {
+      id: 'stickVersion',
+      get label() { return t('vmachine.version'); },
+      sortType: 'text',
+      getValue: (entry) => entry.stickVersion ?? '—',
+      renderNode: (entry) => {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = entry.stickVersion ?? '—';
+        return note;
+      },
+    },
+    {
+      id: 'bytes',
+      get label() { return t('ui.banks.size'); },
+      sortType: 'number',
+      getValue: (entry) => entry.bytes,
+      renderNode: (entry) => {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = formatBytes(entry.bytes);
+        return note;
+      },
+    },
+  ],
+  getRowId: (entry) => entry.folder,
+  initialSort: { columnId: 'name', direction: 'asc' },
+  emptyText: () => t('vmachine.tableEmpty'),
+};
+
 type VmSync = {
   drive: string;
   library: string;
@@ -5578,6 +5851,7 @@ async function loadVmachineDrives(): Promise<void> {
       els.vmachineSummary.textContent = '';
       els.vmachineInventory.replaceChildren();
       els.vmachineSync.replaceChildren();
+      vmSyncTableController = null;
       els.vmachineSyncNote.textContent = '';
       els.vmachineCopy.disabled = true;
       setVmStatus(
@@ -5618,6 +5892,7 @@ async function loadVmachineSelection(): Promise<void> {
   vmSync = null;
   els.vmachineInventory.replaceChildren();
   els.vmachineSync.replaceChildren();
+  vmSyncTableController = null;
   els.vmachineSyncNote.textContent = '';
   els.vmachineCopy.disabled = true;
   els.vmachineSummary.textContent = '';
@@ -5664,47 +5939,18 @@ async function loadVmachineSelection(): Promise<void> {
 }
 
 function renderVmSync(): void {
-  els.vmachineSync.replaceChildren();
   const sync = vmSync;
-  if (sync === null) return;
-
-  const list = document.createElement('ul');
-  list.style.listStyle = 'none';
-  list.style.margin = '8px 0 0';
-  list.style.padding = '0';
-  list.style.display = 'grid';
-  list.style.gap = '4px';
-
-  for (const entry of sync.entries) {
-    const item = document.createElement('li');
-    item.style.display = 'flex';
-    item.style.alignItems = 'center';
-    item.style.gap = '8px';
-    item.style.flexWrap = 'wrap';
-
-    const name = document.createElement('span');
-    name.style.fontWeight = '600';
-    name.textContent = entry.name ?? entry.folder;
-    if (entry.name !== null && entry.name !== entry.folder) name.title = entry.folder;
-
-    const badge = document.createElement('span');
-    badge.className = `badge ${entry.state === 'same' ? 'on' : 'bad'}`;
-    badge.textContent =
-      entry.state === 'missing'
-        ? t('ui.vmachine.missing')
-        : entry.state === 'same'
-          ? t('ui.vmachine.same')
-          : t('ui.vmachine.differs', { 0: entry.stickVersion ?? '—' });
-
-    const size = document.createElement('span');
-    size.className = 'note';
-    size.textContent = formatBytes(entry.bytes);
-
-    item.append(name, badge, size);
-    list.append(item);
+  if (sync === null) {
+    els.vmachineSync.replaceChildren();
+    vmSyncTableController = null;
+    return;
   }
 
-  if (list.childElementCount > 0) els.vmachineSync.append(list);
+  if (vmSyncTableController === null) {
+    vmSyncTableController = mountTable(els.vmachineSync, vmSyncTableView, sync.entries);
+  } else {
+    vmSyncTableController.setRows(sync.entries);
+  }
 
   const pending = sync.entries.filter((entry) => entry.state !== 'same');
   els.vmachineCopy.disabled = pending.length === 0 || libraryRoot === '';
@@ -6153,6 +6399,15 @@ if (els.vmachineRefresh) {
   });
 }
 
+if (els.vmachineChangeDrive) {
+  els.vmachineChangeDrive.addEventListener('click', () => {
+    showPanel(els.settingsDrawer, els.vmachineChangeDrive);
+    requestAnimationFrame(() => {
+      els.vmachineDrive.focus();
+    });
+  });
+}
+
 if (els.vmachineDrive) {
   els.vmachineDrive.addEventListener('change', () => {
     void loadVmachineSelection();
@@ -6184,6 +6439,12 @@ els.customPluginCreateBtn.addEventListener('click', () => {
 
 els.customPluginEditor.addEventListener('change', () => {
   els.customPluginEditorRow.hidden = !els.customPluginEditor.checked;
+});
+
+document.querySelectorAll<HTMLInputElement>('input[name="custom-plugin-synth-type"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    els.customPluginSynth.checked = radio.value === 'synth';
+  });
 });
 
 els.customPluginBrowse.addEventListener('click', async () => {
@@ -7485,6 +7746,7 @@ els.drawerBackdrop.addEventListener('click', () => {
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
   closeCaptureDrawer();
+  hidePanel(els.settingsDrawer);
 });
 
 window.addEventListener('keydown', (event) => {
@@ -7496,6 +7758,7 @@ window.addEventListener('keydown', (event) => {
     closeImportPackageDrawer();
     closeCustomPluginDrawer();
     closeCaptureDrawer();
+    hidePanel(els.settingsDrawer);
     closeAllRowMenus();
   }
 });

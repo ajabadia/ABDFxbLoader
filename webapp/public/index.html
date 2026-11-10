@@ -47,6 +47,10 @@
         <path d="M9.5 6.5V4.6a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.9" />
         <path d="M10 10.5v7M14 10.5v7" />
       </symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+      </symbol>
       <symbol id="icon-play" viewBox="0 0 24 24">
         <path d="M6.5 4.2 19.5 12l-13 7.8z" fill="currentColor" stroke="none" />
       </symbol>
@@ -118,6 +122,14 @@
       </div>
       <div class="top-actions">
         <button
+          id="vmachine-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="The drive the V-Machine reads, and what it is missing" data-i18n-title="vmachine.navTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span data-i18n="vmachine.nav">Drive</span>
+        </button>
+        <button
           id="library-nav-btn"
           class="nav-btn"
           type="button"
@@ -175,14 +187,6 @@
           title="Data and associations of the active library" data-i18n-title="nav.auditViewTitle"
         >
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-list"></use></svg><span data-i18n="nav.audit">Audit</span>
-        </button>
-        <button
-          id="vmachine-nav-btn"
-          class="nav-btn"
-          type="button"
-          title="The drive the V-Machine reads, and what it is missing" data-i18n-title="vmachine.navTitle"
-        >
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span data-i18n="vmachine.nav">Drive</span>
         </button>
         <button
           id="settings-nav-btn"
@@ -258,42 +262,14 @@
       <p id="status" class="status" role="status" aria-live="polite"></p>
 
       <section id="library-view" class="view" hidden>
-        <form id="scan-form" class="card library-root-bar">
-          <label for="library-root" data-i18n="settings.libraryRoot">Library folder</label>
-          <div class="row">
-            <input
-              id="library-root"
-              name="libraryRoot"
-              placeholder="C:\VFX\Library"
-              autocomplete="off"
-              spellcheck="false"
-              list="library-root-recents"
-              aria-describedby="root-warning"
-              required
-            />
-            <button
-              id="root-browse"
-              type="button"
-              title="Choose the folder with the system dialog" data-i18n-title="settings.chooseRootTitle"
-            >
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg><span data-i18n="settings.chooseFolder">Choose folder…</span>
-            </button>
-            <button id="scan-button" class="primary" type="submit">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg><span data-i18n="settings.scan">Scan</span>
-            </button>
-          </div>
-          <datalist id="library-root-recents"></datalist>
-          <div id="library-root-recent-wrap" class="recent-select-wrap" hidden>
-            <label for="library-root-recent-select" data-i18n="settings.usedFolders">Used folders</label>
-            <select id="library-root-recent-select"></select>
-          </div>
-          <p id="root-warning" class="warning" hidden data-i18n="settings.rootWarning">The folder must contain plugs\. Setting the loader modifies vfxinfo.txt and creates fxbLoader.config; removing it restores the vfxinfo.tx_ backup.</p>
-        </form>
-
         <section id="library-empty" class="card empty-state" hidden>
           <h2 data-i18n="empty.title">No library loaded yet</h2>
           <p class="note" data-i18n="empty.note">Point to the folder that contains plugs\ and press Scan. The folder is remembered the next time you open the app.</p>
           <p class="note" data-i18n="empty.wizardsNote">You can also browse the wizard catalog without a library, from the Wizards view.</p>
+          <button id="empty-choose-root" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg><span data-i18n="settings.chooseFolder">Choose folder…</span>
+          </button>
+
         </section>
 
         <section id="results" class="card" hidden>
@@ -371,8 +347,8 @@
             <select id="default-bank"></select>
           </div>
           <label class="check">
-            <input id="load-fxb" type="checkbox" / data-i18n="banks.loadOnOpen">
-            Load the bank when the plugin opens
+            <input id="load-fxb" type="checkbox">
+            <span data-i18n="banks.loadOnOpen">Load the bank when the plugin opens</span>
           </label>
           <button id="default-save" class="primary" type="button">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg><span data-i18n="common.save">Save</span>
@@ -434,8 +410,8 @@
           </div>
           <div class="import-row">
             <label class="check">
-              <input id="import-overwrite" type="checkbox" checked / data-i18n="banks.overwrite">
-              Overwrite a bank with the same name
+              <input id="import-overwrite" type="checkbox" checked>
+              <span data-i18n="banks.overwrite">Overwrite a bank with the same name</span>
             </label>
             <button id="import-button" class="primary" type="button">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg><span data-i18n="common.import">Import</span>
@@ -472,8 +448,8 @@
               </select>
             </div>
             <label class="check">
-              <input id="export-overwrite" type="checkbox" / data-i18n="banks.overwriteExisting">
-              Overwrite if it already exists
+              <input id="export-overwrite" type="checkbox">
+              <span data-i18n="banks.overwriteExisting">Overwrite if it already exists</span>
             </label>
             <button id="export-button" class="primary" type="button">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-upload"></use></svg><span data-i18n="common.export">Export</span>
@@ -564,8 +540,8 @@
           </div>
           <div class="import-row">
             <label class="check">
-              <input id="create-overwrite" type="checkbox" / data-i18n="banks.replaceExisting">
-              Replace if it already exists
+              <input id="create-overwrite" type="checkbox">
+              <span data-i18n="banks.replaceExisting">Replace if it already exists</span>
             </label>
             <button id="create-bank-button" class="primary" type="button">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg><span data-i18n="banks.create">Create bank</span>
@@ -685,7 +661,7 @@
         hidden
       >
         <div class="summary">
-          <h2 id="plugin-wizard-title" data-i18n="wizard.title">Wizard of <span id="plugin-wizard-plugin"></span></h2>
+          <h2 id="plugin-wizard-title"><span data-i18n="wizard.title">Wizard of</span> <span id="plugin-wizard-plugin"></span></h2>
           <button id="plugin-wizard-close" type="button">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg><span data-i18n="common.close">Close</span>
           </button>
@@ -973,6 +949,51 @@
         </div>
 
         <div class="settings-form">
+          <details open>
+            <summary>
+              <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg><span data-i18n="settings.vmachine">V-Machine drive</span>
+            </summary>
+            <label for="vmachine-drive" data-i18n="vmachine.drive">Drive</label>
+            <div class="row">
+              <select id="vmachine-drive"></select>
+              <button id="vmachine-refresh" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Refresh</span>
+              </button>
+            </div>
+            <span class="note" data-i18n="settings.vmachineNote">The drive the machine reads when you insert it. It is remembered on this browser.</span>
+          </details>
+
+          <form id="scan-form" class="library-root-bar">
+            <label for="library-root" data-i18n="settings.libraryRoot">Library folder</label>
+            <div class="row">
+              <input
+                id="library-root"
+                name="libraryRoot"
+                placeholder="C:\VFX\Library"
+                autocomplete="off"
+                spellcheck="false"
+                list="library-root-recents"
+                aria-describedby="root-warning"
+                required
+              />
+              <button
+                id="root-browse"
+                type="button"
+                title="Choose the folder with the system dialog" data-i18n-title="settings.chooseRootTitle"
+              >
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg><span data-i18n="settings.chooseFolder">Choose folder…</span>
+              </button>
+              <button id="scan-button" class="primary" type="submit">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg><span data-i18n="settings.scan">Scan</span>
+              </button>
+            </div>
+            <datalist id="library-root-recents"></datalist>
+            <div id="library-root-recent-wrap" class="recent-select-wrap" hidden>
+              <label for="library-root-recent-select" data-i18n="settings.usedFolders">Used folders</label>
+              <select id="library-root-recent-select"></select>
+            </div>
+            <p id="root-warning" class="warning" hidden data-i18n="settings.rootWarning">The folder must contain plugs\. Setting the loader modifies vfxinfo.txt and creates fxbLoader.config; removing it restores the vfxinfo.tx_ backup.</p>
+          </form>
 
           <details open>
             <summary>
@@ -1114,7 +1135,7 @@
             <div class="row" style="justify-content: space-between; align-items: center;">
               <label data-i18n="importPackage.plugins">Detected plugins</label>
               <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
-                <input id="import-package-all-plugs" type="checkbox" checked title="Select all plugins" data-i18n-title="importPackage.selectAllPlugins" / data-i18n="importPackage.selectAll"> Select all
+                <input id="import-package-all-plugs" type="checkbox" checked title="Select all plugins" data-i18n-title="importPackage.selectAllPlugins"> <span data-i18n="importPackage.selectAll">Select all</span>
               </label>
             </div>
             <div id="import-package-plugins-table" class="import-package-plugins-table"></div>
@@ -1124,7 +1145,7 @@
             <div class="row" style="justify-content: space-between; align-items: center;">
               <label data-i18n="importPackage.banks">Detected banks</label>
               <label class="row" style="font-size: 12px; gap: 6px; margin: 0; cursor: pointer;">
-                <input id="import-package-all-banks" type="checkbox" checked title="Select all banks" data-i18n-title="importPackage.selectAllBanks" / data-i18n="importPackage.selectAll"> Select all
+                <input id="import-package-all-banks" type="checkbox" checked title="Select all banks" data-i18n-title="importPackage.selectAllBanks"> <span data-i18n="importPackage.selectAll">Select all</span>
               </label>
             </div>
             <div id="import-package-banks-table" class="import-package-banks-table"></div>
@@ -1146,6 +1167,8 @@
               <span data-i18n="importPackage.repair">Repair banks (align chunk IDs and descriptors with the target plugin)</span>
             </label>
           </div>
+
+          <p id="import-package-summary" class="note" role="status" aria-live="polite"></p>
 
           <div class="row">
             <button id="import-package-execute-btn" class="primary" type="button">
@@ -1174,6 +1197,10 @@
         </div>
 
         <p class="note" data-i18n="customPlugin.note">Registers a VST plugin (from a DLL binary) in the active library without a previous wizard: the server analyses the PE header and its VST exports without running code, and from what it detects it generates vfxinfo.txt, presets/ and fxbLoader.meta.json.</p>
+
+        <div class="custom-plugin-step-header">
+          <span data-i18n="customPlugin.step1">Step 1: Choose and analyze DLL</span>
+        </div>
 
         <div class="field">
           <label for="custom-plugin-path" data-i18n="customPlugin.dllFile">Plugin DLL file</label>
@@ -1210,16 +1237,22 @@
           <p id="custom-plugin-bitness-warning" class="warning" hidden></p>
         </div>
 
-        <h3 data-i18n="customPlugin.config">New plugin configuration</h3>
+        <div class="custom-plugin-step-header">
+          <span data-i18n="customPlugin.step2">Step 2: Plugin details</span>
+        </div>
+
         <div class="field">
           <label for="custom-plugin-root" data-i18n="settings.libraryRoot">Library folder</label>
-          <input
-            id="custom-plugin-root"
-            placeholder="C:\\VFX\\Library"
-            autocomplete="off"
-            spellcheck="false"
-          />
+          <div class="row">
+            <input
+              id="custom-plugin-root"
+              placeholder="C:\\VFX\\Library"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
         </div>
+
         <div class="row">
           <div class="field">
             <label for="custom-plugin-folder" data-i18n="customPlugin.folder">New plugin folder name</label>
@@ -1239,15 +1272,9 @@
               spellcheck="false"
             />
           </div>
-          <div class="field">
-            <label for="custom-plugin-id" data-i18n="customPlugin.id">VST identifier (numeric id)</label>
-            <input
-              id="custom-plugin-id"
-              placeholder="1313820828"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </div>
+        </div>
+
+        <div class="row">
           <div class="field">
             <label for="custom-plugin-vendor" data-i18n="meta.vendor">Vendor</label>
             <input id="custom-plugin-vendor" placeholder="Custom Audio" autocomplete="off" spellcheck="false" />
@@ -1257,62 +1284,94 @@
             <input id="custom-plugin-genre" placeholder="Synth" autocomplete="off" spellcheck="false" />
           </div>
         </div>
-        <div class="row">
-          <div class="field">
-            <label for="custom-plugin-params" data-i18n="customPlugin.params">VST parameters</label>
-            <input
-              id="custom-plugin-params"
-              type="number"
-              min="1"
-              max="256"
-              placeholder="16"
-            />
-          </div>
-          <div class="field">
-            <label for="custom-plugin-programs" data-i18n="customPlugin.programs">VST programs</label>
-            <input
-              id="custom-plugin-programs"
-              type="number"
-              min="1"
-              max="256"
-              placeholder="16"
-            />
+
+        <div class="field">
+          <label data-i18n="customPlugin.typeLabel">Plugin type</label>
+          <div class="custom-plugin-type-group" role="radiogroup" aria-label="Plugin type">
+            <label class="custom-plugin-type-option">
+              <input type="radio" name="custom-plugin-synth-type" value="synth" checked />
+              <span data-i18n="customPlugin.typeSynth">Instrument / Synth</span>
+            </label>
+            <label class="custom-plugin-type-option">
+              <input type="radio" name="custom-plugin-synth-type" value="effect" />
+              <span data-i18n="customPlugin.typeEffect">Audio effect</span>
+            </label>
+            <input id="custom-plugin-synth" type="checkbox" checked hidden />
           </div>
         </div>
-        <div class="row">
-          <label class="check" for="custom-plugin-synth">
-            <input id="custom-plugin-synth" type="checkbox" checked />
-            <span data-i18n="customPlugin.isSynth">It is a synth or generator (not just an effect)</span>
-          </label>
-        </div>
-        <div class="row">
-          <label class="check" for="custom-plugin-editor">
-            <input id="custom-plugin-editor" type="checkbox" />
-            <span data-i18n="customPlugin.hasEditor">It has a graphical editor with a fixed size</span>
-          </label>
-        </div>
-        <div class="row" id="custom-plugin-editor-row" hidden>
-          <div class="field">
-            <label for="custom-plugin-width" data-i18n="customPlugin.width">Editor width (px)</label>
-            <input id="custom-plugin-width" type="number" min="0" max="4096" placeholder="800" />
+
+        <details class="custom-plugin-details">
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>
+            <span data-i18n="customPlugin.advancedVst">Technical VST options (parameters and dimensions)</span>
+          </summary>
+          <div class="row">
+            <div class="field">
+              <label for="custom-plugin-id" data-i18n="customPlugin.id">VST identifier (numeric id)</label>
+              <input
+                id="custom-plugin-id"
+                placeholder="1313820828"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="field">
+              <label for="custom-plugin-params" data-i18n="customPlugin.params">VST parameters</label>
+              <input
+                id="custom-plugin-params"
+                type="number"
+                min="0"
+                max="256"
+                placeholder="16"
+              />
+            </div>
+            <div class="field">
+              <label for="custom-plugin-programs" data-i18n="customPlugin.programs">VST programs</label>
+              <input
+                id="custom-plugin-programs"
+                type="number"
+                min="0"
+                max="256"
+                placeholder="16"
+              />
+            </div>
           </div>
-          <div class="field">
-            <label for="custom-plugin-height" data-i18n="customPlugin.height">Editor height (px)</label>
-            <input id="custom-plugin-height" type="number" min="0" max="4096" placeholder="600" />
+          <div class="row">
+            <label class="check" for="custom-plugin-editor">
+              <input id="custom-plugin-editor" type="checkbox" />
+              <span data-i18n="customPlugin.hasEditor">It has a graphical editor with a fixed size</span>
+            </label>
           </div>
-        </div>
-        <div class="row">
-          <label class="check" for="custom-plugin-save-wizard">
-            <input id="custom-plugin-save-wizard" type="checkbox" />
-            <span data-i18n="customPlugin.saveWizard">Also save a reusable .vfxwizard in the local catalog</span>
-          </label>
-        </div>
-        <div class="row">
-          <label class="check" for="custom-plugin-overwrite">
-            <input id="custom-plugin-overwrite" type="checkbox" />
-            <span data-i18n="customPlugin.overwrite">Overwrite if the plugin folder already exists</span>
-          </label>
-        </div>
+          <div class="row" id="custom-plugin-editor-row" hidden>
+            <div class="field">
+              <label for="custom-plugin-width" data-i18n="customPlugin.width">Editor width (px)</label>
+              <input id="custom-plugin-width" type="number" min="0" max="4096" placeholder="800" />
+            </div>
+            <div class="field">
+              <label for="custom-plugin-height" data-i18n="customPlugin.height">Editor height (px)</label>
+              <input id="custom-plugin-height" type="number" min="0" max="4096" placeholder="600" />
+            </div>
+          </div>
+        </details>
+
+        <details class="custom-plugin-details">
+          <summary>
+            <svg class="icon chevron" aria-hidden="true" focusable="false"><use href="#icon-chevron"></use></svg>
+            <span data-i18n="customPlugin.saveOptions">Save options</span>
+          </summary>
+          <div class="row">
+            <label class="check" for="custom-plugin-save-wizard">
+              <input id="custom-plugin-save-wizard" type="checkbox" />
+              <span data-i18n="customPlugin.saveWizard">Also save a reusable .vfxwizard in the local catalog</span>
+            </label>
+          </div>
+          <div class="row">
+            <label class="check" for="custom-plugin-overwrite">
+              <input id="custom-plugin-overwrite" type="checkbox" />
+              <span data-i18n="customPlugin.overwrite">Overwrite if the plugin folder already exists</span>
+            </label>
+          </div>
+        </details>
 
         <div class="row">
           <button id="custom-plugin-create-btn" class="primary" type="button">
@@ -1338,17 +1397,11 @@
             What the machine will read when the drive is inserted, and what that drive is missing compared with the library on this computer. Reading is all that happens until you copy: nothing is deleted from the drive.
           </p>
 
+          <p id="vmachine-drive-note" class="note" role="status" aria-live="polite"></p>
           <div class="row">
-            <div class="field" style="flex: 1; min-width: 220px;">
-              <label for="vmachine-drive" data-i18n="vmachine.drive">Drive</label>
-              <select id="vmachine-drive"></select>
-            </div>
-            <div class="field" style="flex: 0 0 auto;">
-              <label>&nbsp;</label>
-              <button id="vmachine-refresh" type="button">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Refresh</span>
-              </button>
-            </div>
+            <button id="vmachine-change-drive" type="button">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg><span data-i18n="vmachine.changeDrive">Change drive</span>
+            </button>
           </div>
 
           <p id="vmachine-summary" class="note" role="status" aria-live="polite"></p>
@@ -1602,6 +1655,51 @@
         <div class="row">
           <button id="dialog-dll-draft-continue" class="primary" type="button" data-i18n="dialog.dllDraftContinue">Continue without changes</button>
           <button id="dialog-dll-draft-cancel" type="button" data-i18n="common.cancel">Cancel</button>
+        </div>
+      </dialog>
+
+      <dialog
+        id="dialog-wizard-install"
+        class="modal-wizard-install"
+        aria-labelledby="wizard-install-title"
+      >
+        <div class="modal-wizard-header">
+          <h3 id="wizard-install-title">
+            <span data-i18n="wizard.modalTitle">Install from wizard</span>: <span id="wizard-install-name"></span>
+          </h3>
+          <button id="wizard-install-close" type="button" aria-label="Close" data-i18n-label="common.close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg>
+          </button>
+        </div>
+
+        <p id="wizard-install-info" class="note"></p>
+
+        <div id="wizard-install-dropzone" class="wizard-dropzone" tabindex="0">
+          <svg class="icon dropzone-icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>
+          <p class="dropzone-text" data-i18n="wizard.dropPrompt">Drag and drop the plugin DLL here</p>
+          <p class="dropzone-sub" data-i18n="wizard.dropOr">or use the file selector</p>
+          <button id="wizard-install-browse-btn" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>
+            <span data-i18n="wizard.browseDll">Browse DLL…</span>
+          </button>
+        </div>
+
+        <div id="wizard-install-selected" class="wizard-selected-file" hidden>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg>
+          <div class="wizard-selected-details">
+            <span id="wizard-install-filename" class="wizard-selected-name"></span>
+            <code id="wizard-install-filepath" class="wizard-selected-path"></code>
+          </div>
+        </div>
+
+        <p id="wizard-install-status" class="status" role="status" aria-live="polite"></p>
+
+        <div class="row modal-wizard-actions">
+          <button id="wizard-install-submit-btn" class="primary" type="button" disabled>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg>
+            <span data-i18n="wizard.installAction">Install instrument</span>
+          </button>
+          <button id="wizard-install-cancel-btn" type="button" data-i18n="common.cancel">Cancel</button>
         </div>
       </dialog>
 

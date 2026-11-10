@@ -24,6 +24,20 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import {
+  LibraryBankClearRequestDto,
+  LibraryBankClearResponseDto,
+  LibraryBankDeleteRequestDto,
+  LibraryBankDeleteResponseDto,
+  LibraryBankRenameRequestDto,
+  LibraryBankRenameResponseDto,
+} from './library.dto';
+import type { BankClearInput, BankDeleteInput, BankRenameInput } from './library.types';
+import {
+  LIBRARY_CLEAR_BANK_EXAMPLE,
+  LIBRARY_DELETE_BANK_EXAMPLE,
+  LIBRARY_RENAME_BANK_EXAMPLE,
+} from './library.dto';
 import { FXB_CONFIG_SNAPSHOT_EXAMPLE } from '../fxb-config/fxb-config.dto';
 import { FxbConfigConflictError } from '../fxb-config/fxb-config.types';
 import {
@@ -1161,6 +1175,178 @@ export class LibraryController {
     };
     try {
       return await this.service.exportBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/rename')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Renombra un banco del plugin',
+    description:
+      'Renombra un `.fxb` de `<plugin>\\<programDirName>\\` sin tocar su contenido. El respaldo ' +
+      '`<banco>.orig` se renombra con él y, si el banco era el `defaultFxbName` del plugin, ' +
+      '`fxbLoader.config` se actualiza para que la DLL lo siga cargando. Nunca se pisa un ' +
+      'archivo existente: para reemplazarlo hay que borrarlo primero.',
+  })
+  @ApiBody({
+    type: LibraryBankRenameRequestDto,
+    examples: {
+      defecto: {
+        summary: 'Renombrar el banco que carga la DLL',
+        value: {
+          libraryRoot: 'C:\\VFX\\Library',
+          plugin: 'MySynth',
+          fileName: 'Legacy.fxb',
+          newName: 'Rhodes.fxb',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description:
+      'Banco renombrado, con el hash de origen y destino, y si la configuración del banco por ' +
+      'defecto se actualizó.',
+    type: LibraryBankRenameResponseDto,
+    example: LIBRARY_RENAME_BANK_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`libraryRoot` inválido, `fileName`/`newName` con separadores o sin `.fxb`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: { message: 'fileName no puede contener separadores de ruta: "..\\Legacy.fxb"' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\` o el banco no está en su carpeta de presets.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiConflictResponse({
+    description: 'Ya existe un archivo con el nombre nuevo.',
+    type: LibraryErrorDto,
+    example: LIBRARY_EXPORT_TARGET_EXISTS_EXAMPLE,
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El archivo no es un banco VST2 válido.',
+    type: LibraryErrorDto,
+    example: { message: 'el banco no es un .fxb válido: archivo de 12 bytes; un .fxb necesita al menos 156' },
+  })
+  async renameBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankRenameInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      fileName: requireString(record, 'fileName'),
+      newName: requireString(record, 'newName'),
+    };
+    try {
+      return await this.service.renameBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/clear')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Vacía un banco de programas',
+    description:
+      'Reescribe el `.fxb` en su sitio con cero programas, conservando `uniqueID`, versión y ' +
+      'orden de bytes, para dejar el banco vacío sin perder su identidad. Antes guarda una copia ' +
+      'byte a byte como `<banco>.orig` —la misma que usa «Restaurar original»— y no pisa un ' +
+      'respaldo que ya exista.',
+  })
+  @ApiBody({
+    type: LibraryBankClearRequestDto,
+    examples: {
+      defecto: {
+        summary: 'Vaciar un banco',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth', fileName: 'Legacy.fxb' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Banco vaciado, con el número de programas que tenía y el respaldo creado.',
+    type: LibraryBankClearResponseDto,
+    example: LIBRARY_CLEAR_BANK_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`libraryRoot` inválido, `fileName` con separadores o sin `.fxb`, archivo vacío.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: { message: 'fileName no puede contener separadores de ruta: "..\\Legacy.fxb"' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\` o el banco no está en su carpeta de presets.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'El archivo no es un banco VST2 válido, o es un `FBCh` (no tiene programas).',
+    type: LibraryErrorDto,
+    example: { message: 'un banco de chunk (FBCh) no tiene programas que vaciar' },
+  })
+  async clearBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankClearInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      fileName: requireString(record, 'fileName'),
+    };
+    try {
+      return await this.service.clearBank(input);
+    } catch (error) {
+      mapDomainError(error);
+    }
+  }
+
+  @Post('banks/delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Envía un banco a la papelera',
+    description:
+      'Mueve un `.fxb` de la carpeta de presets a la papelera del sistema (o lo borra del todo ' +
+      'con `FXB_TRASH_MODE=direct`), igual que el resto de borrados del proyecto, y devuelve ' +
+      'cuántos bancos quedan y si era el banco por defecto. El respaldo `<banco>.orig`, si ' +
+      'existe, no se toca.',
+  })
+  @ApiBody({
+    type: LibraryBankDeleteRequestDto,
+    examples: {
+      defecto: {
+        summary: 'Borrar un banco',
+        value: { libraryRoot: 'C:\\VFX\\Library', plugin: 'MySynth', fileName: 'Legacy.fxb' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Banco enviado a la papelera, con su hash, la papelera y los bancos restantes.',
+    type: LibraryBankDeleteResponseDto,
+    example: LIBRARY_DELETE_BANK_EXAMPLE,
+  })
+  @ApiBadRequestResponse({
+    description: '`libraryRoot` inválido, `fileName` con separadores o sin `.fxb`.',
+    schema: { $ref: getSchemaPath(LibraryErrorDto) },
+    example: { message: 'la extensión debe ser .fxb' },
+  })
+  @ApiNotFoundResponse({
+    description: 'El plugin no existe en `plugs\\` o el banco no está en su carpeta de presets.',
+    type: LibraryErrorDto,
+    example: LIBRARY_PLUGIN_NOT_FOUND_EXAMPLE,
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'La papelera del sistema no aceptó el archivo.',
+    type: LibraryErrorDto,
+    example: LIBRARY_DISCARD_TRASH_ERROR_EXAMPLE,
+  })
+  async deleteBank(@Body() body: unknown) {
+    const record = asRecord(body);
+    const input: BankDeleteInput = {
+      libraryRoot: requireString(record, 'libraryRoot'),
+      plugin: requireString(record, 'plugin'),
+      fileName: requireString(record, 'fileName'),
+    };
+    try {
+      return await this.service.deleteBank(input);
     } catch (error) {
       mapDomainError(error);
     }

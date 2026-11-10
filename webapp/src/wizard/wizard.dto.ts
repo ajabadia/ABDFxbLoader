@@ -277,6 +277,13 @@ export class WizardInstallPluginDto implements WizardInstallPluginInput {
     default: false,
   })
   autoImportRegistry?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Si es true, permite instalar aunque el nombre del archivo DLL no coincida con el esperado por el wizard',
+    default: false,
+    example: false,
+  })
+  force?: boolean;
 }
 
 export class WizardInstallPluginResponseDto implements WizardInstallPluginResult {

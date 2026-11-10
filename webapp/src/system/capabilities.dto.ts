@@ -11,6 +11,17 @@ export class SystemCapabilitiesResponseDto {
   mode!: AppDeliveryMode;
 
   @ApiProperty({
+    description:
+      'Carpeta de libreria encontrada en el disco cuando aun no hay ninguna configurada ' +
+      '(`null` si ninguna de las carpetas de siempre contiene `plugs\\`).',
+    type: String,
+    nullable: true,
+    required: false,
+    example: 'D:\\_banks\\storage',
+  })
+  defaultLibraryRoot?: string | null;
+
+  @ApiProperty({
     description: 'Indica si puede tomar instantáneas y diffs del Registro de Windows',
     example: true,
   })
@@ -48,4 +59,5 @@ export const SYSTEM_CAPABILITIES_EXAMPLE: SystemCapabilitiesResponseDto = {
   canRevealInExplorer: true,
   canNativePick: true,
   canFileSystemAccess: false,
+  defaultLibraryRoot: 'D:\\_banks\\storage',
 };

@@ -486,6 +486,58 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
 
 ---
 
+## Fase VI: Experiencia del Músico, Gestión Total V-Machine y Robustez (Plan de Ejecución)
+
+> **Objetivo:** Transformar la aplicación para que sea 100% comprensible y autónoma para un músico no técnico, gestionar la SM Pro Audio V-Machine de extremo a extremo (incluyendo bancos y presets de hardware) y subsanar las regresiones detectadas en la UI y suite de pruebas.
+
+### 1. Fase VI.A: Estabilización Inmediata y Corrección de Regresiones (Bloque 0) [COMPLETADA]
+- [x] **Corrección de exportación de `FxbApiError` en [`api.ts`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/ui/browser/api.ts):**
+  - Cambiado `export type { FxbApiError }` por `export { FxbApiError }` para que `test/error-helpers.test.ts` compile sin error `TS1362`.
+- [x] **Limpieza de regla CSS muerta en [`styles.css`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/public/styles.css):**
+  - Eliminada la regla huérfana `.table-check-all` en línea 2570 dejando `ui.styles.test.ts` en verde.
+- [x] **Corrección de sintaxis HTML e i18n en [`index.html`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/public/index.html):**
+  - Corregidos los `<input type="checkbox" / data-i18n="...">` en líneas 346, 409, 447, 539, 1134, 1144: movido `data-i18n` a un `<span>` que envuelve el texto visible de la etiqueta para que la traducción al español e inglés se aplique fielmente.
+  - Corregido el encabezado del Wizard (`#plugin-wizard-title`): movido `data-i18n` a un `<span>` interno para que `applyI18n()` no destruya `<span id="plugin-wizard-plugin"></span>`.
+- [x] **Comportamiento del cajón de Ajustes (`#settings-drawer`):**
+  - En [`openSettingsForLibraryRootAction()`](file:///d:/desarrollos/ABDSynths/ABDfxbloader/webapp/src/ui/browser/main.ts), abrir el cajón `#settings-drawer` antes de hacer foco en `#library-root`.
+  - Asegurado que `closeAllDrawers()`, el clic en `#drawer-backdrop` y la tecla `Escape` cierren `#settings-drawer`.
+  - Conectado `#vmachine-change-drive` para abrir `#settings-drawer` y enfocar `#vmachine-drive`.
+- [x] **Exponer operaciones de banco en la UI de `#banks`:**
+  - Añadido menú de acciones de fila (`rowActions` con selector "···") a la tabla de bancos `#banks-table`: opciones de "Usar como por defecto", "Renombrar", "Vaciar programas" y "Eliminar banco", con confirmación nativa, refresco reactivo de listado y soporte completo en español e inglés.
+- [x] **Verificación:** Ejecutado `npm test` completo (**706 tests pasando, 0 fallos**).
+
+### 2. Fase VI.B: Gestión Total de V-Machine en Hardware (Bancos y Presets Nativos) [EN MARCHA]
+- [ ] **Sincronización de `banks/` (`.vfxbank` / `.vfxpreset`) a la unidad USB:**
+  - Extender `VMachineService` para inventariar y sincronizar no solo `<Drive>/<Library>.vfxlibrary/plugs/` sino también `<Drive>/<Library>.vfxlibrary/banks/`.
+  - Comparar estados (`missing`, `differs`, `same`) para carpetas `.vfxbank` y sus ficheros (`bank.vfx`, `preset.vfx`, `.chunk`).
+  - Extender la acción de copia en la pestaña `Unidad` para sincronizar bancos y presets al pendrive con verificación de integridad.
+- [ ] **Generador de preset nativo V-Machine al instalar un plugin:**
+  - Cuando un usuario instala un plugin nuevo (vía Wizard o manual), ofrecer la creación automática de un `.vfxbank` y `.vfxpreset` básico (Channel 1, Slot 1 apuntando al ID del plugin).
+  - De esta forma, el plugin aparece inmediatamente en el menú LCD físico de la V-Machine sin requerir el software legacy VFX Host.
+- [ ] **Inspector y editor básico de `preset.vfx`:**
+  - Visualizar la asignación de plugins por slot en un preset nativo y el mapeo básico de controles.
+
+### 3. Fase VI.C: Usabilidad y Lenguaje para el Músico No Técnico
+- [ ] **Traducción de jerga técnica a lenguaje musical comprensible:**
+  - "PE32 / Entrypoint VST" → "Compatible con V-Machine (32 bits)" con badge visual verde/rojo.
+  - "Orden de bytes little-endian / big-endian" → "Formato de banco: Estándar V-Machine / Formato Windows".
+  - "Poner cargador" → "Activar carga automática de sonidos (fxbLoader)" con explicación clara de beneficio.
+  - Agrupar parámetros crudos (FourCC, tamaño de editor en px, chunks hexadecimales) dentro de un acordeón `<details>` de "Opciones técnicas / avanzadas", presentando valores por defecto inteligentes.
+- [ ] **Simplificación del flujo de importación de bancos `.fxb`:**
+  - Priorizar el botón visual de selección de archivos y zona de arrastrar y soltar (drag & drop), dejando el `<textarea>` de rutas manuales como opción secundaria o colapsada.
+- [ ] **Separación de vistas avanzadas:**
+  - Mover la pestaña `Auditoría` (logs `.jsonl`) y el alta sin wizard compleja a un modo o acceso secundario para no abrumar al músico en la barra principal.
+  - Añadir tooltips explicativos y un mini tour o guía rápida integrada ("Cómo preparar tu pendrive para la V-Machine en 3 pasos").
+
+### 4. Fase VI.D: Rendimiento Binario, Optimización y Ciclo de Memoria (Snapshots / FXB)
+- [ ] **Análisis del flujo de gestión de archivos `.fxb` y conversión de byte order:**
+  - ¿Cómo optimizar el rendimiento de la lectura/escritura en JavaScript/TypeScript? (Uso de `Buffer` / `DataView` preasignados, reducción de copias intermedias de memoria al transformar cabeceras FxBk/FBCh y streaming directo para chunks grandes).
+- [ ] **Auditoría de fugas de memoria en manejo de snapshots del sistema:**
+  - Análisis de retención de referencias en caché durante la captura del Registro de Windows y diffs del sistema de ficheros (`CaptureService`).
+  - Asegurar liberación explícita de descriptores de archivos, streams y buffers pesados tras emitir las respuestas o cancelar tareas.
+
+---
+
 ## Revisión
 
 Antes de cada tarea, la pregunta de cierre es la misma: ¿esto es verificable por archivos reales y por la API, o solo por unittest? Si solo por unittest, el plano pide más anclaje.

@@ -227,6 +227,18 @@ export interface FxbClient {
     exportBank(
       body: RequestBody<'/library/banks/export', 'post'>,
     ): Promise<SuccessBody<'/library/banks/export', 'post'>>;
+    /** Renombra un banco del plugin y su respaldo sin tocar el contenido. */
+    renameBank(
+      body: RequestBody<'/library/banks/rename', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/rename', 'post'>>;
+    /** Vacía los programas de un banco FxBk conservando su cabecera y creando respaldo. */
+    clearBank(
+      body: RequestBody<'/library/banks/clear', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/clear', 'post'>>;
+    /** Envía un banco a la papelera del sistema o lo borra. */
+    deleteBank(
+      body: RequestBody<'/library/banks/delete', 'post'>,
+    ): Promise<SuccessBody<'/library/banks/delete', 'post'>>;
     /** Lee un `.fxb` y lo compara con los bancos del plugin, sin copiarlo. */
     inspectBank(
       body: RequestBody<'/library/banks/inspect', 'post'>,
@@ -623,6 +635,18 @@ export function createFxbClient(options: FxbClientOptions = {}): FxbClient {
       exportBank: (body) =>
         request('POST', '/library/banks/export', body) as Promise<
           SuccessBody<'/library/banks/export', 'post'>
+        >,
+      renameBank: (body) =>
+        request('POST', '/library/banks/rename', body) as Promise<
+          SuccessBody<'/library/banks/rename', 'post'>
+        >,
+      clearBank: (body) =>
+        request('POST', '/library/banks/clear', body) as Promise<
+          SuccessBody<'/library/banks/clear', 'post'>
+        >,
+      deleteBank: (body) =>
+        request('POST', '/library/banks/delete', body) as Promise<
+          SuccessBody<'/library/banks/delete', 'post'>
         >,
       inspectBank: (body) =>
         request('POST', '/library/banks/inspect', body) as Promise<

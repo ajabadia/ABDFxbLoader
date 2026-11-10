@@ -458,6 +458,77 @@ export interface BankDiscardBackupResult {
   trash: TrashInfo;
 }
 
+export interface BankRenameInput {
+  libraryRoot: string;
+  plugin: string;
+  /** Banco ya importado en la carpeta de presets del plugin. */
+  fileName: string;
+  /** Nombre nuevo, con extensión `.fxb` y sin separadores de ruta. */
+  newName: string;
+}
+
+/** Resultado de renombrar un banco dentro de la carpeta de presets. */
+export interface BankRenameResult {
+  plugin: PluginEntry;
+  presetsDir: string;
+  /** El archivo tal como estaba antes (con su hash y su cabecera). */
+  previous: BankExportFile;
+  /** El mismo contenido, ya en su nombre nuevo. */
+  renamed: BankExportFile;
+  /**
+   * `true` si el banco era el `defaultFxbName` del plugin y la configuración se
+   * actualizó para que la DLL lo siga cargando.
+   */
+  defaultUpdated: boolean;
+  /** Respaldo `<banco>.orig` renombrado junto al banco, si existía. */
+  backupRenamed: string | null;
+}
+
+export interface BankClearInput {
+  libraryRoot: string;
+  plugin: string;
+  fileName: string;
+}
+
+/**
+ * Resultado de vaciar un banco: se reescribe en su sitio con cero programas,
+ * conservando su `uniqueID`, su versión y su orden de bytes.
+ */
+export interface BankClearResult {
+  plugin: PluginEntry;
+  presetsDir: string;
+  /** El banco tal como estaba, antes de vaciarlo. */
+  previous: BankExportFile;
+  /** El banco ya vacío (mismo nombre y ruta). */
+  cleared: BankExportFile;
+  /** Programas que tenía antes de vaciarlo. */
+  programs: number;
+  /** Copia byte a byte del original; `null` si no se creó. */
+  backup: BankBackupFile | null;
+  /** `true` si el respaldo se creó ahora; el primero que exista se conserva. */
+  backupCreated: boolean;
+}
+
+export interface BankDeleteInput {
+  libraryRoot: string;
+  plugin: string;
+  fileName: string;
+}
+
+/** Resultado de enviar un banco a la papelera del sistema. */
+export interface BankDeleteResult {
+  plugin: PluginEntry;
+  presetsDir: string;
+  /** Banco enviado a la papelera, con el tamaño y el hash que tenía. */
+  deleted: { fileName: string; path: string; size: number; sha256: string };
+  /** Papelera donde quedó y cómo recuperarlo. */
+  trash: TrashInfo;
+  /** Bancos que quedan en la carpeta del plugin después del borrado. */
+  remaining: number;
+  /** `true` si el banco borrado era el `defaultFxbName` del plugin. */
+  wasDefault: boolean;
+}
+
 import { CodedError, type ApiErrorCode } from '../common/api-errors';
 
 /**

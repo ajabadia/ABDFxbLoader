@@ -1129,6 +1129,16 @@ tbody tr:last-child td {
   margin: 0;
 }
 
+/* En Ajustes el bloque ya vive dentro de un cajón: no se dibuja como tarjeta. */
+.settings-form .library-root-bar {
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.empty-state #empty-choose-root {
+  margin-top: 10px;
+}
+
 /* Portada: lo que se ve antes del primer escaneo. */
 .empty-state {
   padding: 28px 24px;
@@ -1990,6 +2000,117 @@ details.import label[for='import-paths'] {
   margin-top: 14px;
 }
 
+/* Modal Wizard Install */
+.modal-wizard-install {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: inherit;
+  max-width: 540px;
+  padding: 24px;
+  width: calc(100vw - 40px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+}
+
+.modal-wizard-install::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.modal-wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.modal-wizard-header h3 {
+  font-size: 1.1rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  margin: 16px 0;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.wizard-dropzone:hover,
+.wizard-dropzone:focus-visible,
+.wizard-dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-light, rgba(217, 83, 79, 0.08));
+}
+
+.wizard-dropzone .dropzone-icon {
+  width: 32px;
+  height: 32px;
+  opacity: 0.6;
+}
+
+.wizard-dropzone .dropzone-text {
+  font-weight: 500;
+  margin: 0;
+}
+
+.wizard-dropzone .dropzone-sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.wizard-selected-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+
+.wizard-selected-file .icon {
+  flex-shrink: 0;
+}
+
+.wizard-selected-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wizard-selected-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.wizard-selected-path {
+  font-size: 0.75rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.modal-wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
 /* Capture drawer */
 .capture-drawer {
   max-width: 900px;
@@ -2030,6 +2151,67 @@ details.import label[for='import-paths'] {
   font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
+}
+
+/* Secciones numeradas y acordeones del drawer de nuevo plugin */
+.custom-plugin-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.custom-plugin-type-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.custom-plugin-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.custom-plugin-type-option:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 217, 119, 6), 0.08);
+  font-weight: 500;
+}
+
+.custom-plugin-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-top: 12px;
+  background: var(--surface);
+}
+
+.custom-plugin-details summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.custom-plugin-details[open] summary {
+  margin-bottom: 10px;
+  color: var(--text);
 }
 
 .capture-step-badge {
@@ -2549,4 +2731,9 @@ details.import label[for='import-paths'] {
   .top-actions .creation-menu > summary {
     padding-inline: 8px;
   }
+}
+
+/* El detalle de la auditoria se abre debajo de la tabla: que no quede pegado al borde. */
+.log-record-detail {
+  scroll-margin-top: 16px;
 }

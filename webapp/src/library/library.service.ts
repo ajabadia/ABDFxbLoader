@@ -21,6 +21,7 @@ import { PluginLogService } from '../plugin-log/plugin-log.service';
 import { META_FILENAME } from '../plugin-meta/plugin-meta.constants';
 import { PluginMetaService } from '../plugin-meta/plugin-meta.service';
 import { resolveWizardsDir, WizardService } from '../wizard/wizard.service';
+import { ensureDefaultVfxPreset } from './vfx-bank-validator';
 import { inspectPeExports } from './pe-exports';
 import {
   buildFxBank,
@@ -38,8 +39,17 @@ import {
   uniqueIdToText,
 } from './fxb-bank';
 import type { BankReference, FxbBankInfo, FxbEndianness } from './fxb-bank';
+import type {
+  BankClearInput,
+  BankClearResult,
+  BankDeleteInput,
+  BankDeleteResult,
+  BankRenameInput,
+  BankRenameResult,
+} from './library.types';
 import {
   analyzeVfxinfo,
+  deriveNameAbbreviation,
   dllBasename,
   LOADER_DLL_FILENAME,
   patchVfxinfo,
@@ -1183,6 +1193,221 @@ export class LibraryService {
       programs: converted.programs,
       chunks: converted.chunks,
     };
+  }
+
+  /** Nombre de banco simple: sin separadores y con extensión `.fxb`. */
+  private validateBankFileName(value: unknown, field: string): string {
+    const fileName = typeof value === 'string' ? value.trim() : '';
+    if (fileName === '') {
+      throw new LibraryPathError(`${field} es obligatorio y debe ser una cadena`);
+    }
+    if (hasPathSeparator(fileName)) {
+      throw new LibraryPathError(`${field} no puede contener separadores de ruta: "${fileName}"`);
+    }
+    if (!/\.fxb$/i.test(fileName)) {
+      throw new LibraryPathError('la extensión debe ser .fxb', 'bankExtensionInvalid');
+    }
+    return fileName;
+  }
+
+  /**
+   * Cabecera de un banco sin programas: conserva `uniqueID`, versión y orden de
+   * bytes del original y deja `numPrograms` y `currentProgram` a cero.
+   */
+  private emptyBankHeader(data: Buffer, bank: FxbBankInfo): Buffer {
+    const header = Buffer.from(data.subarray(0, FXB_HEADER_SIZE));
+    const write = (value: number, offset: number): void => {
+      if (bank.endianness === 'little') header.writeUInt32LE(value >>> 0, offset);
+      else header.writeUInt32BE(value >>> 0, offset);
+    };
+    write(FXB_HEADER_SIZE - 8, 4); // byteSize de un banco sin programas
+    write(0, 24); // numPrograms
+    write(0, 28); // currentProgram
+    return header;
+  }
+
+  /**
+   * Renombra un `.fxb` de la carpeta de presets sin tocar su contenido.
+   *
+   * El respaldo `<banco>.orig` se renombra con él, y si el banco era el
+   * `defaultFxbName` del plugin la configuración se actualiza para que la DLL
+   * lo siga cargando. Es la operación «Rename Bank» que el host ya tenía en
+   * 2009, con la diferencia de que aquí nunca se pisa un archivo existente.
+   */
+  async renameBank(input: BankRenameInput): Promise<BankRenameResult> {
+    const fileName = this.validateBankFileName(input.fileName, 'fileName');
+    const newName = this.validateBankFileName(input.newName, 'newName');
+    if (fileName.toLowerCase() === newName.toLowerCase()) {
+      throw new LibraryPathError('el nombre nuevo es igual al actual');
+    }
+
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const snapshot = await this.configService.read(pluginDir);
+    const presetsDir = await this.resolvePresetsDir(pluginDir, 'renombrar el banco', snapshot);
+
+    const sourcePath = path.join(presetsDir, fileName);
+    const stats = await statOrNull(sourcePath);
+    if (stats === null || !stats.isFile()) {
+      throw new LibraryPathError(`no existe el banco en la carpeta del plugin: ${sourcePath}`);
+    }
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío', 'fileEmpty');
+    if (stats.size > FXB_MAX_BYTES) {
+      throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
+    }
+
+    const targetPath = path.join(presetsDir, newName);
+    if (await exists(targetPath)) {
+      throw new PluginStateError(`ya existe un archivo con el nombre nuevo: ${targetPath}`);
+    }
+
+    const data = await fs.readFile(sourcePath);
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      throw new LibraryOperationError(`el banco no es un .fxb válido: ${parsed.issues.join('; ')}`);
+    }
+
+    await fs.rename(sourcePath, targetPath);
+
+    let backupRenamed: string | null = null;
+    const backupPath = path.join(presetsDir, `${fileName}${BANK_BACKUP_SUFFIX}`);
+    if (await exists(backupPath)) {
+      const targetBackup = path.join(presetsDir, `${newName}${BANK_BACKUP_SUFFIX}`);
+      if (!(await exists(targetBackup))) {
+        await fs.rename(backupPath, targetBackup);
+        backupRenamed = path.basename(targetBackup);
+      }
+    }
+
+    let defaultUpdated = false;
+    if (snapshot.config.defaultFxbName.trim().toLowerCase() === fileName.toLowerCase()) {
+      await this.configService.write({
+        pluginDir,
+        expectedMtimeMs: snapshot.mtimeMs,
+        config: { defaultFxbName: newName },
+      });
+      defaultUpdated = true;
+    }
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    await this.logService?.append(
+      pluginDir,
+      'rename-bank',
+      `Renombrado banco ${fileName} a ${newName}${defaultUpdated ? ' (era el banco por defecto)' : ''}`,
+    );
+
+    return {
+      plugin,
+      presetsDir,
+      previous: this.exportFile(sourcePath, data, parsed.bank),
+      renamed: this.exportFile(targetPath, data, parsed.bank),
+      defaultUpdated,
+      backupRenamed,
+    };
+  }
+
+  /**
+   * Vacía un banco de programas reescribiéndolo en su sitio con la misma
+   * cabecera. Antes guarda una copia byte a byte como `<banco>.orig`, que es la
+   * misma que usa «Restaurar original»; si ya existe no se pisa.
+   */
+  async clearBank(input: BankClearInput): Promise<BankClearResult> {
+    const fileName = this.validateBankFileName(input.fileName, 'fileName');
+
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const snapshot = await this.configService.read(pluginDir);
+    const presetsDir = await this.resolvePresetsDir(pluginDir, 'vaciar el banco', snapshot);
+
+    const sourcePath = path.join(presetsDir, fileName);
+    const stats = await statOrNull(sourcePath);
+    if (stats === null || !stats.isFile()) {
+      throw new LibraryPathError(`no existe el banco en la carpeta del plugin: ${sourcePath}`);
+    }
+    if (stats.size === 0) throw new LibraryPathError('archivo vacío', 'fileEmpty');
+    if (stats.size > FXB_MAX_BYTES) {
+      throw new LibraryPathError(`supera el máximo de ${FXB_MAX_BYTES} bytes`);
+    }
+
+    const data = await fs.readFile(sourcePath);
+    const parsed = parseFxbBank(data);
+    if (parsed.bank === null || parsed.issues.length > 0) {
+      throw new LibraryOperationError(`el banco no es un .fxb válido: ${parsed.issues.join('; ')}`);
+    }
+    const bank = parsed.bank;
+    if (bank.chunkSize !== null) {
+      throw new LibraryOperationError('un banco de chunk (FBCh) no tiene programas que vaciar');
+    }
+
+    const backupPath = path.join(presetsDir, `${fileName}${BANK_BACKUP_SUFFIX}`);
+    let backupCreated = false;
+    if (!(await exists(backupPath))) {
+      await writeFileAtomic(backupPath, data);
+      backupCreated = true;
+    }
+    const backup = await this.backupFile(backupPath);
+
+    const emptied = this.emptyBankHeader(data, bank);
+    const reparsed = parseFxbBank(emptied);
+    if (reparsed.bank === null || reparsed.issues.length > 0) {
+      throw new LibraryOperationError(
+        `el banco vaciado no es válido: ${reparsed.issues.join('; ')}`,
+      );
+    }
+
+    await writeFileAtomic(sourcePath, emptied);
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    await this.logService?.append(
+      pluginDir,
+      'clear-bank',
+      `Vaciado banco ${fileName}: ${bank.numPrograms} programa(s) fuera`,
+    );
+
+    return {
+      plugin,
+      presetsDir,
+      previous: this.exportFile(sourcePath, data, bank),
+      cleared: this.exportFile(sourcePath, emptied, reparsed.bank),
+      programs: bank.numPrograms,
+      backup,
+      backupCreated,
+    };
+  }
+
+  /**
+   * Envía un `.fxb` a la papelera del sistema (o lo borra del todo con
+   * `FXB_TRASH_MODE=direct`, como el resto del proyecto). El respaldo
+   * `<banco>.orig`, si existe, se queda donde está: sigue siendo recuperable
+   * con «Restaurar original» si el banco vuelve a su nombre.
+   */
+  async deleteBank(input: BankDeleteInput): Promise<BankDeleteResult> {
+    const fileName = this.validateBankFileName(input.fileName, 'fileName');
+
+    const { plugsPath } = await this.resolvePlugs(input.libraryRoot);
+    const pluginDir = await this.resolvePluginDir(plugsPath, input.plugin);
+    const snapshot = await this.configService.read(pluginDir);
+    const presetsDir = await this.resolvePresetsDir(pluginDir, 'borrar el banco', snapshot);
+
+    const sourcePath = path.join(presetsDir, fileName);
+    const stats = await statOrNull(sourcePath);
+    if (stats === null || !stats.isFile()) {
+      throw new LibraryPathError(`no existe el banco en la carpeta del plugin: ${sourcePath}`);
+    }
+
+    const wasDefault = snapshot.config.defaultFxbName.trim().toLowerCase() === fileName.toLowerCase();
+    const deleted = await this.backupFile(sourcePath);
+    const trash = await moveToTrash(sourcePath);
+    const remaining = (await this.listPluginBanks(presetsDir)).length;
+
+    const plugin = await this.describe(plugsPath, input.plugin);
+    await this.logService?.append(
+      pluginDir,
+      'delete-bank',
+      `Borrado banco ${fileName}${wasDefault ? ' (era el banco por defecto)' : ''}`,
+    );
+
+    return { plugin, presetsDir, deleted, trash, remaining, wasDefault };
   }
 
   /**
@@ -2365,18 +2590,28 @@ export class LibraryService {
 
     const isSynth = input.isSynth !== undefined ? Boolean(input.isSynth) : true;
     const parameterCount = Math.max(0, input.parameterCount ?? 0);
-    const programCount = Math.max(1, input.programCount ?? 1);
+    // El host escribe `program_count: 0` cuando el plugin no expone programas
+    // (el `vfxinfo.txt` de NeuronVS lo hace), así que un 0 explícito se respeta;
+    // el valor por defecto sigue siendo 1.
+    const programCount = Math.max(0, input.programCount ?? 1);
     const hasEditor = input.hasEditor !== undefined ? Boolean(input.hasEditor) : true;
     const editorWidth = Math.max(0, input.editorWidth ?? 0);
     const editorHeight = Math.max(0, input.editorHeight ?? 0);
 
+    // Abreviatura de 4 caracteres con la regla del host (`FUN_00450d70`).
+    const nameAbbreviation = deriveNameAbbreviation(numericId, pluginName);
+
+    // Mismo orden de claves que el escritor del host (`FUN_00454280`): aunque
+    // él lee por nombre con `strcmp`, replicarlo deja el archivo idéntico.
     const vfxinfoLines: string[] = [
-      `dll_name: ${folderName}/${dllFilename}`,
       `id: ${numericId}`,
       `name: ${pluginName}`,
-      `is_synth: ${isSynth ? '1' : '0'}`,
+      `version: 1`,
+      `name_abbreviation: ${nameAbbreviation}`,
+      `dll_name: ${folderName}/${dllFilename}`,
       `parameter_count: ${parameterCount}`,
       `program_count: ${programCount}`,
+      `is_synth: ${isSynth ? '1' : '0'}`,
       `has_editor: ${hasEditor ? '1' : '0'}`,
     ];
     if (editorWidth > 0) vfxinfoLines.push(`editor_width: ${editorWidth}`);
@@ -2404,12 +2639,25 @@ export class LibraryService {
           vendor,
           vendor_url: '',
           genre,
-          name_abbreviation: pluginName.slice(0, 8),
+          name_abbreviation: nameAbbreviation,
           notes: 'Creado mediante el asistente de plugins nuevos.',
           created: new Date().toISOString().slice(0, 10),
         },
         extended: {},
       });
+    }
+
+    // Asegura el preset nativo .vfxbank para V-Machine
+    try {
+      await ensureDefaultVfxPreset({
+        libraryRoot: path.dirname(plugsPath),
+        pluginId: numericId,
+        pluginName,
+        shortName: nameAbbreviation,
+        channel: 1,
+      });
+    } catch (presetErr) {
+      warnings.push(`No se pudo crear el preset nativo de V-Machine: ${(presetErr as Error).message}`);
     }
 
     // Guardar como wizard si se solicitó

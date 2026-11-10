@@ -571,3 +571,142 @@ export async function repairVfxBank(
     createdDescriptors,
   };
 }
+
+/**
+ * Crea un buffer binario para un archivo de chunk VFX con cabecera estándar !VFXCHUNKMAGIC!\0.
+ */
+export function buildVfxChunkBuffer(pluginId: number, opaqueData?: Buffer): Buffer {
+  const data = opaqueData && opaqueData.length > 0 ? opaqueData : Buffer.alloc(0);
+  const dataLen = data.length;
+  const totalLength = 52 + dataLen;
+  const buf = Buffer.alloc(totalLength);
+
+  // 0..15: !VFXCHUNKMAGIC!\0
+  VFX_CHUNK_MAGIC_BUFFER.copy(buf, 0);
+
+  // 16..20: Timestamp/seed uint32 LE
+  const timestamp = Math.floor(Date.now() / 1000) & 0xffffffff;
+  buf.writeUInt32LE(timestamp, 16);
+
+  // 20..24: Version (4)
+  buf.writeUInt32LE(4, 20);
+
+  // 24..28: Total length
+  buf.writeUInt32LE(totalLength, 24);
+
+  // 28..32: Reserved (0)
+  buf.writeUInt32LE(0, 28);
+
+  // 32..36: Data length
+  buf.writeUInt32LE(dataLen, 32);
+
+  // 36..40: Flags (1)
+  buf.writeUInt32LE(1, 36);
+
+  // 40..44: Plugin ID uint32 LE
+  buf.writeUInt32LE(pluginId, 40);
+
+  // 44..48: Flags / channel slot (1)
+  buf.writeUInt32LE(1, 44);
+
+  // 48..52: Parameter count or sub-header
+  buf.writeUInt32LE(0, 48);
+
+  // 52..end: Opaque plugin chunk data
+  if (dataLen > 0) {
+    data.copy(buf, 52);
+  }
+
+  return buf;
+}
+
+/**
+ * Comprueba si la librería tiene al menos un preset/banco nativo (.vfxpreset) que use este plugin ID.
+ * Si no existe ninguno, crea un preset por defecto en `<libraryRoot>/banks/000_<PluginName>.vfxbank/000_Default.vfxpreset/`
+ * conteniendo `preset.vfx` y `channel_1_slot_a_<pluginId>.chunk`.
+ */
+export async function ensureDefaultVfxPreset(options: {
+  libraryRoot: string;
+  pluginId: number;
+  pluginName: string;
+  shortName?: string;
+  channel?: number;
+}): Promise<{ created: boolean; presetDir: string | null }> {
+  const banksDir = path.join(options.libraryRoot, 'banks');
+  let banksExist = false;
+  try {
+    const st = await fs.stat(banksDir);
+    banksExist = st.isDirectory();
+  } catch {
+    banksExist = false;
+  }
+
+  if (banksExist) {
+    // Comprobar si ya existe algún preset que referencie este plugin
+    try {
+      const bankEntries = await fs.readdir(banksDir, { withFileTypes: true });
+      for (const bEntry of bankEntries) {
+        if (!bEntry.isDirectory()) continue;
+        const bPath = path.join(banksDir, bEntry.name);
+        let presetEntries: import('node:fs').Dirent[] = [];
+        try {
+          presetEntries = await fs.readdir(bPath, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const pEntry of presetEntries) {
+          if (!pEntry.isDirectory() || !pEntry.name.toLowerCase().endsWith('.vfxpreset')) continue;
+          const pPath = path.join(bPath, pEntry.name);
+          const pFiles = await fs.readdir(pPath);
+          // 1. Mirar si algún .chunk coincide con el id
+          const chunkMatch = pFiles.some((fn) => {
+            const m = fn.match(CHUNK_REGEX);
+            return m !== null && Number.parseInt(m[3]!, 10) === options.pluginId;
+          });
+          if (chunkMatch) return { created: false, presetDir: null };
+
+          // 2. Mirar si preset.vfx coincide con el id
+          if (pFiles.includes('preset.vfx')) {
+            try {
+              const descContent = await fs.readFile(path.join(pPath, 'preset.vfx'), 'utf8');
+              const parsed = parsePresetVfxContent(descContent);
+              if (parsed.pluginId === options.pluginId) {
+                return { created: false, presetDir: null };
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // No hay presets nativos para este plugin -> creamos el banco y preset por defecto
+  const cleanPluginName = options.pluginName.replace(/[<>:"/\\|?*]/g, '_').trim();
+  const bankDirName = `000_${cleanPluginName}.vfxbank`;
+  const targetBankDir = path.join(banksDir, bankDirName);
+  const targetPresetDir = path.join(targetBankDir, '000_Default.vfxpreset');
+
+  await fs.mkdir(targetPresetDir, { recursive: true });
+
+  // 1. Generar preset.vfx
+  const descriptor = generatePresetVfxContent({
+    presetName: 'Default',
+    pluginId: options.pluginId,
+    pluginName: options.pluginName,
+    shortName: options.shortName,
+    channel: options.channel ?? 0,
+  });
+  await fs.writeFile(path.join(targetPresetDir, 'preset.vfx'), descriptor, 'utf8');
+
+  // 2. Generar chunk binario estándar !VFXCHUNKMAGIC!
+  const chunkFileName = `channel_1_slot_a_${options.pluginId}.chunk`;
+  const chunkBuffer = buildVfxChunkBuffer(options.pluginId);
+  await fs.writeFile(path.join(targetPresetDir, chunkFileName), chunkBuffer);
+
+  return { created: true, presetDir: targetPresetDir };
+}
+

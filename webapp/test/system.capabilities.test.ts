@@ -3,12 +3,12 @@ import { test } from 'node:test';
 import { SystemCapabilitiesController } from '../src/system/capabilities.controller';
 import { createFxbClient } from '../src/client/fxb-client';
 
-test('SystemCapabilitiesController devuelve las capacidades según el SO y FXB_APP_MODE', () => {
+test('SystemCapabilitiesController devuelve las capacidades según el SO y FXB_APP_MODE', async () => {
   const controller = new SystemCapabilitiesController();
   const isWin = process.platform === 'win32';
 
   delete process.env['FXB_APP_MODE'];
-  const localCaps = controller.getCapabilities();
+  const localCaps = await controller.getCapabilities();
   assert.equal(localCaps.mode, 'web-local');
   assert.equal(localCaps.canCaptureRegistry, isWin);
   assert.equal(localCaps.canTrash, isWin);
@@ -18,7 +18,7 @@ test('SystemCapabilitiesController devuelve las capacidades según el SO y FXB_A
 
   process.env['FXB_APP_MODE'] = 'desktop';
   try {
-    const desktopCaps = controller.getCapabilities();
+    const desktopCaps = await controller.getCapabilities();
     assert.equal(desktopCaps.mode, 'desktop');
     assert.equal(desktopCaps.canCaptureRegistry, isWin);
   } finally {

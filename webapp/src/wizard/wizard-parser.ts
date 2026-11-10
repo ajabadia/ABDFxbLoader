@@ -223,8 +223,18 @@ export function serializeWizardToVfxinfo(record: WizardRecord): string {
   if (record.vendorUrl) parts.push(`vendor_url: ${record.vendorUrl}`);
   if (record.vendorType) parts.push(`vendor_type: ${record.vendorType}`);
   if (record.genre) parts.push(`genre: ${record.genre}`);
-  if ((record.flags as any)?.licence_required !== undefined) parts.push(`licence_required: ${(record.flags as any).licence_required}`);
-  if ((record.flags as any)?.mac !== undefined) parts.push(`mac: ${(record.flags as any).mac}`);
+  // Claves sueltas tal como las leyó el parser (`licence_required`, `mac`,
+  // `no_vst_chunks`, `dont_free_library_in_vfx_application`,
+  // `no_set_program_before_chunk`…). El host las interpreta por nombre, así que
+  // perderlas al regenerar el wizard cambia su comportamiento.
+  for (const [key, value] of Object.entries(record.flags ?? {})) {
+    if (key === 'license_sequence') continue; // bloque multilínea: va aparte
+    if (typeof value === 'boolean') {
+      parts.push(`${key}: ${value ? '1' : '0'}`);
+    } else if (value !== '') {
+      parts.push(`${key}: ${value}`);
+    }
+  }
 
   if (record.filesToCopy.length > 0) {
     parts.push('');

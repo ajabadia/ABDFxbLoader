@@ -1,7 +1,7 @@
 import {
   createFxbClient,
   isFxbApiError,
-  type FxbApiError,
+  FxbApiError,
   type FxbClient,
 } from '../../client/fxb-client.js';
 import { t } from '../i18n/index.js';
@@ -29,7 +29,7 @@ export const client: FxbClient = new Proxy({} as FxbClient, {
   },
 });
 
-export { createFxbClient, isFxbApiError };
+export { createFxbClient, isFxbApiError, FxbApiError };
 
 /**
  * Texto del fallo en el idioma de la vista. Si el servidor manda un código con
