@@ -3722,6 +3722,7 @@ async function promptAndInstallFromWizard(
     if (!els.pluginWizard.hidden) {
       renderStatusWithAction(els.pluginWizardStatus, msg, 'error', action);
     }
+    openSettingsAndFocus('library-root');
     return;
   }
 
@@ -4492,6 +4493,13 @@ function setImportPackageBusy(busy: boolean): void {
 }
 
 function openImportPackageDrawer(opener?: HTMLElement): void {
+  if (!libraryRoot) {
+    const msg = t('ui.importPackage.needLibrary');
+    const action = openSettingsForLibraryRootAction();
+    setStatus(msg, 'error', action);
+    openSettingsAndFocus('library-root');
+    return;
+  }
   closeBanks();
   closeMeta();
   closePluginWizard();
@@ -4503,14 +4511,6 @@ function openImportPackageDrawer(opener?: HTMLElement): void {
     if (parent) {
       els.importPackagePath.value = parent;
     }
-  }
-  if (!libraryRoot) {
-    renderStatusWithAction(
-      els.importPackageStatus,
-      t('ui.importPackage.needLibrary'),
-      'info',
-      openSettingsForLibraryRootAction(),
-    );
   }
   els.importPackagePath.focus();
 }
@@ -4603,6 +4603,13 @@ function setCustomPluginStatus(message: string, kind = 'info', action?: StatusAc
 }
 
 function openCustomPluginDrawer(opener?: HTMLElement): void {
+  if (!libraryRoot && !els.customPluginRoot.value.trim()) {
+    const msg = t('ui.customPlugin.needRoot');
+    const action = openSettingsForLibraryRootAction();
+    setStatus(msg, 'error', action);
+    openSettingsAndFocus('library-root');
+    return;
+  }
   closeBanks();
   closeMeta();
   closePluginWizard();
@@ -4611,9 +4618,6 @@ function openCustomPluginDrawer(opener?: HTMLElement): void {
   showPanel(els.customPluginDrawer, opener);
   if (!els.customPluginRoot.value.trim() && libraryRoot) {
     els.customPluginRoot.value = libraryRoot;
-  }
-  if (!libraryRoot && !els.customPluginRoot.value.trim()) {
-    setCustomPluginStatus(t('ui.customPlugin.needRoot'), 'info', openSettingsForLibraryRootAction());
   }
   els.customPluginPath.focus();
 }

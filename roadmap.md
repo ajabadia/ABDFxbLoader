@@ -507,6 +507,15 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
 - [x] **Verificación:** Ejecutado `npm test` completo (**706 tests pasando, 0 fallos**).
 
 ### 2. Fase VI.B: Gestión Total de V-Machine en Hardware (Bancos y Presets Nativos) [EN MARCHA]
+- [x] **Guardas preventivas y guiado asistido a Ajustes:**
+  - Bloqueo de creación de plugin sin wizard (`openCustomPluginDrawer`) e importación de paquete (`openImportPackageDrawer`) si `libraryRoot` está vacío, abriendo de inmediato Ajustes con foco en el selector de carpeta.
+  - Bloqueo de instalación desde Wizards (`promptAndInstallFromWizard`) si `libraryRoot` está vacío con redirección y foco asistido directo en Ajustes.
+- [ ] **Ergonomía de navegación y diseño en la vista de Unidad:**
+  - Colocar **"Unidad"** como la primera opción a la izquierda en la cabecera principal (`#header-nav`).
+  - En el cajón de **Ajustes**, priorizar la configuración de la **Unidad / Drive** situándola en primer lugar antes de la librería.
+  - Transformar la lista suelta de comparación con la librería en una **tabla estándar unificada** (`#vmachine-comparison-table`) con los mismos principios de ordenación, columnas claras (nombre de plugin, estado en el medio, tamaño, acciones de copia individual y en lote) e integración de diseño del resto de la app.
+- [ ] **Modal de instalación de Wizards con zona Drag & Drop:**
+  - Dotar al modal de instalación asistida de una zona dropzone interactiva para arrastrar el archivo `.dll` o seleccionarlo con clic, complementando el selector de archivos.
 - [ ] **Sincronización de `banks/` (`.vfxbank` / `.vfxpreset`) a la unidad USB:**
   - Extender `VMachineService` para inventariar y sincronizar no solo `<Drive>/<Library>.vfxlibrary/plugs/` sino también `<Drive>/<Library>.vfxlibrary/banks/`.
   - Comparar estados (`missing`, `differs`, `same`) para carpetas `.vfxbank` y sus ficheros (`bank.vfx`, `preset.vfx`, `.chunk`).
