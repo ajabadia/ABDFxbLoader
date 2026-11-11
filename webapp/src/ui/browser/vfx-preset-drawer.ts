@@ -317,7 +317,9 @@ export function syncPianoKeys(): void {
   }
 
   // Actualizar coloreado de zonas de los 4 canales sobre las teclas
-  const keys = els.vfxPianoBed.querySelectorAll<HTMLElement>('[data-note]');
+  const keys = Array.from(els.vfxPianoBed.getElementsByTagName('div')).filter(
+    (el) => el.classList.contains('kbd-white-key') || el.classList.contains('kbd-black-key'),
+  ) as HTMLElement[];
   const chColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899'];
 
   keys.forEach((keyEl) => {
