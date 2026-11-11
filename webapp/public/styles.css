@@ -2777,3 +2777,68 @@ details.import label[for='import-paths'] {
   letter-spacing: 0.05em;
   color: var(--text);
 }
+
+.vfx-channels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.vfx-channel-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vfx-channel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.vfx-channel-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.vfx-slot-field {
+  margin-bottom: 4px;
+}
+
+.vfx-mix-row,
+.vfx-sends-row,
+.vfx-midi-row {
+  margin-top: 6px;
+}
+
+.vfx-global-buses {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.vfx-global-buses summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.vfx-buses-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.vfx-aux-card,
+.vfx-master-card {
+  background: var(--bg);
+}
