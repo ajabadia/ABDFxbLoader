@@ -21,6 +21,8 @@ import {
   stopAuditPolling,
   refreshVmachineView,
   scanData,
+  refreshVfxBanksView,
+  closePresetDrawer,
 } from './main.js';
 
 /**
@@ -32,7 +34,7 @@ import {
  * cajones quedan para lo que cuelga de un plugin concreto: sus bancos, sus
  * metadatos y su historial.
  */
-export type ViewId = 'libreria' | 'wizards' | 'medio' | 'auditoria';
+export type ViewId = 'libreria' | 'wizards' | 'medio' | 'auditoria' | 'vfxbanks';
 export type AuditTab = 'data' | 'associations';
 
 const VIEW_HASH: Record<ViewId, string> = {
@@ -40,6 +42,7 @@ const VIEW_HASH: Record<ViewId, string> = {
   wizards: '#/wizards',
   medio: '#/medio',
   auditoria: '#/auditoria',
+  vfxbanks: '#/vfxbanks',
 };
 
 export let activeView: ViewId | null = null;
@@ -48,12 +51,15 @@ const viewScroll = new Map<ViewId, number>();
 
 export function viewFromHash(): ViewId {
   const raw = window.location.hash.replace(/^#\/?/, '');
-  return raw === 'wizards' || raw === 'medio' || raw === 'auditoria' ? raw : 'libreria';
+  return raw === 'wizards' || raw === 'medio' || raw === 'auditoria' || raw === 'vfxbanks'
+    ? raw
+    : 'libreria';
 }
 
 function viewButtons(): [ViewId, HTMLButtonElement][] {
   return [
     ['libreria', els.libraryNavBtn],
+    ['vfxbanks', els.vfxBanksNavBtn],
     ['wizards', els.wizardsNavBtn],
     ['medio', els.vmachineNavBtn],
     ['auditoria', els.auditViewBtn],
@@ -74,6 +80,7 @@ function closeAllDrawers(): void {
   closeLogDrawer();
   closeImportPackageDrawer();
   closeCustomPluginDrawer();
+  closePresetDrawer();
   hidePanel(els.settingsDrawer);
 }
 
@@ -83,6 +90,7 @@ export function applyView(view: ViewId): void {
   activeView = view;
 
   els.libraryView.hidden = view !== 'libreria';
+  els.vfxBanksView.hidden = view !== 'vfxbanks';
   els.wizards.hidden = view !== 'wizards';
   els.vmachineView.hidden = view !== 'medio';
   els.auditView.hidden = view !== 'auditoria';
@@ -93,6 +101,7 @@ export function applyView(view: ViewId): void {
   }
 
   if (view === 'libreria') syncLibraryView();
+  if (view === 'vfxbanks') void refreshVfxBanksView();
   if (view === 'wizards') void ensureWizardsLoaded();
   if (view === 'medio') void refreshVmachineView();
   if (view === 'auditoria') showAuditTab(activeAuditTab, true);

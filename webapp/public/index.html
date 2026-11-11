@@ -138,6 +138,14 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-folder"></use></svg><span data-i18n="nav.library">Library</span>
         </button>
         <button
+          id="vfx-banks-nav-btn"
+          class="nav-btn"
+          type="button"
+          title="Hardware V-Machine banks and 4-channel presets" data-i18n-title="nav.vfxBanksTitle"
+        >
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-banks"></use></svg><span data-i18n="nav.vfxBanks">V-Machine Banks</span>
+        </button>
+        <button
           id="wizards-nav-btn"
           class="nav-btn"
           type="button"
@@ -1386,6 +1394,90 @@
         </div>
 
         <p id="custom-plugin-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="vfx-banks-view" class="view" hidden aria-labelledby="vfx-banks-title">
+        <section class="card">
+          <div class="summary">
+            <h2 id="vfx-banks-title" data-i18n="vfxBanks.title">V-Machine Hardware Banks</h2>
+            <div class="summary-actions">
+              <button id="vfx-bank-create-btn" class="primary" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg><span data-i18n="vfxBanks.createBank">New Bank</span>
+              </button>
+              <button id="vfx-banks-refresh-btn" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Refresh</span>
+              </button>
+            </div>
+          </div>
+          <p class="note" data-i18n="vfxBanks.note">
+            Manage native .vfxbank banks and 4-channel multi-plugin presets for your SM Pro Audio V-Machine hardware.
+          </p>
+          <p id="vfx-banks-status" class="status" role="status" aria-live="polite"></p>
+          <div id="vfx-banks-table"></div>
+        </section>
+
+        <section id="vfx-bank-detail-card" class="card" hidden>
+          <div class="summary">
+            <div>
+              <h3 id="vfx-bank-detail-title"></h3>
+              <span id="vfx-bank-detail-count" class="badge"></span>
+            </div>
+            <div class="summary-actions">
+              <button id="vfx-preset-create-btn" class="primary" type="button">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg><span data-i18n="vfxBanks.createPreset">New Scene / Preset</span>
+              </button>
+            </div>
+          </div>
+          <div id="vfx-presets-table"></div>
+        </section>
+      </section>
+
+      <section
+        id="vfx-preset-drawer"
+        class="card drawer vfx-preset-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vfx-preset-drawer-title"
+        tabindex="-1"
+        hidden
+      >
+        <div class="summary">
+          <h2 id="vfx-preset-drawer-title" data-i18n="vfxPreset.drawerTitle">V-Machine Scene Composer (4 Channels)</h2>
+          <button id="vfx-preset-cancel-btn" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg><span data-i18n="common.close">Close</span>
+          </button>
+        </div>
+
+        <div class="vfx-lcd-preview">
+          <div id="vfx-lcd-line1" class="vfx-lcd-line">BNK 000:000 Scene</div>
+          <div id="vfx-lcd-line2" class="vfx-lcd-line">1:---- 2:---- 3:---- 4:----</div>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span data-i18n="vfxPreset.nameLabel">Scene Name (max 30)</span>
+            <input id="vfx-preset-name" type="text" maxlength="30" placeholder="Scene name" data-i18n-placeholder="vfxPreset.namePlaceholder" />
+          </label>
+          <label class="field">
+            <span data-i18n="vfxPreset.tempoLabel">Tempo BPM</span>
+            <input id="vfx-preset-tempo" type="number" min="20" max="300" value="120" />
+          </label>
+          <label class="field">
+            <span data-i18n="vfxPreset.timesigNumLabel">Time Sig (Num)</span>
+            <input id="vfx-preset-timesig-num" type="number" min="1" max="32" value="4" />
+          </label>
+          <label class="field">
+            <span data-i18n="vfxPreset.timesigDenLabel">Time Sig (Den)</span>
+            <input id="vfx-preset-timesig-den" type="number" min="1" max="32" value="4" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="vfx-preset-save-btn" class="primary" type="button">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg><span data-i18n="common.save">Save Scene</span>
+          </button>
+        </div>
+        <p id="vfx-preset-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <section id="vmachine-view" class="view" hidden aria-labelledby="vmachine-title">

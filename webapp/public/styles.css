@@ -618,10 +618,17 @@ details .row input {
  * detalle o en el diálogo.
  */
 .summary button,
+.summary-actions,
 .log-record-detail-head button,
 .capture-snapshot-dialog-header button {
   font-size: 14px;
   line-height: 21px;
+}
+
+.summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .loader-status {
@@ -2736,4 +2743,37 @@ details.import label[for='import-paths'] {
 /* El detalle de la auditoria se abre debajo de la tabla: que no quede pegado al borde. */
 .log-record-detail {
   scroll-margin-top: 16px;
+}
+
+/* ------------------------------------------------- vista de bancos v-machine */
+.vfx-ch-summary {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sub-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.vfx-preset-drawer {
+  max-width: 900px;
+}
+
+.vfx-lcd-preview {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  box-shadow: inset 0 1px 3px var(--shadow);
+}
+
+.vfx-lcd-line {
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  color: var(--text);
 }

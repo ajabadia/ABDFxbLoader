@@ -118,7 +118,15 @@ import {
 } from './views.js';
 
 
-// Las claves de `localStorage` viven en `src/ui/storage-keys.ts`, con el porqué
+import {
+  refreshVfxBanksView,
+} from './vfx-banks-view.js';
+import {
+  openNewPresetDrawer,
+  closePresetDrawer,
+  saveCurrentPreset,
+} from './vfx-preset-drawer.js';
+export { refreshVfxBanksView, closePresetDrawer };
 // de los dos prefijos (`abdsynths.locale` es de la suite; el resto es propio).
 import {
   STORAGE_CAPTURE_TASK,
@@ -6512,6 +6520,36 @@ if (els.vmachineCopy) {
 els.vmachineNavBtn.addEventListener('click', () => {
   navigateTo('medio');
 });
+
+if (els.vfxBanksNavBtn) {
+  els.vfxBanksNavBtn.addEventListener('click', () => {
+    navigateTo('vfxbanks');
+  });
+}
+
+if (els.vfxBanksRefreshBtn) {
+  els.vfxBanksRefreshBtn.addEventListener('click', () => {
+    void refreshVfxBanksView();
+  });
+}
+
+if (els.vfxPresetCreateBtn) {
+  els.vfxPresetCreateBtn.addEventListener('click', () => {
+    openNewPresetDrawer();
+  });
+}
+
+if (els.vfxPresetCancelBtn) {
+  els.vfxPresetCancelBtn.addEventListener('click', () => {
+    closePresetDrawer();
+  });
+}
+
+if (els.vfxPresetSaveBtn) {
+  els.vfxPresetSaveBtn.addEventListener('click', () => {
+    void saveCurrentPreset();
+  });
+}
 
 
 els.customPluginClose.addEventListener('click', () => {
