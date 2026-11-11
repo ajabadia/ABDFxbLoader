@@ -259,6 +259,94 @@ export function renderPresetDrawer(): void {
   renderGlobalBuses();
   updateLcdPreview();
   updateKeyboardMap();
+  syncPianoKeys();
+}
+
+let pianoKeysInstance: any = null;
+
+export function syncPianoKeys(): void {
+  if (!els.vfxPianoBed || !currentPresetState) return;
+
+  // Si no está inicializado el teclado interactivo, lo creamos
+  if (!pianoKeysInstance) {
+    els.vfxPianoBed.replaceChildren();
+    const kbdWrapper = document.createElement('div');
+    kbdWrapper.className = 'kbd-keys-wrapper';
+    els.vfxPianoBed.append(kbdWrapper);
+
+    // Patrón de octava estándar (7 blancas y sostenidos correspondientes)
+    const OCTAVE_PATTERN = [
+      { offset: 0, sharp: 1 },
+      { offset: 2, sharp: 3 },
+      { offset: 4, sharp: null },
+      { offset: 5, sharp: 6 },
+      { offset: 7, sharp: 8 },
+      { offset: 9, sharp: 10 },
+      { offset: 11, sharp: null },
+    ];
+
+    // Pintar 5 octavas de C2 (36) a C7 (96)
+    const startNote = 36;
+    const numOctaves = 5;
+
+    for (let oct = 0; oct < numOctaves; oct++) {
+      const base = startNote + oct * 12;
+      for (const p of OCTAVE_PATTERN) {
+        const whiteNote = base + p.offset;
+        const whiteKey = document.createElement('div');
+        whiteKey.className = 'kbd-white-key';
+        whiteKey.dataset.note = String(whiteNote);
+
+        if (p.sharp !== null) {
+          const blackNote = base + p.sharp;
+          const blackKey = document.createElement('div');
+          blackKey.className = 'kbd-black-key';
+          blackKey.dataset.note = String(blackNote);
+          whiteKey.append(blackKey);
+        }
+        kbdWrapper.append(whiteKey);
+      }
+    }
+    // Tecla final C7
+    const lastKey = document.createElement('div');
+    lastKey.className = 'kbd-white-key';
+    lastKey.dataset.note = String(startNote + numOctaves * 12);
+    kbdWrapper.append(lastKey);
+
+    pianoKeysInstance = true;
+  }
+
+  // Actualizar coloreado de zonas de los 4 canales sobre las teclas
+  const keys = els.vfxPianoBed.querySelectorAll<HTMLElement>('[data-note]');
+  const chColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899'];
+
+  keys.forEach((keyEl) => {
+    const midi = Number.parseInt(keyEl.dataset.note || '', 10);
+    if (Number.isNaN(midi)) return;
+
+    let matchedChannel = -1;
+    for (let i = 0; i < 4; i++) {
+      const ch = currentPresetState!.channels[i];
+      if (!ch) continue;
+      if (ch.slotA || ch.volume > 0) {
+        const min = ch.midiNoteMin;
+        const max = ch.midiNoteMax === 0 ? 127 : ch.midiNoteMax;
+        if (midi >= min && midi <= max) {
+          matchedChannel = i;
+          break;
+        }
+      }
+    }
+
+    if (matchedChannel >= 0) {
+      keyEl.classList.add('kbd-in-zone');
+      keyEl.classList.add('kbd-in-active-zone');
+      keyEl.style.setProperty('--kbd-zone-color', chColors[matchedChannel] || '#00c8ff');
+    } else {
+      keyEl.classList.remove('kbd-in-zone', 'kbd-in-active-zone');
+      keyEl.style.removeProperty('--kbd-zone-color');
+    }
+  });
 }
 
 export function updateKeyboardMap(): void {

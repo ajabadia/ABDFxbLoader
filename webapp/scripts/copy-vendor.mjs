@@ -37,3 +37,32 @@ if (fs.existsSync(srcLocales)) {
 }
 
 console.log(`[copy-vendor] Copied vendor i18n assets from ${sourceDir} to ${targetDir}`);
+
+// Copiar MidiKeyboard si existe en @abdsynths/shared
+const kbdCandidates = [
+  path.resolve(webappDir, 'node_modules', '@abdsynths', 'shared', 'Code', 'MidiKeyboard', 'src'),
+  path.resolve(webappDir, '..', 'node_modules', '@abdsynths', 'shared', 'Code', 'MidiKeyboard', 'src'),
+  path.resolve(webappDir, '..', '..', 'ABDShared', 'Code', 'MidiKeyboard', 'src'),
+];
+
+let kbdSource = null;
+for (const dir of kbdCandidates) {
+  if (fs.existsSync(path.join(dir, 'keyboard.js'))) {
+    kbdSource = dir;
+    break;
+  }
+}
+
+if (kbdSource) {
+  const kbdTarget = path.resolve(targetDir, 'keyboard');
+  fs.mkdirSync(kbdTarget, { recursive: true });
+  fs.copyFileSync(path.join(kbdSource, 'keyboard.js'), path.join(kbdTarget, 'keyboard.js'));
+  fs.copyFileSync(path.join(kbdSource, 'utils.js'), path.join(kbdTarget, 'utils.js'));
+  if (fs.existsSync(path.join(kbdSource, 'keyboard.css'))) {
+    const rawCss = fs.readFileSync(path.join(kbdSource, 'keyboard.css'), 'utf8');
+    // Eliminar @import a otros módulos de componentes de ruedas para evitar errores 404
+    const cleanCss = rawCss.replace(/@import\s+[^;]+;/g, '');
+    fs.writeFileSync(path.join(kbdTarget, 'keyboard.css'), cleanCss, 'utf8');
+  }
+  console.log(`[copy-vendor] Copied MidiKeyboard assets from ${kbdSource} to ${kbdTarget}`);
+}

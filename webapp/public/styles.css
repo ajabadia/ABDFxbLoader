@@ -2877,6 +2877,16 @@ details.import label[for='import-paths'] {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px;
+  margin-bottom: 8px;
+}
+
+.vfx-piano-bed {
+  display: flex;
+  height: 85px;
+  min-height: 85px;
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .vfx-keyboard-lane {

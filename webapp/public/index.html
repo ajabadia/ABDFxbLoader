@@ -10,6 +10,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/vendor/abdsynths/keyboard/keyboard.css" />
   </head>
   <body>
     <!--
@@ -1503,6 +1504,7 @@
             <div id="vfx-lane-3" class="vfx-keyboard-lane vfx-lane-ch3" title="Ch 3"></div>
             <div id="vfx-lane-4" class="vfx-keyboard-lane vfx-lane-ch4" title="Ch 4"></div>
           </div>
+          <div id="vfx-piano-bed" class="vfx-piano-bed"></div>
         </div>
 
         <div id="vfx-channels-grid" class="vfx-channels-grid"></div>
@@ -1843,12 +1845,13 @@
     <noscript>
       <p class="status error" data-i18n="app.needsJs">This page needs JavaScript.</p>
     </noscript>
-    <!-- Motor i18n de la suite ABDSynths, servido desde @abdsynths/i18n. -->
+    <!-- Motor i18n de la suite ABDSynths y MidiKeyboard de @abdsynths/shared. -->
     <script type="importmap">
       {
         "imports": {
           "@abdsynths/i18n": "/vendor/abdsynths/index.js",
-          "@abdsynths/shared/i18n": "/vendor/abdsynths/index.js"
+          "@abdsynths/shared/i18n": "/vendor/abdsynths/index.js",
+          "@abdsynths/midi-keyb": "/vendor/abdsynths/keyboard/keyboard.js"
         }
       }
     </script>

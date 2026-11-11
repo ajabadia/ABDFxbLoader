@@ -190,6 +190,7 @@ export const els = {
   vfxLane2: byId<HTMLElement>('vfx-lane-2'),
   vfxLane3: byId<HTMLElement>('vfx-lane-3'),
   vfxLane4: byId<HTMLElement>('vfx-lane-4'),
+  vfxPianoBed: byId<HTMLElement>('vfx-piano-bed'),
   vfxPresetSaveBtn: byId<HTMLButtonElement>('vfx-preset-save-btn'),
   vfxPresetStatus: byId<HTMLParagraphElement>('vfx-preset-status'),
   vfxChannelsGrid: byId<HTMLElement>('vfx-channels-grid'),
