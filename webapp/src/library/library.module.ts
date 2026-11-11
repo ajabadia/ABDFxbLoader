@@ -8,12 +8,14 @@ import { LibraryAuditService } from './library-audit.service';
 import { LibraryImportService } from './library-import.service';
 import { LibraryController } from './library.controller';
 import { LibraryService } from './library.service';
+import { VfxBanksController } from './vfx-banks.controller';
+import { VfxBanksService } from './vfx-banks.service';
 
 @Module({
   imports: [FxbConfigModule, AssociationAuditModule, PluginLogModule, WizardModule, PluginMetaModule],
-  controllers: [LibraryController],
-  providers: [LibraryService, LibraryImportService, LibraryAuditService],
-  exports: [LibraryService, LibraryImportService, LibraryAuditService],
+  controllers: [LibraryController, VfxBanksController],
+  providers: [LibraryService, LibraryImportService, LibraryAuditService, VfxBanksService],
+  exports: [LibraryService, LibraryImportService, LibraryAuditService, VfxBanksService],
 })
 export class LibraryModule {}
 

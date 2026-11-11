@@ -27,6 +27,15 @@ export const API_ERROR_CODES = [
   'libraryNameInvalid',
   'notEnoughSpace',
   'copyMismatch',
+  'bankFolderMissing',
+  'bankAlreadyExists',
+  'bankNameInvalid',
+  'bankLimitExceeded',
+  'presetFolderMissing',
+  'presetLimitExceeded',
+  'presetInvalid',
+  'chunkInvalid',
+  'pluginNotInstalled',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

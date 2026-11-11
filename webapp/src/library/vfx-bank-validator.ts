@@ -1,8 +1,20 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { uniqueIdToText } from './fxb-bank';
+import {
+  buildVfxChunk,
+  parseVfxChunkHeader,
+  patchVfxChunkPluginId,
+  VFX_CHUNK_MAGIC,
+} from './vfx-chunk';
+import {
+  formatVfxChunkFilename,
+  parsePresetVfx,
+  serializePresetVfx,
+  createEmptyPresetDescriptor,
+} from './vfx-preset';
 
-export const VFX_CHUNK_MAGIC = '!VFXCHUNKMAGIC!\0';
+export { VFX_CHUNK_MAGIC };
 export const VFX_CHUNK_MAGIC_BUFFER = Buffer.from(VFX_CHUNK_MAGIC, 'utf8');
 
 export interface VfxBankDeficiency {
@@ -10,6 +22,7 @@ export interface VfxBankDeficiency {
     | 'MISSING_DESCRIPTOR'
     | 'MISSING_CHUNK'
     | 'CHUNK_MAGIC_INVALID'
+    | 'CHUNK_CHECKSUM_INVALID'
     | 'CHUNK_ID_MISMATCH'
     | 'DESCRIPTOR_ID_MISMATCH'
     | 'INCOHERENT_PRESET_SLOT'
@@ -80,59 +93,51 @@ export interface VfxBankRepairResult {
 const CHUNK_REGEX = /^channel_(\d+)_slot_([a-z])_(\d+)\.chunk$/i;
 
 /**
- * Lee y analiza un archivo `.chunk` de VFX.
- * Extrae el FourCC en uint32le desde el offset 40 si la cabecera es `!VFXCHUNKMAGIC!`.
+ * Lee y analiza un archivo `.chunk` de VFX con cabecera de 100 bytes y CRC-16.
  */
 export async function readVfxChunkHeader(chunkPath: string): Promise<{
   isValidMagic: boolean;
+  isValidChecksum: boolean;
   pluginId: number | null;
   fourCc: string | null;
 }> {
   try {
     const handle = await fs.open(chunkPath, 'r');
     try {
-      const buffer = Buffer.alloc(48);
-      const { bytesRead } = await handle.read(buffer, 0, 48, 0);
+      const buffer = Buffer.alloc(100);
+      const { bytesRead } = await handle.read(buffer, 0, 100, 0);
       if (bytesRead < 44) {
-        return { isValidMagic: false, pluginId: null, fourCc: null };
+        return { isValidMagic: false, isValidChecksum: false, pluginId: null, fourCc: null };
       }
 
-      const magic = buffer.subarray(0, 16);
-      const isValidMagic = magic.equals(VFX_CHUNK_MAGIC_BUFFER);
-      if (!isValidMagic) {
-        return { isValidMagic: false, pluginId: null, fourCc: null };
+      const header = parseVfxChunkHeader(new Uint8Array(buffer));
+      if (!header || !header.isValidMagic) {
+        return { isValidMagic: false, isValidChecksum: false, pluginId: null, fourCc: null };
       }
 
-      const pluginId = buffer.readUInt32LE(40);
+      const pluginId = header.pluginId;
       const fourCc = uniqueIdToText(pluginId);
-      return { isValidMagic: true, pluginId, fourCc };
+      const isValidChecksum = header.isValidHeaderChecksum;
+      return { isValidMagic: true, isValidChecksum, pluginId, fourCc };
     } finally {
       await handle.close();
     }
   } catch {
-    return { isValidMagic: false, pluginId: null, fourCc: null };
+    return { isValidMagic: false, isValidChecksum: false, pluginId: null, fourCc: null };
   }
 }
 
 /**
- * Parchea el FourCC en el offset 40 de un archivo `.chunk`.
+ * Parchea el FourCC en el offset 40 de un archivo `.chunk` y recalcula los checksums CRC-16.
  */
 export async function patchVfxChunkHeader(chunkPath: string, newPluginId: number): Promise<boolean> {
   try {
-    const handle = await fs.open(chunkPath, 'r+');
-    try {
-      const magicBuffer = Buffer.alloc(16);
-      await handle.read(magicBuffer, 0, 16, 0);
-      if (!magicBuffer.equals(VFX_CHUNK_MAGIC_BUFFER)) {
-        return false;
-      }
-      const idBuffer = Buffer.alloc(4);
-      idBuffer.writeUInt32LE(newPluginId, 0);
-      await handle.write(idBuffer, 0, 4, 40);
-      return true;
-    } finally {
-      await handle.close();
-    }
+    const originalBytes = await fs.readFile(chunkPath);
+    if (originalBytes.length < 100) return false;
+
+    const patched = patchVfxChunkPluginId(new Uint8Array(originalBytes), newPluginId);
+    await fs.writeFile(chunkPath, Buffer.from(patched.buffer, patched.byteOffset, patched.byteLength));
+    return true;
   } catch {
     return false;
   }
@@ -573,51 +578,16 @@ export async function repairVfxBank(
 }
 
 /**
- * Crea un buffer binario para un archivo de chunk VFX con cabecera estándar !VFXCHUNKMAGIC!\0.
+ * Crea un buffer binario para un archivo de chunk VFX con cabecera estándar de 100 bytes y CRC-16.
  */
 export function buildVfxChunkBuffer(pluginId: number, opaqueData?: Buffer): Buffer {
-  const data = opaqueData && opaqueData.length > 0 ? opaqueData : Buffer.alloc(0);
-  const dataLen = data.length;
-  const totalLength = 52 + dataLen;
-  const buf = Buffer.alloc(totalLength);
-
-  // 0..15: !VFXCHUNKMAGIC!\0
-  VFX_CHUNK_MAGIC_BUFFER.copy(buf, 0);
-
-  // 16..20: Timestamp/seed uint32 LE
-  const timestamp = Math.floor(Date.now() / 1000) & 0xffffffff;
-  buf.writeUInt32LE(timestamp, 16);
-
-  // 20..24: Version (4)
-  buf.writeUInt32LE(4, 20);
-
-  // 24..28: Total length
-  buf.writeUInt32LE(totalLength, 24);
-
-  // 28..32: Reserved (0)
-  buf.writeUInt32LE(0, 28);
-
-  // 32..36: Data length
-  buf.writeUInt32LE(dataLen, 32);
-
-  // 36..40: Flags (1)
-  buf.writeUInt32LE(1, 36);
-
-  // 40..44: Plugin ID uint32 LE
-  buf.writeUInt32LE(pluginId, 40);
-
-  // 44..48: Flags / channel slot (1)
-  buf.writeUInt32LE(1, 44);
-
-  // 48..52: Parameter count or sub-header
-  buf.writeUInt32LE(0, 48);
-
-  // 52..end: Opaque plugin chunk data
-  if (dataLen > 0) {
-    data.copy(buf, 52);
-  }
-
-  return buf;
+  const vstChunk = opaqueData && opaqueData.length > 0 ? new Uint8Array(opaqueData) : undefined;
+  const chunk = buildVfxChunk({
+    pluginId,
+    vstChunk,
+    parameters: [],
+  });
+  return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
 }
 
 /**

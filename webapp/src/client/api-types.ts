@@ -853,6 +853,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/vfx-banks/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lista los bancos nativos .vfxbank de la librería
+         * @description Devuelve los bancos encontrados en banks/ con sus presets y plugins referenciados.
+         */
+        post: operations["VfxBanksController_list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/vfx-banks/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspecciona un banco nativo .vfxbank y sus escenas de 4 canales
+         * @description Devuelve el desglose de escenas .vfxpreset con el mapeo de sus 4 canales de instrumento.
+         */
+        post: operations["VfxBanksController_inspect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/vfx-banks/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Crea un nuevo banco nativo .vfxbank vacío */
+        post: operations["VfxBanksController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/vfx-banks/preset/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lee el descriptor completo de una escena de 4 canales */
+        post: operations["VfxBanksController_readPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/vfx-banks/preset/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Crea o actualiza una escena de 4 canales en un banco */
+        post: operations["VfxBanksController_savePreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plugins/{id}/log": {
         parameters: {
             query?: never;
@@ -3934,6 +4025,552 @@ export interface components {
              * @example []
              */
             warnings: string[];
+        };
+        VfxBanksListRequestDto: {
+            /**
+             * @description Ruta absoluta de la librería de plugins (libraryRoot)
+             * @example C:/fxbLoader/storage
+             */
+            libraryRoot?: string;
+        };
+        VfxBankPluginRefDto: {
+            /**
+             * @description ID VST numérico del plugin
+             * @example 1316377392
+             */
+            id: number;
+            /**
+             * @description Nombre descriptivo del plugin o FourCC
+             * @example V-Station Demo
+             */
+            name: string;
+            /**
+             * @description Carpeta de la librería local plugs/ donde está instalado, o null si falta
+             * @example Novation V-Station demo
+             */
+            installedFolder?: string | null;
+            /**
+             * @description Indica si el plugin es un sintetizador/instrumento o un efecto
+             * @example true
+             */
+            isSynth: boolean;
+        };
+        VfxBankSummaryDto: {
+            /**
+             * @description Nombre de la carpeta del banco en banks/
+             * @example 000_Novation V-Station demo.vfxbank
+             */
+            folder: string;
+            /**
+             * @description Índice numérico asignado para el LCD de la V-Machine (0..127)
+             * @example 0
+             */
+            index: number;
+            /**
+             * @description Nombre visual del banco sin índice ni extensión
+             * @example Novation V-Station demo
+             */
+            name: string;
+            /**
+             * @description Indica si el nombre de carpeta usa el sufijo canónico .vfxbank
+             * @example true
+             */
+            isCanonicalSuffix: boolean;
+            /**
+             * @description Número de escenas o presets .vfxpreset contenidos en el banco (0..128)
+             * @example 12
+             */
+            presetCount: number;
+            /**
+             * @description Tamaño total del banco en bytes
+             * @example 1048576
+             */
+            totalBytes: number;
+            /**
+             * @description Fecha de modificación en milisegundos
+             * @example 1731280000000
+             */
+            mtimeMs: number;
+            /** @description Plugins referenciados por las escenas del banco */
+            referencedPlugins: components["schemas"]["VfxBankPluginRefDto"][];
+            /**
+             * @description IDs de plugins referenciados que no están instalados en plugs/
+             * @example []
+             */
+            missingPluginIds: number[];
+            /**
+             * @description Estado de salud e integridad técnica del banco
+             * @example valid
+             * @enum {string}
+             */
+            health: "valid" | "repairable" | "broken";
+            /**
+             * @description Número de incidencias o desalineaciones detectadas
+             * @example 0
+             */
+            issuesCount: number;
+        };
+        VfxBanksListResponseDto: {
+            /** @description Lista de bancos nativos encontrados en banks/ */
+            banks: components["schemas"]["VfxBankSummaryDto"][];
+            /**
+             * @description Total de bancos encontrados
+             * @example 1
+             */
+            total: number;
+        };
+        VfxBankInspectRequestDto: {
+            /**
+             * @description Ruta de la librería
+             * @example C:/fxbLoader/storage
+             */
+            libraryRoot?: string;
+            /**
+             * @description Carpeta del banco dentro de banks/
+             * @example 000_Novation V-Station demo.vfxbank
+             */
+            bankFolder: string;
+        };
+        VfxPresetSlotSummaryDto: {
+            /**
+             * @description ID VST del plugin asignado al slot, o null si está vacío
+             * @example 1316377392
+             */
+            pluginId?: number | null;
+            /**
+             * @description Nombre del plugin asignado al slot
+             * @example V-Station Demo
+             */
+            name?: string | null;
+            /**
+             * @description Nombre corto LCD (máx. 6 chars)
+             * @example VStat
+             */
+            shortName?: string | null;
+            /**
+             * @description Canal MIDI (0=Omni, 1..16)
+             * @example 0
+             */
+            midiChannel: number;
+            /**
+             * @description Nota mínima MIDI (0..127)
+             * @example 0
+             */
+            midiNoteMin: number;
+            /**
+             * @description Nota máxima MIDI (0..127)
+             * @example 127
+             */
+            midiNoteMax: number;
+            /**
+             * @description Transposición en semitonos (-48..+48)
+             * @example 0
+             */
+            midiTranspose: number;
+            /**
+             * @description Número de parámetros que expone el plugin
+             * @example 160
+             */
+            parameterCount: number;
+            /**
+             * @description Programa seleccionado en el plugin
+             * @example 0
+             */
+            selectedProgram: number;
+        };
+        VfxPresetChannelSummaryDto: {
+            /**
+             * @description Índice de canal (0..3 para canales 1..4)
+             * @example 0
+             */
+            channelIndex: number;
+            /**
+             * @description Nivel de volumen del canal (0..255)
+             * @example 206
+             */
+            volume: number;
+            /**
+             * @description Panorama estéreo del canal (0..255, 128=Centro)
+             * @example 128
+             */
+            pan: number;
+            /**
+             * @description Indica si el canal está silenciado
+             * @example false
+             */
+            isMuted: boolean;
+            /**
+             * @description Indica si el canal está en solo
+             * @example false
+             */
+            isSolo: boolean;
+            /** @description Slot A (Instrumento principal) */
+            slotA?: components["schemas"]["VfxPresetSlotSummaryDto"] | null;
+            /** @description Slot B (Efecto de inserción 1) */
+            slotB?: components["schemas"]["VfxPresetSlotSummaryDto"] | null;
+            /** @description Slot C (Efecto de inserción 2) */
+            slotC?: components["schemas"]["VfxPresetSlotSummaryDto"] | null;
+        };
+        VfxPresetSummaryDto: {
+            /**
+             * @description Nombre de la carpeta del preset en el banco
+             * @example 000_Bass 1.vfxpreset
+             */
+            folder: string;
+            /**
+             * @description Índice numérico de programa LCD (0..127)
+             * @example 0
+             */
+            index: number;
+            /**
+             * @description Nombre de la escena o preset
+             * @example Bass 1
+             */
+            name: string;
+            /**
+             * @description Tempo BPM configurado
+             * @example 120
+             */
+            tempoBpm: number;
+            /** @description Resumen de los 4 canales de instrumento */
+            channels: components["schemas"]["VfxPresetChannelSummaryDto"][];
+            /**
+             * @description Indica si los buses auxiliares tienen efectos cargados
+             * @example false
+             */
+            hasAuxEffects: boolean;
+            /**
+             * @description Indica si el bus master tiene efectos de inserción cargados
+             * @example false
+             */
+            hasMasterEffects: boolean;
+            /**
+             * @description Archivos .chunk presentes en la carpeta del preset
+             * @example [
+             *       "channel_1_slot_a_1316377392.chunk"
+             *     ]
+             */
+            chunkFiles: string[];
+        };
+        VfxBankInspectResponseDto: {
+            /** @description Resumen general del banco */
+            bank: components["schemas"]["VfxBankSummaryDto"];
+            /** @description Lista ordenada de escenas o presets contenidos (0..128) */
+            presets: components["schemas"]["VfxPresetSummaryDto"][];
+        };
+        VfxBankCreateRequestDto: {
+            /**
+             * @description Ruta de la librería
+             * @example C:/fxbLoader/storage
+             */
+            libraryRoot?: string;
+            /**
+             * @description Nombre del banco (máx. 30 caracteres)
+             * @example Directo 2026
+             */
+            name: string;
+            /**
+             * @description Índice de banco deseado (0..127). Si se omite, se asigna el primero libre
+             * @example 1
+             */
+            index?: number;
+        };
+        VfxPresetReadRequestDto: {
+            /**
+             * @description Ruta de la librería
+             * @example C:/fxbLoader/storage
+             */
+            libraryRoot?: string;
+            /**
+             * @description Carpeta del banco
+             * @example 000_Novation V-Station demo.vfxbank
+             */
+            bankFolder: string;
+            /**
+             * @description Carpeta de la escena o preset
+             * @example 000_Bass 1.vfxpreset
+             */
+            presetFolder: string;
+        };
+        VfxMidiMapDto: {
+            /**
+             * @description Número de controlador continuo MIDI CC (1..127)
+             * @example 74
+             */
+            cc: number;
+            /**
+             * @description Índice de parámetro VST mapeado
+             * @example 12
+             */
+            param: number;
+        };
+        VfxPluginSlotDescriptorDto: {
+            /**
+             * @description ID VST numérico del plugin
+             * @example 1316377392
+             */
+            pluginId: number;
+            /**
+             * @description Nombre descriptivo del plugin
+             * @example V-Station Demo
+             */
+            name: string;
+            /**
+             * @description Nombre corto LCD (máx. 6 chars)
+             * @example VStat
+             */
+            shortName: string;
+            /**
+             * @description Canal MIDI (0=Omni, 1..16)
+             * @example 0
+             */
+            midiChannel: number;
+            /**
+             * @description Nota mínima MIDI (0..127)
+             * @example 0
+             */
+            midiNoteMin: number;
+            /**
+             * @description Nota máxima MIDI (0..127)
+             * @example 127
+             */
+            midiNoteMax: number;
+            /**
+             * @description Transposición en semitonos (-48..+48)
+             * @example 0
+             */
+            midiTranspose: number;
+            /**
+             * @description Habilita entrada MIDI desde ordenador (0/1)
+             * @example 1
+             */
+            midiFromComputer: number;
+            /**
+             * @description Encadena MIDI al siguiente plugin (0/1)
+             * @example 0
+             */
+            chainedMidi: number;
+            /**
+             * @description Paso directo MIDI Thru (0/1)
+             * @example 0
+             */
+            midiThru: number;
+            /**
+             * @description Recepción de cambio de programa MIDI (0/1)
+             * @example 0
+             */
+            programMidi: number;
+            /**
+             * @description Número de parámetros VST expuestos
+             * @example 160
+             */
+            parameterCount: number;
+            /**
+             * @description Programa activo en el plugin
+             * @example 0
+             */
+            selectedProgram: number;
+            /** @description Mapeos MIDI CC a parámetros VST */
+            midiMaps?: components["schemas"]["VfxMidiMapDto"][];
+            /**
+             * @description Parámetros prioritarios en LCD
+             * @example []
+             */
+            priorityParameters?: number[];
+            /**
+             * @description Líneas adicionales preservadas
+             * @example []
+             */
+            extraLines?: string[];
+        };
+        VfxSendConfigDto: {
+            /**
+             * @description Nivel de ganancia de envío (0..255)
+             * @example 0
+             */
+            gain: number;
+            /**
+             * @description Envío pre-fader (0/1)
+             * @example 0
+             */
+            isPre: number;
+            /**
+             * @description Control de ganancia por MIDI (0/1)
+             * @example 0
+             */
+            gainMidi: number;
+            /**
+             * @description Control pre-fader por MIDI (0/1)
+             * @example 0
+             */
+            isPreMidi: number;
+        };
+        VfxMixerStripDescriptorDto: {
+            /**
+             * @description Tipo de bus
+             * @example channel
+             * @enum {string}
+             */
+            kind: "channel" | "aux" | "master";
+            /**
+             * @description Índice de bus (0..3 para canales 1..4, 0..1 para aux)
+             * @example 0
+             */
+            index: number;
+            /** @description Slot A (Instrumento principal) */
+            slotA?: components["schemas"]["VfxPluginSlotDescriptorDto"] | null;
+            /** @description Slot B (Efecto de inserción 1) */
+            slotB?: components["schemas"]["VfxPluginSlotDescriptorDto"] | null;
+            /** @description Slot C (Efecto de inserción 2) */
+            slotC?: components["schemas"]["VfxPluginSlotDescriptorDto"] | null;
+            /**
+             * @description Nivel de volumen (0..255)
+             * @example 206
+             */
+            volume: number;
+            /**
+             * @description Panorama estéreo (0..255, 128=Centro)
+             * @example 128
+             */
+            pan: number;
+            /**
+             * @description Entrada izquierda activada (0/1)
+             * @example 0
+             */
+            leftIn: number;
+            /**
+             * @description Entrada derecha activada (0/1)
+             * @example 0
+             */
+            rightIn: number;
+            /**
+             * @description Canal silenciado (0/1)
+             * @example 0
+             */
+            mute: number;
+            /**
+             * @description Canal en solo (0/1)
+             * @example 0
+             */
+            solo: number;
+            /**
+             * @description Silenciar otros por MIDI
+             * @example 0
+             */
+            muteOthersMidi: number;
+            /**
+             * @description Conmutar silencio por MIDI
+             * @example 0
+             */
+            toggleMuteMidi: number;
+            /**
+             * @description Conmutar solo por MIDI
+             * @example 0
+             */
+            toggleSoloMidi: number;
+            /**
+             * @description Volumen por MIDI
+             * @example 0
+             */
+            volumeMidi: number;
+            /**
+             * @description Panorama por MIDI
+             * @example 0
+             */
+            panMidi: number;
+            /**
+             * @description Silencio por MIDI
+             * @example 0
+             */
+            muteMidi: number;
+            /**
+             * @description Solo por MIDI
+             * @example 0
+             */
+            soloMidi: number;
+            /** @description Envíos a buses auxiliares */
+            sends: components["schemas"]["VfxSendConfigDto"][];
+        };
+        VfxPresetDescriptorDto: {
+            /**
+             * @description Nombre de la escena o preset
+             * @example Bass 1
+             */
+            name: string;
+            /**
+             * @description Versión del formato preset.vfx (3)
+             * @example 3
+             */
+            version: number;
+            /**
+             * @description Tempo BPM
+             * @example 120
+             */
+            tempoBpm: number;
+            /**
+             * @description Numerador de compás
+             * @example 4
+             */
+            timeSignatureNum: number;
+            /**
+             * @description Denominador de compás
+             * @example 4
+             */
+            timeSignatureDen: number;
+            /**
+             * @description Sincronización de tempo por MIDI
+             * @example 0
+             */
+            tempoBpmMidi: number;
+            /**
+             * @description Canal MIDI del mezclador
+             * @example 0
+             */
+            mixerMidiChannel: number;
+            /**
+             * @description Tamaño del buffer de audio
+             * @example 0
+             */
+            audioBufferSize: number;
+            /** @description Los 4 canales de instrumento principales */
+            channels: components["schemas"]["VfxMixerStripDescriptorDto"][];
+            /** @description Los 2 buses de envío auxiliares */
+            aux: components["schemas"]["VfxMixerStripDescriptorDto"][];
+            /** @description El bus maestro principal */
+            master: components["schemas"]["VfxMixerStripDescriptorDto"];
+        };
+        VfxPresetSaveRequestDto: {
+            /**
+             * @description Ruta de la librería
+             * @example C:/fxbLoader/storage
+             */
+            libraryRoot?: string;
+            /**
+             * @description Carpeta del banco
+             * @example 000_Novation V-Station demo.vfxbank
+             */
+            bankFolder: string;
+            /**
+             * @description Carpeta del preset si se está editando uno existente
+             * @example 000_Bass 1.vfxpreset
+             */
+            presetFolder?: string;
+            /**
+             * @description Índice de programa LCD deseado (0..127) al crear nuevo preset
+             * @example 0
+             */
+            index?: number;
+            /** @description Descriptor completo de la escena de 4 canales */
+            preset: components["schemas"]["VfxPresetDescriptorDto"];
+        };
+        VfxPresetSaveResponseDto: {
+            /**
+             * @description Carpeta donde se guardó el preset
+             * @example 000_Bass 1.vfxpreset
+             */
+            folder: string;
+            /** @description Descriptor de preset guardado */
+            preset: components["schemas"]["VfxPresetDescriptorDto"];
         };
         PluginLogEntryDto: {
             /**
@@ -8577,6 +9214,804 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["LibraryErrorDto"];
+                };
+            };
+        };
+    };
+    VfxBanksController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VfxBanksListRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "banks": [
+                     *         {
+                     *           "folder": "000_Novation V-Station demo.vfxbank",
+                     *           "index": 0,
+                     *           "name": "Novation V-Station demo",
+                     *           "isCanonicalSuffix": true,
+                     *           "presetCount": 12,
+                     *           "totalBytes": 1048576,
+                     *           "mtimeMs": 1731280000000,
+                     *           "referencedPlugins": [
+                     *             {
+                     *               "id": 1316377392,
+                     *               "name": "V-Station Demo",
+                     *               "installedFolder": "Novation V-Station demo",
+                     *               "isSynth": true
+                     *             }
+                     *           ],
+                     *           "missingPluginIds": [],
+                     *           "health": "valid",
+                     *           "issuesCount": 0
+                     *         }
+                     *       ],
+                     *       "total": 1
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VfxBanksListResponseDto"];
+                };
+            };
+        };
+    };
+    VfxBanksController_inspect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VfxBankInspectRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "bank": {
+                     *         "folder": "000_Novation V-Station demo.vfxbank",
+                     *         "index": 0,
+                     *         "name": "Novation V-Station demo",
+                     *         "isCanonicalSuffix": true,
+                     *         "presetCount": 12,
+                     *         "totalBytes": 1048576,
+                     *         "mtimeMs": 1731280000000,
+                     *         "referencedPlugins": [
+                     *           {
+                     *             "id": 1316377392,
+                     *             "name": "V-Station Demo",
+                     *             "installedFolder": "Novation V-Station demo",
+                     *             "isSynth": true
+                     *           }
+                     *         ],
+                     *         "missingPluginIds": [],
+                     *         "health": "valid",
+                     *         "issuesCount": 0
+                     *       },
+                     *       "presets": [
+                     *         {
+                     *           "folder": "000_Bass 1.vfxpreset",
+                     *           "index": 0,
+                     *           "name": "Bass 1",
+                     *           "tempoBpm": 120,
+                     *           "channels": [
+                     *             {
+                     *               "channelIndex": 0,
+                     *               "volume": 206,
+                     *               "pan": 128,
+                     *               "isMuted": false,
+                     *               "isSolo": false,
+                     *               "slotA": {
+                     *                 "pluginId": 1316377392,
+                     *                 "name": "V-Station Demo",
+                     *                 "shortName": "VStat",
+                     *                 "midiChannel": 0,
+                     *                 "midiNoteMin": 0,
+                     *                 "midiNoteMax": 127,
+                     *                 "midiTranspose": 0,
+                     *                 "parameterCount": 160,
+                     *                 "selectedProgram": 0
+                     *               },
+                     *               "slotB": null,
+                     *               "slotC": null
+                     *             },
+                     *             {
+                     *               "channelIndex": 1,
+                     *               "volume": 0,
+                     *               "pan": 128,
+                     *               "isMuted": false,
+                     *               "isSolo": false,
+                     *               "slotA": null,
+                     *               "slotB": null,
+                     *               "slotC": null
+                     *             },
+                     *             {
+                     *               "channelIndex": 2,
+                     *               "volume": 0,
+                     *               "pan": 128,
+                     *               "isMuted": false,
+                     *               "isSolo": false,
+                     *               "slotA": null,
+                     *               "slotB": null,
+                     *               "slotC": null
+                     *             },
+                     *             {
+                     *               "channelIndex": 3,
+                     *               "volume": 0,
+                     *               "pan": 128,
+                     *               "isMuted": false,
+                     *               "isSolo": false,
+                     *               "slotA": null,
+                     *               "slotB": null,
+                     *               "slotC": null
+                     *             }
+                     *           ],
+                     *           "hasAuxEffects": false,
+                     *           "hasMasterEffects": false,
+                     *           "chunkFiles": [
+                     *             "channel_1_slot_a_1316377392.chunk"
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VfxBankInspectResponseDto"];
+                };
+            };
+        };
+    };
+    VfxBanksController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VfxBankCreateRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "folder": "000_Novation V-Station demo.vfxbank",
+                     *       "index": 0,
+                     *       "name": "Novation V-Station demo",
+                     *       "isCanonicalSuffix": true,
+                     *       "presetCount": 12,
+                     *       "totalBytes": 1048576,
+                     *       "mtimeMs": 1731280000000,
+                     *       "referencedPlugins": [
+                     *         {
+                     *           "id": 1316377392,
+                     *           "name": "V-Station Demo",
+                     *           "installedFolder": "Novation V-Station demo",
+                     *           "isSynth": true
+                     *         }
+                     *       ],
+                     *       "missingPluginIds": [],
+                     *       "health": "valid",
+                     *       "issuesCount": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VfxBankSummaryDto"];
+                };
+            };
+        };
+    };
+    VfxBanksController_readPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VfxPresetReadRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "name": "Bass 1",
+                     *       "version": 3,
+                     *       "tempoBpm": 120,
+                     *       "timeSignatureNum": 4,
+                     *       "timeSignatureDen": 4,
+                     *       "tempoBpmMidi": 0,
+                     *       "mixerMidiChannel": 0,
+                     *       "audioBufferSize": 0,
+                     *       "channels": [
+                     *         {
+                     *           "kind": "channel",
+                     *           "index": 0,
+                     *           "slotA": {
+                     *             "pluginId": 1316377392,
+                     *             "name": "V-Station Demo",
+                     *             "shortName": "VStat",
+                     *             "midiChannel": 0,
+                     *             "midiNoteMin": 0,
+                     *             "midiNoteMax": 127,
+                     *             "midiTranspose": 0,
+                     *             "midiFromComputer": 1,
+                     *             "chainedMidi": 0,
+                     *             "midiThru": 0,
+                     *             "programMidi": 0,
+                     *             "parameterCount": 160,
+                     *             "selectedProgram": 0,
+                     *             "midiMaps": [],
+                     *             "priorityParameters": [],
+                     *             "extraLines": []
+                     *           },
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 206,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "kind": "channel",
+                     *           "index": 1,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 0,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "kind": "channel",
+                     *           "index": 2,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 0,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "kind": "channel",
+                     *           "index": 3,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 0,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "aux": [
+                     *         {
+                     *           "kind": "aux",
+                     *           "index": 0,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 0,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "kind": "aux",
+                     *           "index": 1,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 0,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "master": {
+                     *         "kind": "master",
+                     *         "index": 0,
+                     *         "slotA": null,
+                     *         "slotB": null,
+                     *         "slotC": null,
+                     *         "volume": 206,
+                     *         "pan": 128,
+                     *         "leftIn": 0,
+                     *         "rightIn": 0,
+                     *         "mute": 0,
+                     *         "solo": 0,
+                     *         "muteOthersMidi": 0,
+                     *         "toggleMuteMidi": 0,
+                     *         "toggleSoloMidi": 0,
+                     *         "volumeMidi": 0,
+                     *         "panMidi": 0,
+                     *         "muteMidi": 0,
+                     *         "soloMidi": 0,
+                     *         "sends": [
+                     *           {
+                     *             "gain": 0,
+                     *             "isPre": 0,
+                     *             "gainMidi": 0,
+                     *             "isPreMidi": 0
+                     *           },
+                     *           {
+                     *             "gain": 0,
+                     *             "isPre": 0,
+                     *             "gainMidi": 0,
+                     *             "isPreMidi": 0
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VfxPresetDescriptorDto"];
+                };
+            };
+        };
+    };
+    VfxBanksController_savePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VfxPresetSaveRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "folder": "000_Bass 1.vfxpreset",
+                     *       "preset": {
+                     *         "name": "Bass 1",
+                     *         "version": 3,
+                     *         "tempoBpm": 120,
+                     *         "timeSignatureNum": 4,
+                     *         "timeSignatureDen": 4,
+                     *         "tempoBpmMidi": 0,
+                     *         "mixerMidiChannel": 0,
+                     *         "audioBufferSize": 0,
+                     *         "channels": [
+                     *           {
+                     *             "kind": "channel",
+                     *             "index": 0,
+                     *             "slotA": {
+                     *               "pluginId": 1316377392,
+                     *               "name": "V-Station Demo",
+                     *               "shortName": "VStat",
+                     *               "midiChannel": 0,
+                     *               "midiNoteMin": 0,
+                     *               "midiNoteMax": 127,
+                     *               "midiTranspose": 0,
+                     *               "midiFromComputer": 1,
+                     *               "chainedMidi": 0,
+                     *               "midiThru": 0,
+                     *               "programMidi": 0,
+                     *               "parameterCount": 160,
+                     *               "selectedProgram": 0,
+                     *               "midiMaps": [],
+                     *               "priorityParameters": [],
+                     *               "extraLines": []
+                     *             },
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 206,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           },
+                     *           {
+                     *             "kind": "channel",
+                     *             "index": 1,
+                     *             "slotA": null,
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 0,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           },
+                     *           {
+                     *             "kind": "channel",
+                     *             "index": 2,
+                     *             "slotA": null,
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 0,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           },
+                     *           {
+                     *             "kind": "channel",
+                     *             "index": 3,
+                     *             "slotA": null,
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 0,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           }
+                     *         ],
+                     *         "aux": [
+                     *           {
+                     *             "kind": "aux",
+                     *             "index": 0,
+                     *             "slotA": null,
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 0,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           },
+                     *           {
+                     *             "kind": "aux",
+                     *             "index": 1,
+                     *             "slotA": null,
+                     *             "slotB": null,
+                     *             "slotC": null,
+                     *             "volume": 0,
+                     *             "pan": 128,
+                     *             "leftIn": 0,
+                     *             "rightIn": 0,
+                     *             "mute": 0,
+                     *             "solo": 0,
+                     *             "muteOthersMidi": 0,
+                     *             "toggleMuteMidi": 0,
+                     *             "toggleSoloMidi": 0,
+                     *             "volumeMidi": 0,
+                     *             "panMidi": 0,
+                     *             "muteMidi": 0,
+                     *             "soloMidi": 0,
+                     *             "sends": [
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               },
+                     *               {
+                     *                 "gain": 0,
+                     *                 "isPre": 0,
+                     *                 "gainMidi": 0,
+                     *                 "isPreMidi": 0
+                     *               }
+                     *             ]
+                     *           }
+                     *         ],
+                     *         "master": {
+                     *           "kind": "master",
+                     *           "index": 0,
+                     *           "slotA": null,
+                     *           "slotB": null,
+                     *           "slotC": null,
+                     *           "volume": 206,
+                     *           "pan": 128,
+                     *           "leftIn": 0,
+                     *           "rightIn": 0,
+                     *           "mute": 0,
+                     *           "solo": 0,
+                     *           "muteOthersMidi": 0,
+                     *           "toggleMuteMidi": 0,
+                     *           "toggleSoloMidi": 0,
+                     *           "volumeMidi": 0,
+                     *           "panMidi": 0,
+                     *           "muteMidi": 0,
+                     *           "soloMidi": 0,
+                     *           "sends": [
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             },
+                     *             {
+                     *               "gain": 0,
+                     *               "isPre": 0,
+                     *               "gainMidi": 0,
+                     *               "isPreMidi": 0
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VfxPresetSaveResponseDto"];
                 };
             };
         };
