@@ -258,6 +258,98 @@ export function renderPresetDrawer(): void {
   renderChannelsGrid();
   renderGlobalBuses();
   updateLcdPreview();
+  updateKeyboardMap();
+}
+
+export function updateKeyboardMap(): void {
+  if (!currentPresetState) return;
+
+  const lanes = [els.vfxLane1, els.vfxLane2, els.vfxLane3, els.vfxLane4];
+  currentPresetState.channels.forEach((ch, idx) => {
+    const lane = lanes[idx];
+    if (!lane) return;
+    lane.replaceChildren();
+
+    // Solo pintar carril si el canal tiene slotA asignado o volumen > 0
+    if (ch.slotA || ch.volume > 0) {
+      const span = document.createElement('div');
+      span.className = 'vfx-lane-span';
+      const minNote = Math.max(0, Math.min(127, ch.midiNoteMin));
+      const maxNote = Math.max(minNote, Math.min(127, ch.midiNoteMax));
+      const leftPct = (minNote / 127) * 100;
+      const widthPct = Math.max(2, ((maxNote - minNote + 1) / 128) * 100);
+      span.style.left = `${leftPct.toFixed(1)}%`;
+      span.style.width = `${widthPct.toFixed(1)}%`;
+      span.title = `Ch ${idx + 1}: ${minNote}..${maxNote} (${ch.slotA?.name || 'Empty'})`;
+      lane.append(span);
+    }
+  });
+}
+
+// Plantillas de Escena rápidas de 1 clic
+export function applyLayoutPreset(mode: 'single' | 'layer' | 'split' | 'multi4'): void {
+  if (!currentPresetState) return;
+  const channels = currentPresetState.channels;
+  if (!channels || channels.length < 4) return;
+
+  const ch0 = channels[0]!;
+  const ch1 = channels[1]!;
+  const ch2 = channels[2]!;
+  const ch3 = channels[3]!;
+
+  if (mode === 'single') {
+    // Ch 1 activo rango completo, Ch 2..4 a cero
+    ch0.volume = 206;
+    ch0.midiChannel = 0;
+    ch0.midiNoteMin = 0;
+    ch0.midiNoteMax = 127;
+    for (let i = 1; i < 4; i++) {
+      const ch = channels[i]!;
+      ch.volume = 0;
+      ch.midiChannel = 0;
+      ch.midiNoteMin = 0;
+      ch.midiNoteMax = 127;
+    }
+  } else if (mode === 'layer') {
+    // Ch 1 y 2 activos a volumen 185, mismo canal MIDI Omni, rango completo
+    ch0.volume = 185;
+    ch0.midiChannel = 0;
+    ch0.midiNoteMin = 0;
+    ch0.midiNoteMax = 127;
+
+    ch1.volume = 185;
+    ch1.midiChannel = 0;
+    ch1.midiNoteMin = 0;
+    ch1.midiNoteMax = 127;
+
+    ch2.volume = 0;
+    ch3.volume = 0;
+  } else if (mode === 'split') {
+    // Ch 1: Bajo 0..59 (C-2..B2), Ch 2: Teclas/Lead 60..127 (C3..G8)
+    ch0.volume = 206;
+    ch0.midiChannel = 0;
+    ch0.midiNoteMin = 0;
+    ch0.midiNoteMax = 59;
+
+    ch1.volume = 206;
+    ch1.midiChannel = 0;
+    ch1.midiNoteMin = 60;
+    ch1.midiNoteMax = 127;
+
+    ch2.volume = 0;
+    ch3.volume = 0;
+  } else if (mode === 'multi4') {
+    // Ch 1..4 a MIDI 1..4, volumen 206, rango completo
+    for (let i = 0; i < 4; i++) {
+      const ch = channels[i]!;
+      ch.volume = 206;
+      ch.midiChannel = i + 1;
+      ch.midiNoteMin = 0;
+      ch.midiNoteMax = 127;
+    }
+  }
+
+  renderPresetDrawer();
 }
 
 function renderChannelsGrid(): void {
@@ -273,6 +365,41 @@ function renderChannelsGrid(): void {
     const title = document.createElement('h4');
     title.textContent = t('vfxPreset.channel', { 0: chIndex + 1 });
     head.append(title);
+
+    const chActions = document.createElement('div');
+    chActions.className = 'vfx-channel-actions';
+
+    const muteBtn = document.createElement('button');
+    muteBtn.type = 'button';
+    muteBtn.className = 'vfx-ch-btn';
+    muteBtn.textContent = 'M';
+    muteBtn.title = t('vfxPreset.mute');
+    muteBtn.setAttribute('aria-pressed', channel.volume === 0 ? 'true' : 'false');
+    muteBtn.addEventListener('click', () => {
+      if (channel.volume > 0) {
+        (channel as any)._savedVol = channel.volume;
+        channel.volume = 0;
+      } else {
+        channel.volume = (channel as any)._savedVol || 206;
+      }
+      renderPresetDrawer();
+    });
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'vfx-ch-btn';
+    clearBtn.textContent = '×';
+    clearBtn.title = t('vfxPreset.clearChannel');
+    clearBtn.addEventListener('click', () => {
+      channel.slotA = null;
+      channel.slotB = null;
+      channel.slotC = null;
+      channel.volume = 0;
+      renderPresetDrawer();
+    });
+
+    chActions.append(muteBtn, clearBtn);
+    head.append(chActions);
     card.append(head);
 
     // Slot A (Principal)
@@ -557,5 +684,20 @@ export async function saveCurrentPreset(): Promise<void> {
   } catch (error) {
     els.vfxPresetStatus.textContent = describeError(error);
     els.vfxPresetStatus.className = 'status error';
+  }
+}
+
+export function bindPresetDrawerEvents(): void {
+  if (els.vfxLayoutSingleBtn) {
+    els.vfxLayoutSingleBtn.addEventListener('click', () => applyLayoutPreset('single'));
+  }
+  if (els.vfxLayoutLayerBtn) {
+    els.vfxLayoutLayerBtn.addEventListener('click', () => applyLayoutPreset('layer'));
+  }
+  if (els.vfxLayoutSplitBtn) {
+    els.vfxLayoutSplitBtn.addEventListener('click', () => applyLayoutPreset('split'));
+  }
+  if (els.vfxLayoutMulti4Btn) {
+    els.vfxLayoutMulti4Btn.addEventListener('click', () => applyLayoutPreset('multi4'));
   }
 }

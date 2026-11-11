@@ -1472,6 +1472,39 @@
           </label>
         </div>
 
+        <div class="vfx-layout-presets" role="group" aria-label="Layout Presets" data-i18n-label="vfxPreset.layoutPresetsLabel">
+          <span class="vfx-layout-label" data-i18n="vfxPreset.layoutLabel">Templates:</span>
+          <button id="vfx-layout-single-btn" type="button" class="btn-layout">
+            <span data-i18n="vfxPreset.layoutSingle">Single (Ch 1)</span>
+          </button>
+          <button id="vfx-layout-layer-btn" type="button" class="btn-layout">
+            <span data-i18n="vfxPreset.layoutLayer">Layer (Ch 1+2)</span>
+          </button>
+          <button id="vfx-layout-split-btn" type="button" class="btn-layout">
+            <span data-i18n="vfxPreset.layoutSplit">Split (Bass/Keys C3)</span>
+          </button>
+          <button id="vfx-layout-multi4-btn" type="button" class="btn-layout">
+            <span data-i18n="vfxPreset.layoutMulti4">Multi 4-Part</span>
+          </button>
+        </div>
+
+        <div id="vfx-keyboard-map" class="vfx-keyboard-map" role="region" aria-label="MIDI Keyboard Map" data-i18n-label="vfxPreset.keyboardMapLabel">
+          <div class="vfx-keyboard-ruler">
+            <span>C1 (36)</span>
+            <span>C2 (48)</span>
+            <span>C3 (60)</span>
+            <span>C4 (72)</span>
+            <span>C5 (84)</span>
+            <span>C6 (96)</span>
+          </div>
+          <div id="vfx-keyboard-lanes" class="vfx-keyboard-lanes">
+            <div id="vfx-lane-1" class="vfx-keyboard-lane vfx-lane-ch1" title="Ch 1"></div>
+            <div id="vfx-lane-2" class="vfx-keyboard-lane vfx-lane-ch2" title="Ch 2"></div>
+            <div id="vfx-lane-3" class="vfx-keyboard-lane vfx-lane-ch3" title="Ch 3"></div>
+            <div id="vfx-lane-4" class="vfx-keyboard-lane vfx-lane-ch4" title="Ch 4"></div>
+          </div>
+        </div>
+
         <div id="vfx-channels-grid" class="vfx-channels-grid"></div>
 
         <details id="vfx-global-buses" class="vfx-global-buses" open>

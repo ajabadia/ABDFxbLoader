@@ -2813,6 +2813,125 @@ details.import label[for='import-paths'] {
   margin-bottom: 4px;
 }
 
+/* Plantillas rápidas de 1 clic */
+.vfx-layout-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.vfx-layout-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.vfx-layout-presets .btn-layout {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.vfx-layout-presets .btn-layout:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* Visualizador de teclado / zonas MIDI */
+.vfx-keyboard-map {
+  margin: 10px 0 16px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.vfx-keyboard-ruler {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: monospace;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.vfx-keyboard-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.vfx-keyboard-lane {
+  position: relative;
+  height: 10px;
+  border-radius: 2px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.vfx-lane-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.vfx-lane-ch1 .vfx-lane-span {
+  background: #3b82f6; /* Canal 1 azul */
+}
+
+.vfx-lane-ch2 .vfx-lane-span {
+  background: #10b981; /* Canal 2 verde */
+}
+
+.vfx-lane-ch3 .vfx-lane-span {
+  background: #f59e0b; /* Canal 3 ámbar */
+}
+
+.vfx-lane-ch4 .vfx-lane-span {
+  background: #ec4899; /* Canal 4 rosa */
+}
+
+.vfx-channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vfx-ch-btn {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.vfx-ch-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
 .vfx-midi-row {
   margin-top: 6px;
 }

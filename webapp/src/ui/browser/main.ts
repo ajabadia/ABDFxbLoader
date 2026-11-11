@@ -125,6 +125,7 @@ import {
   openNewPresetDrawer,
   closePresetDrawer,
   saveCurrentPreset,
+  bindPresetDrawerEvents,
 } from './vfx-preset-drawer.js';
 export { refreshVfxBanksView, closePresetDrawer };
 // de los dos prefijos (`abdsynths.locale` es de la suite; el resto es propio).
@@ -6550,6 +6551,8 @@ if (els.vfxPresetSaveBtn) {
     void saveCurrentPreset();
   });
 }
+
+bindPresetDrawerEvents();
 
 
 els.customPluginClose.addEventListener('click', () => {
