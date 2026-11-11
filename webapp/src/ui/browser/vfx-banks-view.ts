@@ -11,6 +11,7 @@ import { mountTable, type TableController, type TableView } from '../table.js';
 import { t } from '../i18n/index.js';
 import { renderStatusWithAction } from './status.js';
 import { openSettingsForLibraryRootAction } from './features/settings/actions.js';
+import { openEditPresetDrawer } from './vfx-preset-drawer.js';
 import type { VfxBankSummaryDto, VfxPresetSummaryDto } from '../vfx-banks-dto-types.js';
 
 export let vfxBanksTableController: TableController<VfxBankSummaryDto> | null = null;
@@ -120,8 +121,9 @@ export const vfxPresetsTableView: TableView<VfxPresetSummaryDto> = {
       renderNode: (preset: VfxPresetSummaryDto) => {
         const wrap = document.createElement('div');
         wrap.className = 'vfx-ch-summary';
+        const channels = preset.channels || [];
         for (let i = 0; i < 4; i++) {
-          const ch = preset.channelsSummary[i];
+          const ch = channels[i];
           const pill = document.createElement('span');
           pill.className = `badge ${ch && ch.slotA ? 'on' : 'off'}`;
           pill.textContent = `Ch${i + 1}: ${ch && ch.slotA ? ch.slotA.shortName || ch.slotA.name : '—'}`;
@@ -141,6 +143,22 @@ export const vfxPresetsTableView: TableView<VfxPresetSummaryDto> = {
   ],
   getRowId: (preset: VfxPresetSummaryDto) => preset.folder,
   initialSort: { columnId: 'index', direction: 'asc' },
+  rowActions: {
+    actions: (preset: VfxPresetSummaryDto) => [
+      {
+        id: 'edit-preset',
+        get label() {
+          return t('vfxBanks.actionEditPreset');
+        },
+        icon: 'edit',
+        onSelect: () => {
+          if (activeBankSummary) {
+            void openEditPresetDrawer(activeBankSummary.folder, preset.folder);
+          }
+        },
+      },
+    ],
+  },
   emptyText: () => t('vfxBanks.presetsEmpty'),
 };
 

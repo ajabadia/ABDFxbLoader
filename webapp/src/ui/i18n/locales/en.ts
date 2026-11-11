@@ -1103,6 +1103,7 @@ export const appEn = {
     healthRepairable: 'Repairable',
     healthBroken: 'Broken',
     actionViewPresets: 'View scenes / presets',
+    actionEditPreset: 'Edit scene (4 channels)',
     presetSaved: 'Scene saved successfully.',
   },
   vfxPreset: {

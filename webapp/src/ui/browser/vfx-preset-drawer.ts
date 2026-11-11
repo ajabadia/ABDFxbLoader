@@ -5,8 +5,9 @@ import { els } from './elements.js';
 import { hidePanel, showPanel } from './drawers.js';
 import { t } from '../i18n/index.js';
 import { describeError } from './api.js';
-import { libraryRoot, scanData } from './features/library/state.js';
+import { libraryRoot } from './features/library/state.js';
 import { activeBankSummary, selectVfxBank } from './vfx-banks-view.js';
+import { createKnob } from './knob.js';
 
 export interface VfxPluginSlotState {
   pluginId: number;
@@ -51,7 +52,56 @@ export interface VfxPresetState {
   master: VfxChannelState;
 }
 
+export interface AvailablePlugin {
+  id: number;
+  name: string;
+  folder: string;
+  isSynth: boolean;
+}
+
 let currentPresetState: VfxPresetState | null = null;
+let cachedLibraryPlugins: AvailablePlugin[] = [];
+
+async function loadAvailablePlugins(): Promise<AvailablePlugin[]> {
+  if (cachedLibraryPlugins.length > 0) return cachedLibraryPlugins;
+  const root = libraryRoot;
+  if (!root) return [];
+  try {
+    const res = await fetch('/library/scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ libraryRoot: root }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { plugins: Array<{ name: string; path: string }> };
+    
+    // Si tenemos plugins del escáner y plugins de bancos, los unificamos
+    const list: AvailablePlugin[] = [];
+    const seen = new Set<string>();
+
+    if (activeBankSummary?.referencedPlugins) {
+      for (const ref of activeBankSummary.referencedPlugins) {
+        list.push({
+          id: ref.id,
+          name: ref.name,
+          folder: ref.installedFolder || ref.name,
+          isSynth: ref.isSynth ?? true,
+        });
+        seen.add(ref.name.toLowerCase());
+      }
+    }
+
+    cachedLibraryPlugins = list;
+    return cachedLibraryPlugins;
+  } catch {
+    return activeBankSummary?.referencedPlugins?.map((ref) => ({
+      id: ref.id,
+      name: ref.name,
+      folder: ref.installedFolder || ref.name,
+      isSynth: ref.isSynth ?? true,
+    })) || [];
+  }
+}
 
 function createEmptySlot(): VfxPluginSlotState {
   return {
@@ -107,8 +157,89 @@ export function openNewPresetDrawer(): void {
     aux: [createEmptyChannel(0), createEmptyChannel(1)],
     master: createEmptyChannel(0, true),
   };
-  renderPresetDrawer();
-  showPanel(els.vfxPresetDrawer, els.vfxPresetCreateBtn);
+  void loadAvailablePlugins().then(() => {
+    renderPresetDrawer();
+    showPanel(els.vfxPresetDrawer, els.vfxPresetCreateBtn);
+  });
+}
+
+export async function openEditPresetDrawer(bankFolder: string, presetFolder: string): Promise<void> {
+  const root = libraryRoot;
+  if (!root) return;
+
+  try {
+    const res = await fetch('/library/vfx-banks/preset/read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ libraryRoot: root, bankFolder, presetFolder }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const descriptor = await res.json() as any;
+
+    currentPresetState = {
+      bankFolder,
+      presetFolder,
+      name: descriptor.name || 'Preset',
+      tempoBpm: descriptor.tempoBpm || 120,
+      timeSignatureNum: descriptor.timeSignatureNum || 4,
+      timeSignatureDen: descriptor.timeSignatureDen || 4,
+      channels: descriptor.channels.map((ch: any, idx: number) => ({
+        index: idx,
+        volume: ch.volume ?? 0,
+        pan: ch.pan ?? 128,
+        midiChannel: ch.slotA?.midiChannel ?? 0,
+        midiNoteMin: ch.slotA?.midiNoteMin ?? 0,
+        midiNoteMax: ch.slotA?.midiNoteMax ?? 127,
+        midiTranspose: ch.slotA?.midiTranspose ?? 0,
+        slotA: ch.slotA ? { ...ch.slotA } : null,
+        slotB: ch.slotB ? { ...ch.slotB } : null,
+        slotC: ch.slotC ? { ...ch.slotC } : null,
+        sends: ch.sends || [
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+        ],
+      })),
+      aux: descriptor.aux.map((a: any, idx: number) => ({
+        index: idx,
+        volume: a.volume ?? 0,
+        pan: a.pan ?? 128,
+        midiChannel: 0,
+        midiNoteMin: 0,
+        midiNoteMax: 127,
+        midiTranspose: 0,
+        slotA: a.slotA ? { ...a.slotA } : null,
+        slotB: a.slotB ? { ...a.slotB } : null,
+        slotC: a.slotC ? { ...a.slotC } : null,
+        sends: [
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+        ],
+      })),
+      master: {
+        index: 0,
+        volume: descriptor.master?.volume ?? 206,
+        pan: descriptor.master?.pan ?? 128,
+        midiChannel: 0,
+        midiNoteMin: 0,
+        midiNoteMax: 127,
+        midiTranspose: 0,
+        slotA: descriptor.master?.slotA ? { ...descriptor.master.slotA } : null,
+        slotB: descriptor.master?.slotB ? { ...descriptor.master.slotB } : null,
+        slotC: descriptor.master?.slotC ? { ...descriptor.master.slotC } : null,
+        sends: [
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+          { gain: 0, isPre: 0, gainMidi: 0, isPreMidi: 0 },
+        ],
+      },
+    };
+
+    await loadAvailablePlugins();
+    renderPresetDrawer();
+    showPanel(els.vfxPresetDrawer);
+  } catch (error) {
+    els.vfxBanksStatus.textContent = describeError(error);
+    els.vfxBanksStatus.className = 'status error';
+  }
 }
 
 export function closePresetDrawer(): void {
@@ -168,82 +299,63 @@ function renderChannelsGrid(): void {
     });
     card.append(slotCField);
 
-    // Controles de Mezcla y Envíos
-    const mixRow = document.createElement('div');
-    mixRow.className = 'row vfx-mix-row';
+    // Grupo de Potenciómetros Rotatorios (Knobs) para Mezcla y Envíos
+    const knobsGroup = document.createElement('div');
+    knobsGroup.className = 'vfx-knobs-group';
 
-    // Volumen
-    const volLabel = document.createElement('label');
-    volLabel.className = 'field';
-    const volSpan = document.createElement('span');
-    volSpan.textContent = `${t('vfxPreset.volume')} (${Math.round((channel.volume / 255) * 100)}%)`;
-    const volInput = document.createElement('input');
-    volInput.type = 'range';
-    volInput.min = '0';
-    volInput.max = '255';
-    volInput.value = String(channel.volume);
-    volInput.addEventListener('input', () => {
-      channel.volume = Number(volInput.value);
-      volSpan.textContent = `${t('vfxPreset.volume')} (${Math.round((channel.volume / 255) * 100)}%)`;
+    // Knob Volumen
+    const volKnob = createKnob({
+      label: t('vfxPreset.volume'),
+      min: 0,
+      max: 255,
+      value: channel.volume,
+      unit: '%',
+      onChange: (val) => {
+        channel.volume = val;
+      },
     });
-    volLabel.append(volSpan, volInput);
-    mixRow.append(volLabel);
+    knobsGroup.append(volKnob);
 
-    // Panorama
-    const panLabel = document.createElement('label');
-    panLabel.className = 'field';
-    const panSpan = document.createElement('span');
-    panSpan.textContent = t('vfxPreset.pan');
-    const panInput = document.createElement('input');
-    panInput.type = 'range';
-    panInput.min = '0';
-    panInput.max = '255';
-    panInput.value = String(channel.pan);
-    panInput.addEventListener('input', () => {
-      channel.pan = Number(panInput.value);
+    // Knob Panorama
+    const panKnob = createKnob({
+      label: t('vfxPreset.pan'),
+      min: 0,
+      max: 255,
+      value: channel.pan,
+      bipolar: true,
+      onChange: (val) => {
+        channel.pan = val;
+      },
     });
-    panLabel.append(panSpan, panInput);
-    mixRow.append(panLabel);
+    knobsGroup.append(panKnob);
 
-    card.append(mixRow);
-
-    // Envíos Aux 1 y Aux 2
-    const sendsRow = document.createElement('div');
-    sendsRow.className = 'row vfx-sends-row';
-
-    // Send Aux 1
-    const s1Label = document.createElement('label');
-    s1Label.className = 'field';
-    const s1Span = document.createElement('span');
-    s1Span.textContent = t('vfxPreset.sendAux1');
-    const s1Input = document.createElement('input');
-    s1Input.type = 'range';
-    s1Input.min = '0';
-    s1Input.max = '255';
-    s1Input.value = String(channel.sends[0].gain);
-    s1Input.addEventListener('input', () => {
-      channel.sends[0].gain = Number(s1Input.value);
+    // Knob Envío Aux 1
+    const aux1Knob = createKnob({
+      label: t('vfxPreset.sendAux1'),
+      min: 0,
+      max: 255,
+      value: channel.sends[0].gain,
+      unit: '%',
+      onChange: (val) => {
+        channel.sends[0].gain = val;
+      },
     });
-    s1Label.append(s1Span, s1Input);
-    sendsRow.append(s1Label);
+    knobsGroup.append(aux1Knob);
 
-    // Send Aux 2
-    const s2Label = document.createElement('label');
-    s2Label.className = 'field';
-    const s2Span = document.createElement('span');
-    s2Span.textContent = t('vfxPreset.sendAux2');
-    const s2Input = document.createElement('input');
-    s2Input.type = 'range';
-    s2Input.min = '0';
-    s2Input.max = '255';
-    s2Input.value = String(channel.sends[1].gain);
-    s2Input.addEventListener('input', () => {
-      channel.sends[1].gain = Number(s2Input.value);
+    // Knob Envío Aux 2
+    const aux2Knob = createKnob({
+      label: t('vfxPreset.sendAux2'),
+      min: 0,
+      max: 255,
+      value: channel.sends[1].gain,
+      unit: '%',
+      onChange: (val) => {
+        channel.sends[1].gain = val;
+      },
     });
-    s2Label.append(s2Span, s2Input);
-    sendsRow.append(s2Label);
+    knobsGroup.append(aux2Knob);
 
-    card.append(sendsRow);
+    card.append(knobsGroup);
 
     // MIDI Channel y Transpose
     const midiRow = document.createElement('div');
@@ -331,8 +443,15 @@ function createSlotField(
   optEmpty.textContent = t('vfxPreset.emptySlot');
   select.append(optEmpty);
 
-  // Obtener plugins disponibles a traves de los plugins referenciados en bancos o escanear
-  const plugins = activeBankSummary?.referencedPlugins ?? [];
+  const plugins = cachedLibraryPlugins.length > 0
+    ? cachedLibraryPlugins
+    : (activeBankSummary?.referencedPlugins?.map((p) => ({
+        id: p.id,
+        name: p.name,
+        folder: p.installedFolder || p.name,
+        isSynth: p.isSynth ?? true,
+      })) || []);
+
   const synthsGroup = document.createElement('optgroup');
   synthsGroup.label = 'Synths';
   const fxGroup = document.createElement('optgroup');

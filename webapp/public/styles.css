@@ -2759,7 +2759,8 @@ details.import label[for='import-paths'] {
 }
 
 .vfx-preset-drawer {
-  max-width: 900px;
+  width: min(92vw, 1200px);
+  max-width: 95vw;
 }
 
 .vfx-lcd-preview {
@@ -2812,8 +2813,6 @@ details.import label[for='import-paths'] {
   margin-bottom: 4px;
 }
 
-.vfx-mix-row,
-.vfx-sends-row,
 .vfx-midi-row {
   margin-top: 6px;
 }
@@ -2841,4 +2840,74 @@ details.import label[for='import-paths'] {
 .vfx-aux-card,
 .vfx-master-card {
   background: var(--bg);
+}
+
+/* ------------------------------------------------- controles de potenciómetro rotatorio (knobs) */
+.vfx-knob-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.vfx-knob-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  text-align: center;
+}
+
+.vfx-knob-dial-wrap {
+  width: 44px;
+  height: 44px;
+  cursor: ns-resize;
+  outline: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vfx-knob-dial-wrap:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.vfx-knob-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.vfx-knob-circle-bg {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.vfx-knob-pointer {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.vfx-knob-value {
+  font-size: 0.75rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.vfx-knobs-group {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 6px;
 }

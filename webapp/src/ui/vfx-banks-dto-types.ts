@@ -45,7 +45,7 @@ export interface VfxPresetSummaryDto {
   index: number;
   name: string;
   tempoBpm: number;
-  channelsSummary: VfxPresetChannelSummaryDto[];
+  channels?: VfxPresetChannelSummaryDto[];
   hasAuxEffects: boolean;
   hasMasterEffects: boolean;
 }
