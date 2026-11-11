@@ -781,8 +781,13 @@ La aplicación ya dispone de un ecosistema maduro de endpoints para interactuar 
        - `Layer Doble (Ch 1 + Ch 2)`: Activa Ch 1 y Ch 2 en rango completo Omni a volumen equilibrado (`185`) para apilar dos sintetizadores.
        - `Split Teclado Bajo / Teclas (C3)`: Configura Ch 1 en notas `0..59` (`C-2..B2`) y Ch 2 en notas `60..127` (`C3..G8`).
        - `Multi 4 Partes (MIDI 1–4)`: Asigna `Ch 1 → MIDI 1`, `Ch 2 → MIDI 2`, `Ch 3 → MIDI 3`, `Ch 4 → MIDI 4`.
-   - **Bloque 3 — Visualizador Unificado de Zonas de Teclado MIDI (`.vfx-keyboard-map`):**
-     - Barra horizontal ligera en HTML/CSS puro (0 dependencias externas) que representa las 128 notas MIDI (`0..127`, marcando referencias `C1 (36)`, `C2 (48)`, `C3 (60)`, `C4 (72)`) con 4 carriles superpuestos que pintan en tiempo real el rango `midi_note_min .. midi_note_max` de cada canal activo. Permite detectar de un vistazo cualquier solapamiento o hueco en un *split*.
+   - **Bloque 3 — Visualizador Unificado de Zonas de Teclado MIDI (`.vfx-keyboard-map` / Integración `@abdsynths/shared` MidiKeyboard):**
+      - **Evaluación y aprovechamiento del teclado unificado de `@abdsynths/shared` (`Code/MidiKeyboard` / `@abdsynths/midi-keyb` como en `ABDNeuModMakr`):**
+        - En `ABDNeuModMakr` se emplea `KeyboardStrip.ts` envolviendo `createKeyboard` de `@abdsynths/midi-keyb` (`numOctaves: 5`, `startNote: baseOctave * 12`, resaltado dinámico de teclas por zona/rango).
+        - En `ABDfxbloader` el teclado de `@abdsynths/shared` encaja perfectamente para:
+          1. **Visualización de zonas por canal (Split & Layer):** colorear e iluminar las teclas del piano según el canal activo (`Ch 1` a `Ch 4` con código cromático identificativo), indicando puntos de división (*split points*) y solapamientos.
+          2. **Tira compacta / Ribbon:** para mantener la compacidad del cajón cuando el músico solo necesita ver el rango, disponer de una vista resumida de 128 notas y opción de expandir el teclado interactivo completo (`enableCollapse: true`).
+          3. **Audición interactiva:** permitir pulsar notas (ratón o teclado QWERTY) con eventos `onNoteOn`/`onNoteOff` para comprobación sonora o monitoreo visual en directo.
    - **Bloque 4 — Rack de los 4 Canales (`#vfx-channels-grid`, `.vfx-channels-grid`):**
      - Grid responsivo de 4 tarjetas (`.vfx-channel-card`, 4 columnas en pantallas anchas `>= 1100px`, 2×2 en medianas, 1 columna en móvil), correspondientes a `Canal 1`..`Canal 4` (`channel: 0..3`):
        - **Encabezado del canal:** Etiqueta `Canal N`, conmutadores compactos `Mute` y `Solo` (`button[aria-pressed]`) y botón `Limpiar canal`.
